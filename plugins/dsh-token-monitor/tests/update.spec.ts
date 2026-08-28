@@ -29,9 +29,9 @@ async function serve(options: Parameters<typeof registerUpdateRoutes>[1] = {}) {
 
 function githubRelease(overrides: Record<string, unknown> = {}) {
   return {
-    tag_name: 'v0.3.2',
-    html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v0.3.2',
-    assets: [{ name: 'dsh-damage-pulse-v0.3.2.tgz', size: 3, digest: 'sha256:ignored', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.2/dsh-damage-pulse-v0.3.2.tgz' }],
+    tag_name: 'v4.0.0',
+    html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.0.0',
+    assets: [{ name: 'dsh-damage-pulse-v4.0.0.tgz', size: 3, digest: 'sha256:ignored', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.0/dsh-damage-pulse-v4.0.0.tgz' }],
     ...overrides,
   }
 }
@@ -48,7 +48,7 @@ describe('token monitor update Host routes', () => {
     const endpoint = `${await serve()}${UPDATE_STATUS_PATH}`
     const response = await fetch(endpoint)
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ repository: 'wssfk12138/dsh-damage-pulse', currentVersion: '0.3.2', latestVersion: '0.3.2', hasUpdate: false })
+    expect(await response.json()).toMatchObject({ repository: 'wssfk12138/dsh-damage-pulse', currentVersion: '4.0.0', latestVersion: '4.0.0', hasUpdate: false })
     const head = await fetch(endpoint, { method: 'HEAD' })
     expect(head.status).toBe(200)
     expect(await head.text()).toBe('')
@@ -59,9 +59,9 @@ describe('token monitor update Host routes', () => {
 
   it('accepts the real release asset naming without a v prefix', async () => {
     const release = githubRelease({
-      tag_name: 'v0.3.3',
-      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v0.3.3',
-      assets: [{ name: 'dsh-damage-pulse-0.3.3.tgz', size: 3, digest: `sha256:${'0'.repeat(64)}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.3/dsh-damage-pulse-0.3.3.tgz' }],
+      tag_name: 'v4.0.1',
+      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.0.1',
+      assets: [{ name: 'dsh-damage-pulse-4.0.1.tgz', size: 3, digest: `sha256:${'0'.repeat(64)}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.1/dsh-damage-pulse-4.0.1.tgz' }],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('https://api.github.com/')
@@ -69,13 +69,13 @@ describe('token monitor update Host routes', () => {
       : realFetch(input, init)))
     const response = await fetch(`${await serve()}${UPDATE_STATUS_PATH}`)
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ latestVersion: '0.3.3', hasUpdate: true, asset: { name: 'dsh-damage-pulse-0.3.3.tgz' } })
+    expect(await response.json()).toMatchObject({ latestVersion: '4.0.1', hasUpdate: true, asset: { name: 'dsh-damage-pulse-4.0.1.tgz' } })
   })
 
   it('reports no installable asset when the release digest is missing', async () => {
     const release = githubRelease({
-      tag_name: 'v0.3.3',
-      assets: [{ name: 'dsh-damage-pulse-v0.3.3.tgz', size: 3, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.3/dsh-damage-pulse-v0.3.3.tgz' }],
+      tag_name: 'v4.0.1',
+      assets: [{ name: 'dsh-damage-pulse-v4.0.1.tgz', size: 3, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.1/dsh-damage-pulse-v4.0.1.tgz' }],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('https://api.github.com/')
@@ -84,7 +84,7 @@ describe('token monitor update Host routes', () => {
     const endpoint = await serve()
     const status = await fetch(`${endpoint}${UPDATE_STATUS_PATH}`)
     expect(status.status).toBe(200)
-    expect(await status.json()).toMatchObject({ latestVersion: '0.3.3', asset: null })
+    expect(await status.json()).toMatchObject({ latestVersion: '4.0.1', asset: null })
     const install = await fetch(`${endpoint}${UPDATE_INSTALL_PATH}`, { method: 'POST' })
     expect(install.status).toBe(502)
     expect(await install.json()).toMatchObject({ error: { code: 'UPDATE_INSTALL_FAILED' } })
@@ -92,8 +92,8 @@ describe('token monitor update Host routes', () => {
 
   it('ignores assets with malformed digests', async () => {
     const release = githubRelease({
-      tag_name: 'v0.3.3',
-      assets: [{ name: 'dsh-damage-pulse-v0.3.3.tgz', size: 3, digest: 'sha256:short', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.3/dsh-damage-pulse-v0.3.3.tgz' }],
+      tag_name: 'v4.0.1',
+      assets: [{ name: 'dsh-damage-pulse-v4.0.1.tgz', size: 3, digest: 'sha256:short', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.1/dsh-damage-pulse-v4.0.1.tgz' }],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('https://api.github.com/')
@@ -101,13 +101,13 @@ describe('token monitor update Host routes', () => {
       : realFetch(input, init)))
     const response = await fetch(`${await serve()}${UPDATE_STATUS_PATH}`)
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ latestVersion: '0.3.3', asset: null })
+    expect(await response.json()).toMatchObject({ latestVersion: '4.0.1', asset: null })
   })
 
   it('ignores assets whose version does not match the release tag', async () => {
     const release = githubRelease({
-      tag_name: 'v0.3.3',
-      assets: [{ name: 'dsh-damage-pulse-v0.3.2.tgz', size: 3, digest: `sha256:${'0'.repeat(64)}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.3/dsh-damage-pulse-v0.3.2.tgz' }],
+      tag_name: 'v4.0.1',
+      assets: [{ name: 'dsh-damage-pulse-v4.0.0.tgz', size: 3, digest: `sha256:${'0'.repeat(64)}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.1/dsh-damage-pulse-v4.0.0.tgz' }],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('https://api.github.com/')
@@ -115,7 +115,7 @@ describe('token monitor update Host routes', () => {
       : realFetch(input, init)))
     const response = await fetch(`${await serve()}${UPDATE_STATUS_PATH}`)
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ latestVersion: '0.3.3', asset: null })
+    expect(await response.json()).toMatchObject({ latestVersion: '4.0.1', asset: null })
   })
 
   it('rejects an oversized install request before checking GitHub', async () => {
@@ -164,9 +164,9 @@ describe('token monitor update Host routes', () => {
     const bytes = new TextEncoder().encode('valid tgz fixture')
     const digest = createHash('sha256').update(bytes).digest('hex')
     const release = githubRelease({
-      tag_name: 'v0.3.3',
-      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v0.3.3',
-      assets: [{ name: 'dsh-damage-pulse-v0.3.3.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.3/dsh-damage-pulse-v0.3.3.tgz' }],
+      tag_name: 'v4.0.1',
+      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.0.1',
+      assets: [{ name: 'dsh-damage-pulse-v4.0.1.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.1/dsh-damage-pulse-v4.0.1.tgz' }],
     })
     const realFetch = globalThis.fetch
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -180,10 +180,10 @@ describe('token monitor update Host routes', () => {
     const endpoint = `${await serve({ runtime: { argv: ['node', 'E:/deepseek-harness/apps/cli/src/bin.ts', 'web'], execArgv: ['--import', 'tsx/esm'], execPath: 'node' }, installPackage: async (profile, packagePath) => { installed.push({ profile, packagePath }) } })}${UPDATE_INSTALL_PATH}`
     const response = await fetch(endpoint, { method: 'POST' })
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ latestVersion: '0.3.3', installed: true, staged: true, profile: 'web', stagedAsset: 'dsh-damage-pulse-v0.3.3.tgz', sha256: digest })
+    expect(await response.json()).toMatchObject({ latestVersion: '4.0.1', installed: true, staged: true, profile: 'web', stagedAsset: 'dsh-damage-pulse-v4.0.1.tgz', sha256: digest })
     expect(installed).toHaveLength(1)
     expect(installed[0]?.profile).toBe('web')
-    expect(installed[0]?.packagePath).toMatch(/dsh-damage-pulse-v0\.3\.3\.tgz$/)
+    expect(installed[0]?.packagePath).toMatch(/dsh-damage-pulse-v4\.0\.1\.tgz$/)
    expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith('https://')).length).toBe(2)
     const method = await fetch(endpoint)
     expect(method.status).toBe(405)
@@ -192,8 +192,8 @@ describe('token monitor update Host routes', () => {
 
   it('rejects a digest mismatch without staging', async () => {
     const release = githubRelease({
-      tag_name: 'v0.3.3',
-      assets: [{ name: 'dsh-damage-pulse-v0.3.3.tgz', size: 4, digest: 'sha256:0000', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.3/dsh-damage-pulse-v0.3.3.tgz' }],
+      tag_name: 'v4.0.1',
+      assets: [{ name: 'dsh-damage-pulse-v4.0.1.tgz', size: 4, digest: 'sha256:0000', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.1/dsh-damage-pulse-v4.0.1.tgz' }],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -219,9 +219,9 @@ describe('token monitor update Host routes', () => {
     const bytes = new TextEncoder().encode('valid tgz fixture')
     const digest = createHash('sha256').update(bytes).digest('hex')
     const release = githubRelease({
-      tag_name: 'v0.3.3',
-      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v0.3.3',
-      assets: [{ name: 'dsh-damage-pulse-v0.3.3.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.3/dsh-damage-pulse-v0.3.3.tgz' }],
+      tag_name: 'v4.0.1',
+      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.0.1',
+      assets: [{ name: 'dsh-damage-pulse-v4.0.1.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.1/dsh-damage-pulse-v4.0.1.tgz' }],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -241,9 +241,9 @@ describe('token monitor update Host routes', () => {
     const bytes = new TextEncoder().encode('valid tgz fixture')
     const digest = createHash('sha256').update(bytes).digest('hex')
     const release = githubRelease({
-      tag_name: 'v0.3.3',
-      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v0.3.3',
-      assets: [{ name: 'dsh-damage-pulse-v0.3.3.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v0.3.3/dsh-damage-pulse-v0.3.3.tgz' }],
+      tag_name: 'v4.0.1',
+      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.0.1',
+      assets: [{ name: 'dsh-damage-pulse-v4.0.1.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.1/dsh-damage-pulse-v4.0.1.tgz' }],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

@@ -47,6 +47,22 @@ test('uses CNY as the deterministic tie-breaker for empty entries', () => {
   assert.equal(selectBalanceInfo(response([emptyUsd, cnyZero()])).currency, 'CNY')
 })
 
+test('keeps a negative DeepSeek overdraft instead of treating it as malformed', () => {
+  const overdraft = {
+    currency: 'CNY',
+    total_balance: '-12.34',
+    granted_balance: '0.00',
+    topped_up_balance: '-12.34',
+  }
+  assert.deepEqual(selectBalanceInfo(response([overdraft])), {
+    currency: 'CNY',
+    totalBalance: -12.34,
+    grantedBalance: 0,
+    toppedUpBalance: -12.34,
+  })
+})
+
+
 test('rejects missing entries instead of fabricating a zero balance', () => {
   assert.throws(() => selectBalanceInfo(response([])), /no valid balance_infos/)
 })
