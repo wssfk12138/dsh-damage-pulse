@@ -51,6 +51,7 @@ import { summarizeUsage, type UsageSummaryRange } from './usage-summary.ts'
 import { registerWechatRoutes } from './wechat-routes.ts'
 import { registerUpdateRoutes } from './update.ts'
 import { registerTokenMonitorAssetRoutes } from './assets.ts'
+import { migrateMissingTokenCost } from './migration.ts'
 export { registerWhaleAssetRoute } from './assets.ts'
 
 export const name = 'dsh-token-monitor'
@@ -101,28 +102,6 @@ const DEFAULT_C2_RUNTIME_SETTINGS: Readonly<C2RuntimeSettings> = Object.freeze({
 })
 
 const readDefaultC2Settings = (): C2RuntimeSettings => DEFAULT_C2_RUNTIME_SETTINGS
-
-/**
- * 为缺失 tokenCost 投影的历史会话触发冷读重新 fold（一次性补齐，异步不阻塞启动）。
- * 冷读会自动写回 checkpoint，之后列表读即可看到金额。
- */
-async function migrateMissingTokenCost(ctx: Context): Promise<void> {
-  try {
-    const headers = await ctx.sessionPersistence.list()
-    let migrated = 0
-    for (const header of headers) {
-      const cached = ctx.sessionProjectionCache.cachedSnapshot(header)
-      if (cached?.values.tokenCost !== undefined) continue
-      await ctx.sessionProjectionCache.coldSnapshot(header.id)
-      migrated++
-    }
-    if (migrated > 0) {
-      console.log(`[dsh-token-monitor] 已为 ${migrated} 个历史会话重建 tokenCost 投影`)
-    }
-  } catch (error) {
-    console.warn(`[dsh-token-monitor] 历史会话投影迁移失败: ${String(error)}`)
-  }
-}
 
 export function apply(ctx: Context) {
   console.log('[dsh-token-monitor] plugin loaded')

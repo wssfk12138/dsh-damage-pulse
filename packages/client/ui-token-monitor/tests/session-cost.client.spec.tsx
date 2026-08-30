@@ -7,7 +7,12 @@ import type { SessionId, SessionListState, SessionSummary } from '@deepseek-ai/d
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import { LegacySessionCostBridge } from '../src/client/LegacySessionCostBridge.tsx'
 import { SessionCostBadge } from '../src/client/SessionCostBadge.tsx'
-import { apply, LegacySessionCostBridge as RegisteredBridge, SessionCostBadge as RegisteredBadge } from '../src/client/index.ts'
+import {
+  apply,
+  inject,
+  LegacySessionCostBridge as RegisteredBridge,
+  SessionCostBadge as RegisteredBadge,
+} from '../src/client/index.ts'
 import {
   formatSessionCost,
   readSessionCost,
@@ -147,7 +152,7 @@ describe('SessionCostBadge (formal seat)', () => {
 })
 
 describe('client apply wiring (unknown-seat old hosts)', () => {
-  function createFakeClientContext() {
+  function createFakeClientContext(options: { withConversationEvents?: boolean } = {}) {
     const registered: Array<{ options: Record<string, unknown>; component: unknown }> = []
     const injected: Array<{ key: string; callback: () => unknown }> = []
     const slots = {
@@ -160,18 +165,40 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
         return () => {}
       },
     }
-    const conversationEvents = { register: vi.fn() }
+    const conversationEvents = options.withConversationEvents === false ? undefined : { register: vi.fn() }
     return {
       ctx: {
-        get: (name: string) => (name === 'connection' ? { api: { sessions: {} } } : undefined),
+        get: (name: string) => {
+          if (name === 'connection') return { api: { sessions: {} } }
+          if (name === 'conversationEvents') return conversationEvents
+          return undefined
+        },
         slots,
-        conversationEvents,
       } as unknown as ClientContext,
       injected,
       registered,
       conversationEvents,
     }
   }
+
+  it('keeps the legacy event registry optional in the activation contract', () => {
+    expect(inject).toEqual(['slots', 'connection'])
+  })
+
+  it('activates the remaining UI when the new host has no conversationEvents service', () => {
+    const { ctx, injected } = createFakeClientContext({ withConversationEvents: false })
+    expect(() => apply(ctx)).not.toThrow()
+    expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(false)
+    expect(injected.some(entry => entry.key === 'conversation.composer.dock')).toBe(true)
+    expect(injected.filter(entry => entry.key === 'shell.overlay')).toHaveLength(2)
+  })
+
+  it('preserves the single-usage node on old hosts that provide conversationEvents', () => {
+    const { ctx, injected, conversationEvents } = createFakeClientContext()
+    apply(ctx)
+    expect(conversationEvents?.register).toHaveBeenCalledTimes(1)
+    expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true)
+  })
 
   it('waits for the trailing seat declaration instead of crashing on old hosts', () => {
     const { ctx, injected, registered } = createFakeClientContext()

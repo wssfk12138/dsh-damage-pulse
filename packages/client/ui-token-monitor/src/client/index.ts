@@ -58,8 +58,8 @@ export type {
   TokenMonitorUpdateStatus,
 } from './updateApi.ts'
 
-/** 依赖：slot 注册 + Conversation Node 事件装配。 */
-export const inject = ['slots', 'conversationEvents', 'connection']
+/** 核心依赖：slot 注册 + Host 连接。旧版 Conversation Node 注册表按需使用。 */
+export const inject = ['slots', 'connection']
 
 /**
  * ui-workspace 未纳入本包依赖：sessionRow 席位经该结构签名擦除后注册，
@@ -74,12 +74,16 @@ export function apply(ctx: ClientContext): void {
   const connection = ctx.get('connection') as ConnectionHandle
   const loadRouteEligibility = createRouteEligibilityLoader(connection.api.sessions)
 
-  // F1：单次用量行 —— 注册 Conversation Node Definition + keyed renderer。
-  ctx.conversationEvents.register(tokenUsageNodeDefinition)
-  ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
-    name: 'conversation.chat.node',
-    key: 'token-usage',
-  }, UsageNodeView))
+  // F1：单次用量行 —— 旧宿主提供 conversationEvents 时注册。0.1.2-alpha.1
+  // 已移除此服务，不能让可选的明细行阻塞余额、累计条和侧栏金额启动。
+  const conversationEvents = ctx.get('conversationEvents', false)
+  if (conversationEvents !== undefined) {
+    conversationEvents.register(tokenUsageNodeDefinition)
+    ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({
+      name: 'conversation.chat.node',
+      key: 'token-usage',
+    }, UsageNodeView))
+  }
 
   // F2：会话累计条 —— 挂在输入区卡片下方（官方 stats line 同一位）。
   ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({
