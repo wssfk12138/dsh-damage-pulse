@@ -7,8 +7,8 @@
  * 本包不依赖 ui-workspace：props 使用局部结构类型（宿主 owner 提供 sessionId，
  * 全局 kit 提供 useSessions），席位键经类型擦除后注册。
  */
-import type { SessionId, SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SessionId, SessionListStateLike } from './host-contracts.ts'
 import {
   formatSessionCost,
   readSessionCost,
@@ -21,7 +21,7 @@ export interface SessionCostBadgeProps {
   /** 行的稳定会话 id（宿主行元素同时镜像为 data-session-id）。 */
   sessionId: SessionId
   /** 全局会话列表选择器钩子。 */
-  useSessions: SnapshotSelectorHook<SessionListState>
+  useSessions: SnapshotSelectorHook<SessionListStateLike>
 }
 
 const BADGE: React.CSSProperties = {

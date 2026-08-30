@@ -69,10 +69,3 @@ declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
     'token-usage': TokenUsageRecord
   }
 }
-
-declare module '@deepseek-ai/dsh-client-runtime/client' {
-  interface ConversationStepDataMap {
-    /** 供同一 Location 内其它 Node 读取的单次用量行数据。 */
-    'token-usage': TokenUsageRecord
-  }
-}

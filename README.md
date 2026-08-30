@@ -98,7 +98,9 @@
 
 ## 安装
 
-本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物，要求 DSH `0.1.0-rc.5` 及之后的兼容版本（含 `0.1.0-rc.6/rc.7/rc.8` 与 `0.1.1-rc.2`，与 package.json 声明的 peer 双版本段一致）。无需复制源码、修改 DSH `tsconfig`、手动传入 `--patch` 或重建 Client bundle。
+本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。`4.0.3` 明确兼容 DSH Desktop `2.0.4`（DSH `0.1.2-alpha.1`），并继续支持 `0.1.0-rc.5` 之后的旧版兼容宿主（含 `0.1.0-rc.6/rc.7/rc.8` 与 `0.1.1-rc.2`）。无需复制源码、修改 DSH `tsconfig`、手动传入 `--patch` 或重建 Client bundle。
+
+Desktop `2.0.4` 不再提供旧的 `@deepseek-ai/dsh-client-runtime` 模块；`4.0.3` 已将该包从产品 peer 与 Client 注入图中移除，仅在开发环境保留旧宿主回归测试。
 
 旧版或社区自行打包的 DSH 客户端应在其现有项目中沿用宿主自身的 lock 文件和依赖版本安装本插件。不要在一个新建的纯 npm 依赖树中把 rc.5/rc.6/rc.7 宿主包与当前 registry 的 rc.8 上游包混合钉定；这种组合会因上游 peer 版本漂移而解析失败，并不表示插件与原宿主不兼容。
 

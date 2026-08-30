@@ -54,7 +54,6 @@ test('standalone package keeps every packed file for precompiled installs (issue
   assert.equal(manifest.dsh?.client?.platform, 'web')
   const inject: string[] = manifest.dsh?.client?.inject ?? []
   for (const pkg of [
-    '@deepseek-ai/dsh-client-runtime',
     '@deepseek-ai/dsh-client-connection',
     '@deepseek-ai/dsh-client-ui-conversation',
     '@deepseek-ai/dsh-client-ui-layout',
@@ -62,6 +61,9 @@ test('standalone package keeps every packed file for precompiled installs (issue
     assert.ok(inject.includes(pkg), `dsh.client.inject is missing ${pkg}`)
     assert.ok(manifest.peerDependencies?.[pkg], `injected client package ${pkg} must be declared as a peer`)
   }
+  assert.ok(!inject.includes('@deepseek-ai/dsh-client-runtime'), 'Desktop 2.0.4 cannot resolve legacy runtime injection')
+  assert.equal(manifest.peerDependencies?.['@deepseek-ai/dsh-client-runtime'], undefined)
+  assert.ok(!clientBundle.includes('@deepseek-ai/dsh-client-runtime'), 'client bundle must not require the legacy runtime')
 })
 
 test('README install claim covers both DSH generations (issues #3 and #10)', () => {
@@ -70,5 +72,6 @@ test('README install claim covers both DSH generations (issues #3 and #10)', () 
   // peer 与实机版本不一致的安装失败。
   assert.ok(readme.includes('0.1.0-rc.5'), 'README must mention the 0.1.0-rc.5 compatibility leg')
   assert.ok(readme.includes('0.1.1-rc.2'), 'README must mention 0.1.1-rc.2 compatibility')
+  assert.ok(readme.includes('0.1.2-alpha.1'), 'README must mention DSH Desktop 2.0.4 compatibility')
   assert.ok(!readme.includes('0.1.1-rc.2` 或更高兼容版本'), 'README must not claim rc.2-or-higher only')
 })

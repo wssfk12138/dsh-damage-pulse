@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import type { SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { RouteEligibilityLoader } from './routeEligibility.ts'
+import type { SessionListStateLike } from './host-contracts.ts'
 
 /** Current-session route visibility with abort + generation guards against stale settlements. */
 export function useRouteEligibility(
-  useSessions: SnapshotSelectorHook<SessionListState>,
+  useSessions: SnapshotSelectorHook<SessionListStateLike>,
   load: RouteEligibilityLoader | undefined,
   bypass: boolean,
 ): boolean | undefined {

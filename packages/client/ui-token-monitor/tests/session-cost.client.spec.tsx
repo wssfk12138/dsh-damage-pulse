@@ -2,9 +2,8 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, render } from '@testing-library/react'
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { SessionId, SessionListState, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { ClientContextLike, SessionId, SessionListStateLike, SessionSummaryLike } from '../src/client/host-contracts.ts'
 import { LegacySessionCostBridge } from '../src/client/LegacySessionCostBridge.tsx'
 import { SessionCostBadge } from '../src/client/SessionCostBadge.tsx'
 import {
@@ -28,7 +27,7 @@ afterEach(() => {
 
 const sid = (id: string) => id as SessionId
 
-function summary(id: string, displayTitle: string, cost?: number): SessionSummary {
+function summary(id: string, displayTitle: string, cost?: number): SessionSummaryLike {
   return {
     id: sid(id),
     displayTitle,
@@ -36,27 +35,22 @@ function summary(id: string, displayTitle: string, cost?: number): SessionSummar
     blank: false,
     updatedAt: 0,
     ...(cost === undefined ? {} : { projectionValues: { tokenCost: { cost } } }),
-  } as SessionSummary
-}
-
-function listState(sessions: SessionSummary[]): SessionListState {
-  return {
-    ids: sessions.map(session => session.id),
-    byId: Object.fromEntries(sessions.map(session => [session.id, session])) as SessionListState['byId'],
-    current: undefined,
-    phase: 'ready',
-    subagentsByParent: {},
-    jobsBySession: {},
-    currentAddress: undefined,
   }
 }
 
-function hookFor(state: SessionListState): SnapshotSelectorHook<SessionListState> {
+function listState(sessions: SessionSummaryLike[]): SessionListStateLike {
+  return {
+    byId: Object.fromEntries(sessions.map(session => [session.id, session])) as SessionListStateLike['byId'],
+    current: undefined,
+  }
+}
+
+function hookFor(state: SessionListStateLike): SnapshotSelectorHook<SessionListStateLike> {
   return selector => selector(state)
 }
 
 /** 全局 kit（useSessions + useWorkspaces），供正式徽标与旧桥组件渲染。 */
-function kitFor(state: SessionListState) {
+function kitFor(state: SessionListStateLike) {
   return {
     useSessions: hookFor(state),
     // 旧桥组件声明了完整 GlobalStandardProps；测试只关心 useSessions。
@@ -174,7 +168,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
           return undefined
         },
         slots,
-      } as unknown as ClientContext,
+      } as unknown as ClientContextLike,
       injected,
       registered,
       conversationEvents,

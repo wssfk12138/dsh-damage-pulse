@@ -73,17 +73,20 @@ const checks = {
   ) && settingsContract.includes('NOTIFICATION_DEFAULT_OFF_KEYS'),
   'Client connection injection': manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-connection') === true
     && client.includes('ctx.get("connection")'),
-  'client inject order matches sub-package (connection before runtime)':
+  'client inject starts with connection and excludes legacy runtime':
     manifest.dsh?.client?.inject?.indexOf('@deepseek-ai/dsh-client-connection') === 0
-    && manifest.dsh?.client?.inject?.indexOf('@deepseek-ai/dsh-client-runtime') === 1,
+    && !manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-runtime')
+    && !client.includes('@deepseek-ai/dsh-client-runtime'),
   'session-row trailing seat + legacy bridge in client bundle':
     sessionRowMarkers.every(marker => client.includes(marker)),
  'client bundle synced from current client source':
    sessionRowMarkers.every(marker => clientSourceText.includes(marker)),
-  'peer ranges cover both DSH generations (0.1.0-rc.5+ and 0.1.1-rc.2)':
+  'peer ranges cover legacy DSH and Desktop 2.0.4':
     Object.entries(manifest.peerDependencies ?? {})
       .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
-      .every(([, range]) => range.includes('^0.1.0-rc.5') && range.includes('^0.1.1-rc.2')),
+      .every(([, range]) => range.includes('^0.1.0-rc.5')
+        && range.includes('^0.1.1-rc.2')
+        && range.includes('^0.1.2-alpha.1')),
   'Client WeChat settings': client.includes('wechatNotificationsEnabled')
     && client.includes('/api/token-monitor/wechat')
     && client.includes('/status')

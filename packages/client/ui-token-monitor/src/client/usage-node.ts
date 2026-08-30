@@ -4,21 +4,21 @@
  * @module @deepseek-ai/dsh-client-ui-token-monitor/client
  */
 
-import type {
-  ConversationLocation,
-  ConversationNodeContext,
-  ConversationNodeDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
 import type { TokenUsageRecord } from './types.ts'
+import type {
+  ConversationLocationLike,
+  ConversationNodeContextLike,
+  ConversationNodeDefinitionLike,
+} from './host-contracts.ts'
 
 /** 单事件即完整 checkpoint，故 Definition 内部 state 就是记录本身。 */
 type TokenUsageState = TokenUsageRecord
 
-function locationOf(context: ConversationNodeContext): ConversationLocation {
+function locationOf(context: ConversationNodeContextLike): ConversationLocationLike {
   return context.start?.location ?? context.matches[0]?.location ?? { kind: 'unresolved' }
 }
 
-export const tokenUsageNodeDefinition: ConversationNodeDefinition<TokenUsageState> = {
+export const tokenUsageNodeDefinition: ConversationNodeDefinitionLike<TokenUsageState> = {
   kind: 'token-usage',
   target: 'chat',
   match: (event) => {
@@ -29,7 +29,9 @@ export const tokenUsageNodeDefinition: ConversationNodeDefinition<TokenUsageStat
   },
   start: (_context, match) => {
     if (match.event.type !== 'token-usage/record') throw new Error('token-usage requires token-usage/record')
-    return match.event.data.record
+    const record = match.event.data.record
+    if (record === undefined) throw new Error('token-usage event is missing its record')
+    return record
   },
   update: (context) => context.state,
   publication: () => 'immediate',

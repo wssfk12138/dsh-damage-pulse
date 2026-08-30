@@ -4,7 +4,6 @@
  * + frame 级「余额悬浮卡片」（shell.overlay）。
  * 用量行/累计条为投影与事件驱动；余额卡片为 HTTP 轮询，无自有 store。
  */
-import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 // Type-only：拉入 conversation slot 契约（chat.node / composer.dock）。
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
@@ -18,6 +17,7 @@ import { SessionCostBadge } from './SessionCostBadge.tsx'
 import { LegacySessionCostBridge } from './LegacySessionCostBridge.tsx'
 import { SESSION_ROW_TRAILING_SLOT } from './sessionCost.ts'
 import { createRouteEligibilityLoader } from './routeEligibility.ts'
+import type { ClientContextLike } from './host-contracts.ts'
 
 export { UsageNodeView } from './UsageNodeView.tsx'
 export { SessionStatsBar } from './SessionStatsBar.tsx'
@@ -70,7 +70,7 @@ type ErasedSlotRegister = (
   component: unknown,
 ) => () => void
 
-export function apply(ctx: ClientContext): void {
+export function apply(ctx: ClientContextLike): void {
   const connection = ctx.get('connection') as ConnectionHandle
   const loadRouteEligibility = createRouteEligibilityLoader(connection.api.sessions)
 

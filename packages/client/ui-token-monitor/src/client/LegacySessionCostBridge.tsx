@@ -25,8 +25,8 @@
  * 卸载或停用时移除 observer、样式与全部注入节点。
  */
 import { useEffect, useMemo, useRef } from 'react'
-import type { SessionId, SessionSummary } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { SessionId, SessionSummaryLike } from './host-contracts.ts'
 import {
   formatSessionCost,
   readSessionCost,
@@ -75,12 +75,12 @@ const STYLE_TEXT = [
 /** 会话金额索引：按会话 id 直读 + 按唯一 displayTitle 查会话（重名标题互斥）。 */
 interface SessionCostIndex {
   bySessionId: Map<SessionId, number>
-  byUniqueTitle: Map<string, SessionSummary>
+  byUniqueTitle: Map<string, SessionSummaryLike>
   /** 出现重名的标题集合：匹配到这些标题的行结构可信但无法归属，按 fail-closed 跳过。 */
   ambiguousTitles: ReadonlySet<string>
 }
 
-function buildCostIndex(byId: Record<SessionId, SessionSummary>): SessionCostIndex {
+function buildCostIndex(byId: Record<SessionId, SessionSummaryLike>): SessionCostIndex {
   const bySessionId = new Map<SessionId, number>()
   const titleCounts = new Map<string, number>()
   const ambiguousTitles = new Set<string>()
@@ -89,7 +89,7 @@ function buildCostIndex(byId: Record<SessionId, SessionSummary>): SessionCostInd
     if (cost !== undefined) bySessionId.set(summary.id, cost)
     titleCounts.set(summary.displayTitle, (titleCounts.get(summary.displayTitle) ?? 0) + 1)
   }
-  const byUniqueTitle = new Map<string, SessionSummary>()
+  const byUniqueTitle = new Map<string, SessionSummaryLike>()
   for (const summary of Object.values(byId)) {
     // 显式计数：任意 >=2 重名（含三重重名）永久排除，绝不误判唯一。
     if ((titleCounts.get(summary.displayTitle) ?? 0) === 1) {

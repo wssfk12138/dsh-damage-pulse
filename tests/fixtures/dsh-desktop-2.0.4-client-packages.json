@@ -1,0 +1,13 @@
+{
+  "desktopVersion": "2.0.4",
+  "dshVersion": "0.1.2-alpha.1",
+  "clientPackages": [
+    "@deepseek-ai/dsh-client-connection",
+    "@deepseek-ai/dsh-client-ui-conversation",
+    "@deepseek-ai/dsh-client-ui-layout",
+    "@deepseek-ai/dsh-client-ui-slots"
+  ],
+  "removedPackages": [
+    "@deepseek-ai/dsh-client-runtime"
+  ]
+}
