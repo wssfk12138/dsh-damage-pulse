@@ -1,4 +1,4 @@
-import type { IApiClient, SessionId } from '@deepseek-ai/dsh-client-connection/client'
+import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
 
 export interface PricingEligibilityInfo {
   provider: string
@@ -8,8 +8,37 @@ export interface PricingEligibilityInfo {
 
 export type RouteEligibilityLoader = (sessionId: SessionId, signal: AbortSignal) => Promise<boolean>
 
-type SessionModelsResponse = Awaited<ReturnType<IApiClient['sessions']['models']>>
-type SessionsModelsApi = Pick<IApiClient['sessions'], 'models'>
+export interface SessionModelsResponse {
+  result: {
+    ok: true
+    value: {
+      routable: boolean
+      current: { provider: string; model: string }
+    }
+  } | {
+    ok: false
+    error: unknown
+  }
+}
+
+export type SessionsModelsApi = {
+  models: (request: { sessionId: SessionId }, signal: AbortSignal) => Promise<SessionModelsResponse>
+}
+
+export type ConnectionRpcLike = {
+  call: (channel: string, endpoint: string, payload: unknown, signal?: AbortSignal) => Promise<{
+    ok: true
+    value: unknown
+  } | {
+    ok: false
+    error: unknown
+  }>
+}
+
+export type ConnectionRouteEligibilityLike = {
+  api?: { sessions?: SessionsModelsApi }
+  rpc?: ConnectionRpcLike
+}
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 function parsePricingEligibilityInfo(value: unknown): PricingEligibilityInfo | undefined {
@@ -43,13 +72,13 @@ export function isRouteEligible(
 
 /** Build the latest-session loader used by the React hook; both requests share one AbortSignal. */
 export function createRouteEligibilityLoader(
-  sessions: SessionsModelsApi,
+  connectionOrSessions: ConnectionRouteEligibilityLike | SessionsModelsApi,
   fetcher: FetchLike = fetch,
 ): RouteEligibilityLoader {
   return async (sessionId, signal) => {
     try {
       const [models, response] = await Promise.all([
-        sessions.models({ sessionId }, signal),
+        loadSessionModels(connectionOrSessions, sessionId, signal),
         fetcher('/api/token-monitor/pricing-eligibility', { cache: 'no-store', signal }),
       ])
       if (!response.ok) return false
@@ -58,4 +87,24 @@ export function createRouteEligibilityLoader(
       return false
     }
   }
+}
+
+async function loadSessionModels(
+  connectionOrSessions: ConnectionRouteEligibilityLike | SessionsModelsApi,
+  sessionId: SessionId,
+  signal: AbortSignal,
+): Promise<SessionModelsResponse> {
+  if ('models' in connectionOrSessions && typeof connectionOrSessions.models === 'function') {
+    return connectionOrSessions.models({ sessionId }, signal)
+  }
+
+  const rpc = (connectionOrSessions as ConnectionRouteEligibilityLike).rpc
+  if (rpc === undefined) throw new Error('session.models is unavailable')
+  const result = await rpc.call('/api', 'session.models', {
+    args: {
+      agentId: sessionId,
+      request: { sessionId },
+    },
+  }, signal)
+  return { result } as SessionModelsResponse
 }

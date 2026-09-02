@@ -72,7 +72,7 @@ type ErasedSlotRegister = (
 
 export function apply(ctx: ClientContextLike): void {
   const connection = ctx.get('connection') as ConnectionHandle
-  const loadRouteEligibility = createRouteEligibilityLoader(connection.api.sessions)
+  const loadRouteEligibility = createRouteEligibilityLoader(connection)
 
   // F1：单次用量行 —— 旧宿主提供 conversationEvents 时注册。0.1.2-alpha.1
   // 已移除此服务，不能让可选的明细行阻塞余额、累计条和侧栏金额启动。

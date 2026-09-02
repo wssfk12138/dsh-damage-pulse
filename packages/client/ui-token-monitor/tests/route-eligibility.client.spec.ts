@@ -42,11 +42,27 @@ describe('route eligibility', () => {
     })
   })
 
+  it('uses the Desktop 2.0.4 connection.rpc session.models contract', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      ok: true,
+      value: { current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' }, routable: true },
+    })
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(pricing), { status: 200 }))
+    const controller = new AbortController()
+    const load = createRouteEligibilityLoader({ rpc: { call: rpc } }, fetcher)
+
+    await expect(load('session-2' as never, controller.signal)).resolves.toBe(true)
+    expect(rpc).toHaveBeenCalledWith('/api', 'session.models', {
+      args: { agentId: 'session-2', request: { sessionId: 'session-2' } },
+    }, controller.signal)
+  })
+
   it('fails closed for HTTP errors, invalid JSON shapes, and rejected requests', async () => {
     const sessions = { models: vi.fn().mockResolvedValue(response('deepseek-official', 'deepseek-v4-pro')) }
     const signal = new AbortController().signal
     await expect(createRouteEligibilityLoader(sessions, vi.fn().mockResolvedValue(new Response('', { status: 503 })))('s' as never, signal)).resolves.toBe(false)
     await expect(createRouteEligibilityLoader(sessions, vi.fn().mockResolvedValue(new Response('{}', { status: 200 })))('s' as never, signal)).resolves.toBe(false)
     await expect(createRouteEligibilityLoader({ models: vi.fn().mockRejectedValue(new Error('offline')) }, vi.fn())('s' as never, signal)).resolves.toBe(false)
+    await expect(createRouteEligibilityLoader({}, vi.fn().mockResolvedValue(new Response(JSON.stringify(pricing), { status: 200 })))('s' as never, signal)).resolves.toBe(false)
   })
 })
