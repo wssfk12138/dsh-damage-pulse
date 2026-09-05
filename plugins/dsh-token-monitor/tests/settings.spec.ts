@@ -67,6 +67,15 @@ async function serve(handler: ReturnType<typeof createTokenMonitorSettingsRouteH
 }
 
 describe('Token Monitor settings Host API', () => {
+  it('keeps the persisted namespace unchanged without a runtime branding helper', async () => {
+    expect(TOKEN_MONITOR_SETTINGS_NS).toBe('dsh-token-monitor')
+    const { provider, registration } = await boot({
+      'dsh-token-monitor': { dailyBudgetCny: 42 },
+    })
+    expect(registration.scope.get().dailyBudgetCny).toBe(42)
+    expect(provider.describe().map(descriptor => descriptor.ns)).toContain('dsh-token-monitor')
+  })
+
   it('migrates legacy settings, applies defaults, and never exposes priceTable', async () => {
     const { provider, registration } = await boot({
       [TOKEN_MONITOR_SETTINGS_NS]: { dailyBudgetCny: 25, priceTable: { version: 99 } },

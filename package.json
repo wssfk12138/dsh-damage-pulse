@@ -1,6 +1,6 @@
 {
   "name": "dsh-damage-pulse",
-  "version": "4.0.4",
+  "version": "4.0.5",
   "description": "DeepSeek Harness balance monitor with a whale-girl companion and cache-aware damage animations for every token charge.",
   "type": "module",
   "main": "lib/index.js",

@@ -3,8 +3,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 import {
   SettingsConflictError,
-  settingsNamespace,
   type SettingsDescriptor,
+  type SettingsNamespace,
   type SettingsProvider,
   type SettingsScope,
 } from '@deepseek-ai/dsh-settings'
@@ -24,7 +24,9 @@ import {
 } from '../../../packages/util/token-monitor-contract/src/index.ts'
 import { PRICE_TABLE, type PricingTable } from './pricing.ts'
 
-export const TOKEN_MONITOR_SETTINGS_NS = settingsNamespace('dsh-token-monitor')
+// This fixed valid key works with legacy branded types and newer string-based APIs.
+// Upstream removed the runtime helper in deepseek-harness commit f4e49cc.
+export const TOKEN_MONITOR_SETTINGS_NS = 'dsh-token-monitor' as SettingsNamespace
 
 export interface TokenMonitorStoredSettings {
   schemaVersion: number
