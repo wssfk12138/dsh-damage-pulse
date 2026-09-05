@@ -4,7 +4,6 @@
  * + frame 级「余额悬浮卡片」（shell.overlay）。
  * 用量行/累计条为投影与事件驱动；余额卡片为 HTTP 轮询，无自有 store。
  */
-import type { ConnectionHandle } from '@deepseek-ai/dsh-client-connection/client'
 // Type-only：拉入 conversation slot 契约（chat.node / composer.dock）。
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
 // Type-only：拉入 layout 的 shell.overlay slot 契约。
@@ -16,7 +15,7 @@ import { BalanceWidget } from './BalanceWidget.tsx'
 import { SessionCostBadge } from './SessionCostBadge.tsx'
 import { LegacySessionCostBridge } from './LegacySessionCostBridge.tsx'
 import { SESSION_ROW_TRAILING_SLOT } from './sessionCost.ts'
-import { createRouteEligibilityLoader } from './routeEligibility.ts'
+import { createRouteEligibilityLoader, type ModelDirectoryResolverLike } from './routeEligibility.ts'
 import type { ClientContextLike } from './host-contracts.ts'
 
 export { UsageNodeView } from './UsageNodeView.tsx'
@@ -59,7 +58,7 @@ export type {
 } from './updateApi.ts'
 
 /** 核心依赖：slot 注册 + Host 连接。旧版 Conversation Node 注册表按需使用。 */
-export const inject = ['slots', 'connection']
+export const inject = ['slots', 'connection', 'modelDirectories']
 
 /**
  * ui-workspace 未纳入本包依赖：sessionRow 席位经该结构签名擦除后注册，
@@ -71,8 +70,8 @@ type ErasedSlotRegister = (
 ) => () => void
 
 export function apply(ctx: ClientContextLike): void {
-  const connection = ctx.get('connection') as ConnectionHandle
-  const loadRouteEligibility = createRouteEligibilityLoader(connection)
+  const modelDirectories = ctx.get('modelDirectories') as ModelDirectoryResolverLike
+  const loadRouteEligibility = createRouteEligibilityLoader(modelDirectories)
 
   // F1：单次用量行 —— 旧宿主提供 conversationEvents 时注册。0.1.2-alpha.1
   // 已移除此服务，不能让可选的明细行阻塞余额、累计条和侧栏金额启动。

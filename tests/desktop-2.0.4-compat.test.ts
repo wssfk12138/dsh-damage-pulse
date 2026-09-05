@@ -27,3 +27,14 @@ test('Desktop 2.0.4 prerelease is explicitly accepted by DSH peer ranges', () =>
     assert.ok(range.includes(`^${fixture.dshVersion}`), `${name} does not accept DSH ${fixture.dshVersion}: ${range}`)
   }
 })
+
+test('official 0.1.3 prerelease support preserves the Desktop 0.1.2 line', () => {
+  // npm excludes prereleases with a different major/minor/patch tuple.
+  // The 0.1.2 clause also accepts Desktop 2.0.5's 0.1.2-rc.1.
+  for (const [name, range] of Object.entries<string>(manifest.peerDependencies ?? {})) {
+    if (!name.startsWith('@deepseek-ai/dsh-')) continue
+    const clauses = range.split('||').map(value => value.trim())
+    assert.ok(clauses.includes('^0.1.2-alpha.1'), name + ' must retain Desktop support')
+    assert.ok(clauses.includes('^0.1.3-alpha.1'), name + ' must accept the official prerelease')
+  }
+})

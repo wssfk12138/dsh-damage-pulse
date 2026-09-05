@@ -71,8 +71,10 @@ const checks = {
   'all notification defaults disabled': notificationDefaults.every(key =>
     settingsContract.includes(`${key}: false`)
   ) && settingsContract.includes('NOTIFICATION_DEFAULT_OFF_KEYS'),
-  'Client connection injection': manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-connection') === true
-    && client.includes('ctx.get("connection")'),
+  'Client route dependency injections':
+    manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-connection') === true
+    && manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-ui-model-selection') === true
+    && client.includes('ctx.get("modelDirectories")'),
   'client inject starts with connection and excludes legacy runtime':
     manifest.dsh?.client?.inject?.indexOf('@deepseek-ai/dsh-client-connection') === 0
     && !manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-runtime')

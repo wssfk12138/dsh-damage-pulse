@@ -6,38 +6,23 @@ export interface PricingEligibilityInfo {
   updatedAt: number
 }
 
-export type RouteEligibilityLoader = (sessionId: SessionId, signal: AbortSignal) => Promise<boolean>
+export type RouteEligibility = boolean | undefined
+export type RouteEligibilityLoader = (
+  sessionId: SessionId,
+  signal: AbortSignal,
+) => Promise<RouteEligibility>
 
-export interface SessionModelsResponse {
-  result: {
-    ok: true
-    value: {
-      routable: boolean
-      current: { provider: string; model: string }
-    }
-  } | {
-    ok: false
-    error: unknown
-  }
+export interface ModelDirectoryStateLike {
+  current: { provider: string; model: string } | null
+  routable: boolean | null
 }
 
-export type SessionsModelsApi = {
-  models: (request: { sessionId: SessionId }, signal: AbortSignal) => Promise<SessionModelsResponse>
+export interface ModelDirectoryLike {
+  load(): Promise<ModelDirectoryStateLike>
 }
 
-export type ConnectionRpcLike = {
-  call: (channel: string, endpoint: string, payload: unknown, signal?: AbortSignal) => Promise<{
-    ok: true
-    value: unknown
-  } | {
-    ok: false
-    error: unknown
-  }>
-}
-
-export type ConnectionRouteEligibilityLike = {
-  api?: { sessions?: SessionsModelsApi }
-  rpc?: ConnectionRpcLike
+export interface ModelDirectoryResolverLike {
+  directoryFor(sessionId: SessionId): ModelDirectoryLike
 }
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
@@ -56,55 +41,40 @@ export function matchesPricedModel(model: string, configuredModels: readonly str
   return configuredModels.some(name => model === name || model.startsWith(`${name}-`))
 }
 
-/** Conservative route gate: any missing, failed, unroutable, unofficial, or unknown route is hidden. */
+/** Explicit incompatibility is false; unavailable or unresolved state remains indeterminate. */
 export function isRouteEligible(
-  response: SessionModelsResponse,
+  route: ModelDirectoryStateLike,
   pricing: PricingEligibilityInfo | undefined,
-): boolean {
-  if (pricing === undefined || pricing.provider !== 'deepseek-official') return false
-  const result = response.result
-  if (!result.ok || result.value.routable !== true) return false
-  const current = result.value.current
+): RouteEligibility {
+  if (route.routable === false) return false
+  if (route.routable === null || route.current === null || pricing === undefined) return undefined
+  if (pricing.provider !== 'deepseek-official') return false
+  const current = route.current
   return current.provider === pricing.provider
     && typeof current.model === 'string'
     && matchesPricedModel(current.model, pricing.models)
 }
 
-/** Build the latest-session loader used by the React hook; both requests share one AbortSignal. */
+/** Build the latest-session loader used by the React hook; pricing HTTP honors cancellation. */
 export function createRouteEligibilityLoader(
-  connectionOrSessions: ConnectionRouteEligibilityLike | SessionsModelsApi,
+  modelDirectories: ModelDirectoryResolverLike,
   fetcher: FetchLike = fetch,
 ): RouteEligibilityLoader {
   return async (sessionId, signal) => {
+    if (signal.aborted) return undefined
     try {
-      const [models, response] = await Promise.all([
-        loadSessionModels(connectionOrSessions, sessionId, signal),
+      const directory = modelDirectories.directoryFor(sessionId)
+      if (signal.aborted) return undefined
+      const [route, response] = await Promise.all([
+        directory.load(),
         fetcher('/api/token-monitor/pricing-eligibility', { cache: 'no-store', signal }),
       ])
-      if (!response.ok) return false
-      return isRouteEligible(models, parsePricingEligibilityInfo(await response.json()))
+      if (signal.aborted || !response.ok) return undefined
+      const pricing = parsePricingEligibilityInfo(await response.json())
+      if (signal.aborted) return undefined
+      return isRouteEligible(route, pricing)
     } catch {
-      return false
+      return undefined
     }
   }
-}
-
-async function loadSessionModels(
-  connectionOrSessions: ConnectionRouteEligibilityLike | SessionsModelsApi,
-  sessionId: SessionId,
-  signal: AbortSignal,
-): Promise<SessionModelsResponse> {
-  if ('models' in connectionOrSessions && typeof connectionOrSessions.models === 'function') {
-    return connectionOrSessions.models({ sessionId }, signal)
-  }
-
-  const rpc = (connectionOrSessions as ConnectionRouteEligibilityLike).rpc
-  if (rpc === undefined) throw new Error('session.models is unavailable')
-  const result = await rpc.call('/api', 'session.models', {
-    args: {
-      agentId: sessionId,
-      request: { sessionId },
-    },
-  }, signal)
-  return { result } as SessionModelsResponse
 }

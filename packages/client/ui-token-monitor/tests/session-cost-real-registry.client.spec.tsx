@@ -90,6 +90,7 @@ async function bootHost(withTrailing: boolean): Promise<HostHandle> {
   const setup = ctx.plugin((inner: Context) => {
     slots = new SlotRegistry(inner) as Registry
     inner.provide('connection', { api: { sessions: {} } })
+    inner.provide('modelDirectories', { directoryFor: () => ({ load: async () => ({ current: null, routable: [] }) }) })
     inner.provide('conversationEvents', { register: () => {} })
   })
   await setup
@@ -189,6 +190,12 @@ describe('built client bundle against the real SlotRegistry', () => {
 
   it('removes every contribution on unload (overlay/node/dock and trailing)', async () => {
     const host = await bootHost(true)
+    expect(host.collect()).toEqual({
+      overlayIds: ['token-monitor-balance', 'token-monitor-legacy-session-cost'],
+      nodeKeys: ['token-usage'],
+      dockIds: ['token-monitor-stats'],
+      trailingCount: 1,
+    })
     await host.pluginFiber.dispose()
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(host.collect().overlayIds).toEqual([])

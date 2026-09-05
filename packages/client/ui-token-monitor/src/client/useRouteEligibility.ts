@@ -23,12 +23,23 @@ export function useRouteEligibility(
     if (sessionId === undefined || load === undefined) return
 
     const controller = new AbortController()
-    void load(sessionId, controller.signal).then((next) => {
-      if (!controller.signal.aborted && generation.current === currentGeneration) setEligible(next)
-    }, () => {
-      if (!controller.signal.aborted && generation.current === currentGeneration) setEligible(false)
-    })
-    return () => controller.abort()
+    let timer: ReturnType<typeof setTimeout> | undefined
+    // Recheck same-session model changes and transient failures without overlapping requests.
+    const refresh = async () => {
+      try {
+        const next = await load(sessionId, controller.signal)
+        if (!controller.signal.aborted && generation.current === currentGeneration) setEligible(next)
+      } catch {
+        if (!controller.signal.aborted && generation.current === currentGeneration) setEligible(undefined)
+      } finally {
+        if (!controller.signal.aborted) timer = setTimeout(() => { void refresh() }, 5_000)
+      }
+    }
+    void refresh()
+    return () => {
+      controller.abort()
+      clearTimeout(timer)
+    }
   }, [bypass, load, sessionId])
 
   return eligible

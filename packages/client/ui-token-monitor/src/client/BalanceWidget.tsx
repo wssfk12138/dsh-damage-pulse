@@ -221,7 +221,7 @@ const DRAG_THRESHOLD_PX = 4
 
 export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessions }: BalanceWidgetProps) {
   const routeEligible = useRouteEligibility(useSessions, loadRouteEligibility, previewOverride !== undefined)
-  const shouldPoll = routeEligible === true || previewOverride !== undefined
+  const shouldPoll = routeEligible !== false || previewOverride !== undefined
   // undefined = 加载中（不渲染）；null = 端点返回空（未查询到余额）。
   const [balanceInfo, setBalanceInfo] = useState<BalanceInfo | null | undefined>(undefined)
   // 本地维护的显示余额（null = 尚未从余额接口初始化基线）。
@@ -836,7 +836,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     }
   }, [consumeNotification, shouldPoll])
 
-  if (previewOverride === undefined && routeEligible !== true) return null
+  if (previewOverride === undefined && routeEligible === false) return null
   // 余额模式保持原来的加载期隐藏；今日花费来自本地 usage.jsonl，不能被远端余额接口阻断。
   if (balanceInfo === undefined && !error) return null
 

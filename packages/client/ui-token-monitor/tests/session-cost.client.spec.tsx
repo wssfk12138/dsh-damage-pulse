@@ -23,6 +23,7 @@ import {
 afterEach(() => {
   cleanup()
   document.body.innerHTML = ''
+  vi.unstubAllGlobals()
 })
 
 const sid = (id: string) => id as SessionId
@@ -160,11 +161,17 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
       },
     }
     const conversationEvents = options.withConversationEvents === false ? undefined : { register: vi.fn() }
+    const directoryLoad = vi.fn().mockResolvedValue({
+      current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
+      routable: true,
+    })
+    const modelDirectories = { directoryFor: vi.fn(() => ({ load: directoryLoad })) }
     return {
       ctx: {
         get: (name: string) => {
           if (name === 'connection') return { api: { sessions: {} } }
           if (name === 'conversationEvents') return conversationEvents
+          if (name === 'modelDirectories') return modelDirectories
           return undefined
         },
         slots,
@@ -172,11 +179,13 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
       injected,
       registered,
       conversationEvents,
+      directoryLoad,
+      modelDirectories,
     }
   }
 
   it('keeps the legacy event registry optional in the activation contract', () => {
-    expect(inject).toEqual(['slots', 'connection'])
+    expect(inject).toEqual(['slots', 'connection', 'modelDirectories'])
   })
 
   it('activates the remaining UI when the new host has no conversationEvents service', () => {
@@ -208,6 +217,26 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
     const ids = registered.filter(entry => entry.options.name === 'shell.overlay').map(entry => entry.options.id)
     expect(ids).toContain('token-monitor-balance')
     expect(ids).toContain('token-monitor-legacy-session-cost')
+  })
+
+  it('injects a balance route loader backed by the model directory service', async () => {
+    const { ctx, injected, registered, modelDirectories } = createFakeClientContext()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      provider: 'deepseek-official',
+      models: ['deepseek-v4-pro'],
+      updatedAt: 1,
+    }), { status: 200 })))
+    apply(ctx)
+    injected.find(entry => entry.key === 'shell.overlay')?.callback()
+    const balance = registered.find(entry => entry.options.id === 'token-monitor-balance')
+    const injectedProps = (balance?.options.inject as (() => Record<string, unknown>))()
+    const load = injectedProps.loadRouteEligibility as (
+      sessionId: SessionId,
+      signal: AbortSignal,
+    ) => Promise<boolean | undefined>
+
+    await expect(load(sid('directory-session'), new AbortController().signal)).resolves.toBe(true)
+    expect(modelDirectories.directoryFor).toHaveBeenCalledWith(sid('directory-session'))
   })
 
   it('registers the formal badge once the trailing seat is declared', () => {

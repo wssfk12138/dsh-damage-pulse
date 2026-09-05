@@ -5,6 +5,7 @@
     "@deepseek-ai/dsh-client-connection",
     "@deepseek-ai/dsh-client-ui-conversation",
     "@deepseek-ai/dsh-client-ui-layout",
+    "@deepseek-ai/dsh-client-ui-model-selection",
     "@deepseek-ai/dsh-client-ui-slots"
   ],
   "removedPackages": [

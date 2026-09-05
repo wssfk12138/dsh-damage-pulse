@@ -745,7 +745,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
 
         <section className="token-monitor-settings__section token-monitor-settings__section--updates" style={SECTION} aria-labelledby="update-settings-title">
           <div id="update-settings-title"><SectionTitle iconName="cute-icon-settings" title="插件更新" /></div>
-          <div className="token-monitor-settings__update-version">当前版本 v{updateStatus?.currentVersion ?? '4.0.3'}</div>
+          <div className="token-monitor-settings__update-version">当前版本 v{updateStatus?.currentVersion ?? '4.0.4'}</div>
           <div className="token-monitor-settings__update-actions">
             <a className="token-monitor-settings__update-icon" href="https://github.com/wssfk12138/dsh-damage-pulse" target="_blank" rel="noreferrer" role="button" aria-label="打开 GitHub 项目主页" title="打开 GitHub 项目主页"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.64 0 8.13c0 3.59 2.29 6.64 5.47 7.72.4.08.55-.18.55-.39 0-.19-.01-.83-.01-1.5-2.01.38-2.53-.5-2.69-.96-.09-.23-.48-.96-.82-1.15-.28-.15-.68-.54-.01-.55.63-.01 1.08.59 1.23.83.72 1.23 1.87.88 2.33.67.07-.53.28-.88.51-1.08-1.78-.21-3.64-.9-3.64-4.01 0-.89.31-1.62.82-2.19-.08-.2-.36-1.04.08-2.16 0 0 .67-.22 2.2.84A7.48 7.48 0 0 1 8 3.89c.68 0 1.36.09 2 .27 1.53-1.06 2.2-.84 2.2-.84.44 1.12.16 1.96.08 2.16.51.57.82 1.3.82 2.19 0 3.12-1.87 3.8-3.65 4.01.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.47.55.39A8.04 8.04 0 0 0 16 8.13C16 3.64 12.42 0 8 0Z" /></svg></a>
             <button className="token-monitor-settings__update-check" type="button" disabled={updateAction !== undefined} onClick={() => { void checkForUpdates() }}>{updateAction === 'check' ? '检查中…' : '检查更新'}</button>
