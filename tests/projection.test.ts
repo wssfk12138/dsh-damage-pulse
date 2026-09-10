@@ -15,7 +15,7 @@ test("exposes both DSH projection contracts (0.1.0 schema/view and 0.1.1 stateSc
   assert.ok(definition.stateSchema)
   assert.ok(definition.wire)
   assert.ok(definition.wire.viewSchema)
-  assert.equal(definition.stateVersion, 4)
+  assert.equal(definition.stateVersion, 5)
   // 0.1.0-rc.6/rc.7/rc.8 host: schema + view, aliasing the same constraints and implementation.
   assert.equal(definition.schema, definition.wire.viewSchema)
   assert.equal(definition.view, definition.wire.view)

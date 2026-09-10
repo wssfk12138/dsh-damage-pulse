@@ -46,7 +46,7 @@ describe('tokenCost hybrid projection compatibility', () => {
   it('exposes both host-generation field sets from one definition', () => {
     const def = createTokenCostProjectionDefinition(PRICE_TABLE)
     expect(def.key).toBe('tokenCost')
-    expect(def.stateVersion).toBe(4)
+    expect(def.stateVersion).toBe(5)
     // 新宿主（0.1.1+）：stateSchema + wire
     expect(def.stateSchema).toBeDefined()
     expect(def.wire.viewSchema).toBeDefined()
@@ -91,7 +91,7 @@ describe('tokenCost hybrid projection compatibility', () => {
     })
 
     const checkpoint = ctx.sessionProjections.checkpoint(session)
-    expect(checkpoint.tokenCost!.ver).toBe(4)
+    expect(checkpoint.tokenCost!.ver).toBe(5)
     expect(checkpoint.tokenCost!.seq).toBe(2)
     expect(checkpoint.tokenCost!.val).toMatchObject({ calls: 2, cost: breakdown1!.cost + breakdown2!.cost })
     // 持久化的是 fold 态：不得混入派生的 totalTokens
@@ -100,7 +100,7 @@ describe('tokenCost hybrid projection compatibility', () => {
     // restore：同一 checkpoint + 全量日志 → 服务一致的 cut
     const restored = ctx.sessionProjections.restore(checkpoint, session.events as SessionEvent[], 0)
     expect(restored.snapshot.values.tokenCost).toEqual(snapshot.values.tokenCost)
-    expect(restored.checkpoint.tokenCost).toEqual({ ver: 4, seq: 2, val: checkpoint.tokenCost!.val })
+    expect(restored.checkpoint.tokenCost).toEqual({ ver: 5, seq: 2, val: checkpoint.tokenCost!.val })
 
     // viewCheckpoint：版本匹配的行直接出值；版本不匹配的行缺席
     const viewed = ctx.sessionProjections.viewCheckpoint(checkpoint)
@@ -173,6 +173,6 @@ describe('tokenCost hybrid projection compatibility', () => {
     const { ctx } = await harness()
     const def = createTokenCostProjectionDefinition(PRICE_TABLE)
     ctx.sessionProjections.register(def)
-    expect(() => ctx.sessionProjections.register({ ...def, stateVersion: 5 })).toThrow(/already registered at stateVersion 4/)
+    expect(() => ctx.sessionProjections.register({ ...def, stateVersion: 6 })).toThrow(/already registered at stateVersion 5/)
   })
 })

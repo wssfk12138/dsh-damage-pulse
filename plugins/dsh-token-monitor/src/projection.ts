@@ -119,7 +119,7 @@ export function createTokenCostProjectionDefinition(
     // 旧 DSH 宿主字段：schema 校验 wire 值、view 输出 wire 值，与新宿主共用实现。
     schema: viewSchema,
     view: wireView,
-    // v4 加入 provider + model 资格门禁，强制历史会话重新 fold 并排除不合格调用。
-    stateVersion: 4,
+    // v5 重算 Flash 调价、新名称及 Pro 转路由的历史金额；不改写 usage 账本。
+    stateVersion: 5,
   }
 }

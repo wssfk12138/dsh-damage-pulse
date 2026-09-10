@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { OFFICIAL_PROVIDER_ID, PRICE_TABLE, beijingWeekday, isPeakHour, priceUsage } from '../src/pricing.ts'
+import { FLASH_PRICING_START, OFFICIAL_PROVIDER_ID, PRICE_TABLE, beijingWeekday, isPeakHour, priceUsage, selectPriceTable } from '../src/pricing.ts'
 
 const beijing = (day: number, hour: number, minute = 0) => Date.UTC(2026, 7, day, hour - 8, minute)
 
@@ -30,5 +30,15 @@ describe('DeepSeek weekend valley pricing', () => {
     expect(known.peak).toBe(false)
     expect(known.costInput).toBe(1.5)
     expect(unknown).toBeUndefined()
+  })
+
+  it('switches Flash and Vision-Exp to the email prices at the exact Beijing boundary', () => {
+    const before = FLASH_PRICING_START - 1
+    const after = FLASH_PRICING_START
+    expect(selectPriceTable(before)).not.toBe(PRICE_TABLE)
+    expect(priceUsage(1_000_000, 1_000_000, 1_000_000, 1_000_000, OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash', before)?.cost).toBe(15.1)
+    expect(priceUsage(1_000_000, 1_000_000, 1_000_000, 1_000_000, OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash-vision-exp', after)?.cost).toBe(6.02)
+    const peak = Date.UTC(2026, 8, 11, 6, 0)
+    expect(priceUsage(1_000_000, 1_000_000, 1_000_000, 1_000_000, OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash', peak)?.cost).toBe(12.04)
   })
 })

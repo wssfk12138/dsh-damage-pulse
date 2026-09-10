@@ -1,6 +1,6 @@
 /**
  * DeepSeek 峰谷定价价格表与计费引擎。
- * 价格表版本：2026-08-23（周末全天按低谷时段价格）。
+ * 价格表版本：2026-09-10（Flash 系列含 Vision-Exp 分时调价）。
  * 来源：https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
  * 单位：元 / 百万 tokens。
  */
@@ -23,26 +23,37 @@ export interface PricingTable {
   version: string
 }
 
-/** 2026-08-23 生效规则：工作日峰谷分段，周末全天低谷价（单位：元 / 百万 tokens）。 */
+/** 2026-09-10 生效规则：V4.1 Flash 与两个旧名称共用新价；Pro 在 9-14 切换前保留原价。 */
 export const PRICE_TABLE: PricingTable = {
-  version: '2026-08-23',
+  version: '2026-09-10',
   // 工作日高峰：北京时间 9:00-12:00、14:00-18:00；周末全天按低谷价。
   peakHours: [[9, 12], [14, 18]],
   models: {
+    'deepseek-flash': {
+      offPeak: { input: 1.0, cacheHit: 0.02, output: 4.0 },
+      peak: { input: 2.0, cacheHit: 0.04, output: 8.0 },
+    },
     // 图片由 API 按尺寸折算到 prompt_tokens，不能在插件层重复估算。
     'deepseek-v4-flash-vision-exp': {
-      offPeak: { input: 1.5, cacheHit: 0.05, output: 4.5 },
-      peak: { input: 3.0, cacheHit: 0.10, output: 9.0 },
+      offPeak: { input: 1.0, cacheHit: 0.02, output: 4.0 },
+      peak: { input: 2.0, cacheHit: 0.04, output: 8.0 },
     },
     'deepseek-v4-flash': {
-      offPeak: { input: 1.5, cacheHit: 0.05, output: 4.5 },
-      peak: { input: 3.0, cacheHit: 0.10, output: 9.0 },
+      offPeak: { input: 1.0, cacheHit: 0.02, output: 4.0 },
+      peak: { input: 2.0, cacheHit: 0.04, output: 8.0 },
     },
     'deepseek-v4-pro': {
       offPeak: { input: 4.5, cacheHit: 0.15, output: 13.5 },
       peak: { input: 9.0, cacheHit: 0.30, output: 27.0 },
     },
   },
+}
+
+/** 官网规定：9-14 12:00 起 Pro 请求按 Flash 价计费，直至未来 V4.1 Pro 上线另行更新。 */
+const PRO_ROUTED_PRICE_TABLE: PricingTable = {
+  ...PRICE_TABLE,
+  version: '2026-09-14',
+  models: { ...PRICE_TABLE.models, 'deepseek-v4-pro': PRICE_TABLE.models['deepseek-flash']! },
 }
 
 /**
@@ -68,15 +79,34 @@ export const LEGACY_PRICE_TABLE: PricingTable = {
   },
 }
 
+/** 2026-08-17 至 2026-09-10 12:00（北京时间）的旧峰谷价格。 */
+export const PRE_FLASH_PRICE_TABLE: PricingTable = {
+  version: '2026-08-23',
+  peakHours: [[9, 12], [14, 18]],
+  models: {
+    'deepseek-v4-flash-vision-exp': { offPeak: { input: 1.5, cacheHit: 0.05, output: 4.5 }, peak: { input: 3, cacheHit: 0.1, output: 9 } },
+    'deepseek-v4-flash': { offPeak: { input: 1.5, cacheHit: 0.05, output: 4.5 }, peak: { input: 3, cacheHit: 0.1, output: 9 } },
+    'deepseek-v4-pro': { offPeak: { input: 4.5, cacheHit: 0.15, output: 13.5 }, peak: { input: 9, cacheHit: 0.3, output: 27 } },
+  },
+}
+
 /**
  * 峰谷新价格生效时刻：2026-08-17 00:00 北京时间 = 2026-08-16 16:00 UTC。
  * 此前的调用按旧统一价计价，此后按峰谷价计价。
  */
 const PEAK_PRICING_START = Date.UTC(2026, 7, 16, 16, 0, 0)
+/** Flash 调价生效时刻：2026-09-10 12:00 北京时间 = 04:00 UTC。 */
+export const FLASH_PRICING_START = Date.UTC(2026, 8, 10, 4, 0, 0)
+/** Pro 转按 Flash 计费：2026-09-14 12:00 北京时间 = 04:00 UTC。 */
+export const PRO_FLASH_PRICING_START = Date.UTC(2026, 8, 14, 4, 0, 0)
 
-/** 按时间戳选择价格表：8-17 前用旧统一价，之后用（可配置的）峰谷价。 */
+/** 默认价格按历史生效时间选择；显式自定义表保留原覆盖行为。 */
 export function selectPriceTable(ts: number, table: PricingTable = PRICE_TABLE): PricingTable {
-  return ts < PEAK_PRICING_START ? LEGACY_PRICE_TABLE : table
+  if (ts < PEAK_PRICING_START) return LEGACY_PRICE_TABLE
+  if (table !== PRICE_TABLE) return table
+  if (ts < FLASH_PRICING_START) return PRE_FLASH_PRICE_TABLE
+  if (ts >= PRO_FLASH_PRICING_START) return PRO_ROUTED_PRICE_TABLE
+  return table
 }
 
 /** 单次调用的费用明细。 */
@@ -180,7 +210,7 @@ export function priceUsage(
 ): CostBreakdown | undefined {
   if (![inputTokens, cacheReadTokens, cacheWriteTokens, outputTokens].every(value => Number.isSafeInteger(value) && value >= 0)) return undefined
   if (!Number.isSafeInteger(ts) || ts < 0) return undefined
-  // 按时间戳选择生效价格表：8-17 前旧统一价，之后峰谷价（settings 可覆盖后者）。
+  // 历史计价与资格判断使用同一时间段；settings 可显式覆盖默认峰谷价格。
   const active = selectPriceTable(ts, table)
   const eligibility = resolvePricingEligibility(provider, model, ts, table)
   if (eligibility === undefined) return undefined
