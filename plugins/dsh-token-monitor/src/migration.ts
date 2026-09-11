@@ -15,7 +15,11 @@ type LegacyInspectionPersistence = {
   open?: (id: never, access: 'read') => Promise<{
     header: SessionInspection['meta']
     inheritedEventCount: unknown
-    read: () => Promise<readonly unknown[]>
+    /**
+     * 0.1.0-0.1.4 直接返回事件数组；0.1.5-alpha 起返回
+     * SessionHandleReadResult（{ eventState, events }）。
+     */
+    read: () => Promise<readonly unknown[] | { events: readonly unknown[] }>
     close: () => Promise<void>
   }>
 }
@@ -40,10 +44,11 @@ async function inspectSession(ctx: Context, sessionId: unknown): Promise<Session
 
   const handle = await persistence.open(sessionId as never, 'read')
   try {
+    const result = await handle.read()
     return {
       meta: handle.header,
       inheritedEventCount: handle.inheritedEventCount,
-      events: await handle.read(),
+      events: 'events' in result ? result.events : result,
     }
   } finally {
     await handle.close()

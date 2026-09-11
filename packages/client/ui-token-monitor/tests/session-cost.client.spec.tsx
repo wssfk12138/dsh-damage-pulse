@@ -17,6 +17,7 @@ import {
   readSessionCost,
   SESSION_COST_MARKER,
   SESSION_COST_TITLE,
+  SESSION_HEADER_ACTIONS_SLOT,
   SESSION_ROW_TRAILING_SLOT,
 } from '../src/client/sessionCost.ts'
 
@@ -193,6 +194,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
     expect(() => apply(ctx)).not.toThrow()
     expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(false)
     expect(injected.some(entry => entry.key === 'conversation.composer.dock')).toBe(true)
+    expect(injected.some(entry => entry.key === SESSION_HEADER_ACTIONS_SLOT)).toBe(true)
     expect(injected.filter(entry => entry.key === 'shell.overlay')).toHaveLength(2)
   })
 
@@ -217,6 +219,20 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
     const ids = registered.filter(entry => entry.options.name === 'shell.overlay').map(entry => entry.options.id)
     expect(ids).toContain('token-monitor-balance')
     expect(ids).toContain('token-monitor-legacy-session-cost')
+  })
+
+  it('registers the amount badge on the official conversation header seat', () => {
+    const { ctx, injected, registered } = createFakeClientContext()
+    apply(ctx)
+    const header = injected.find(entry => entry.key === SESSION_HEADER_ACTIONS_SLOT)
+    expect(header).toBeDefined()
+    header?.callback()
+    const entry = registered.find(item => item.options.name === SESSION_HEADER_ACTIONS_SLOT)
+    expect(entry).toBeDefined()
+    // list 席位：必须按 id 占一格，排序在官方 agent-preset(-10) 之后、schedule(10) 之前。
+    expect(entry?.options.id).toBe('token-monitor-session-cost')
+    expect(entry?.options.order).toBe(-5)
+    expect(entry?.component).toBe(RegisteredBadge)
   })
 
   it('injects a balance route loader backed by the model directory service', async () => {

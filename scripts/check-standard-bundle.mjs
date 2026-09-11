@@ -21,7 +21,7 @@ const notificationDefaults = [
 ]
 const childProcessImports = host.match(/from ["']node:child_process["']/g) ?? []
 
-// 标准包侧边栏会话金额能力：正式尾部席位 + 旧客户端 fail-closed 兼容桥。
+// 标准包会话金额能力：官方会话头席位 + 兼容宿主尾部席位 + 旧客户端 fail-closed 兼容桥。
 // 这些标记同时作为产物新鲜度门禁：必须存在于当前 client 源码，且已进入构建产物；
 // 若 bundle 是从旧源码构建的（缺实现或未重建），对应检查会失败。
 const clientSrcRoot = fileURLToPath(new URL('../packages/client/ui-token-monitor/src/', import.meta.url))
@@ -36,6 +36,7 @@ function collectProjectSource(dir) {
 }
 const clientSourceText = collectProjectSource(clientSrcRoot)
 const sessionRowMarkers = [
+  'conversation.session.header.actions',
   'sidebar.workspaces.sessionRow.trailing',
   'data-session-row-trailing-slot',
   '会话消费金额',
@@ -79,16 +80,21 @@ const checks = {
     manifest.dsh?.client?.inject?.indexOf('@deepseek-ai/dsh-client-connection') === 0
     && !manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-runtime')
     && !client.includes('@deepseek-ai/dsh-client-runtime'),
-  'session-row trailing seat + legacy bridge in client bundle':
+  'session-cost seats (official header + optional trailing) and legacy bridge in client bundle':
     sessionRowMarkers.every(marker => client.includes(marker)),
- 'client bundle synced from current client source':
+  'client bundle synced from current client source':
    sessionRowMarkers.every(marker => clientSourceText.includes(marker)),
-  'peer ranges cover legacy DSH and Desktop 2.0.4':
+  'host bundle carries the 0.1.5 SessionHandleReadResult compatibility':
+    host.includes('"events" in result') || host.includes("'events' in result"),
+  'host bundle synced from current host migration source':
+    readFileSync(new URL('../plugins/dsh-token-monitor/src/migration.ts', import.meta.url), 'utf8').includes("'events' in result"),
+  'peer ranges cover legacy DSH, Desktop 2.0.4, and DSH 0.1.5':
     Object.entries(manifest.peerDependencies ?? {})
       .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
       .every(([, range]) => range.includes('^0.1.0-rc.5')
         && range.includes('^0.1.1-rc.2')
-        && range.includes('^0.1.2-alpha.1')),
+        && range.includes('^0.1.2-alpha.1')
+        && range.includes('^0.1.5-alpha.1')),
   'Client WeChat settings': client.includes('wechatNotificationsEnabled')
     && client.includes('/api/token-monitor/wechat')
     && client.includes('/status')

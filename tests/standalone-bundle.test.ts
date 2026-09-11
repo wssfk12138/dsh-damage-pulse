@@ -7,11 +7,13 @@ const clientBundle = readFileSync(new URL('../lib/client.js', import.meta.url), 
 const readme = readFileSync(new URL('../README.md', import.meta.url), 'utf8')
 const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
 
-// 标准包侧边栏会话金额能力必须同时满足：
-// 1) 新宿主正式席位 sidebar.workspaces.sessionRow.trailing 已注册进产物；
-// 2) 旧客户端的 fail-closed 兼容桥及其停用条件（data-session-row-trailing-slot /
+// 标准包会话金额能力必须同时满足：
+// 1) 官方席位 conversation.session.header.actions 已注册进产物（0.1.5-alpha 起）；
+// 2) 兼容宿主的 sidebar.workspaces.sessionRow.trailing 尾部席位仍在；
+// 3) 旧客户端的 fail-closed 兼容桥及其停用条件（data-session-row-trailing-slot /
 //    data-session-id / 既有金额标题）已进入产物。
 const bundleMarkers = [
+  'conversation.session.header.actions',
   'sidebar.workspaces.sessionRow.trailing',
   'data-session-row-trailing-slot',
   '会话消费金额',
@@ -30,13 +32,18 @@ test('README no longer carries stale standard-package claims', () => {
   }
 })
 
-test('README documents the new standard-package session-row capability', () => {
-  for (const phrase of ['sidebar.workspaces.sessionRow.trailing', 'fail-closed', '兼容桥']) {
+test('README documents the new standard-package session-cost capabilities', () => {
+  for (const phrase of [
+    'conversation.session.header.actions',
+    'sidebar.workspaces.sessionRow.trailing',
+    'fail-closed',
+    '兼容桥',
+  ]) {
     assert.ok(readme.includes(phrase), `README must mention: ${phrase}`)
   }
 })
 
-test('standalone client bundle carries the formal trailing seat and legacy bridge', () => {
+test('standalone client bundle carries the formal seats and legacy bridge', () => {
   // 若缺失，说明 lib/client.js 是旧构建产物：请用当前源码重新执行 pnpm build。
   for (const marker of bundleMarkers) {
     assert.ok(clientBundle.includes(marker), `lib/client.js is missing ${marker}; rebuild the client bundle from current source`)
@@ -73,5 +80,6 @@ test('README install claim covers both DSH generations (issues #3 and #10)', () 
   assert.ok(readme.includes('0.1.0-rc.5'), 'README must mention the 0.1.0-rc.5 compatibility leg')
   assert.ok(readme.includes('0.1.1-rc.2'), 'README must mention 0.1.1-rc.2 compatibility')
   assert.ok(readme.includes('0.1.2-alpha.1'), 'README must mention DSH Desktop 2.0.4 compatibility')
+  assert.ok(readme.includes('0.1.5-alpha.2'), 'README must mention the current DSH 0.1.5 line')
   assert.ok(!readme.includes('0.1.1-rc.2` 或更高兼容版本'), 'README must not claim rc.2-or-higher only')
 })

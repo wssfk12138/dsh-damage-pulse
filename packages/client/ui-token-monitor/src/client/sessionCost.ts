@@ -10,7 +10,17 @@ export interface SessionCostProjectionLike {
   tokenCost?: { cost?: number } | undefined
 }
 
-/** 宿主正式席位键：ui-workspace 声明的 sidebar.workspaces.sessionRow.trailing。 */
+/**
+ * 宿主正式席位键：ui-conversation 的 conversation.session.header.actions，
+ * 即会话标题旁的 actions 列表（0.1.5-alpha 与 rc.7 都声明；席位 scope 为
+ * session，标准 kit 提供 sessionId 与 useSessions，徽标组件无需改动）。
+ */
+export const SESSION_HEADER_ACTIONS_SLOT = 'conversation.session.header.actions'
+
+/**
+ * 会话行席位键：sidebar.workspaces.sessionRow.trailing。上游 ui-workspace
+ * （0.1.3/0.1.5）都未声明该席位，只有本机补丁宿主会声明；仅在声明时注册。
+ */
 export const SESSION_ROW_TRAILING_SLOT = 'sidebar.workspaces.sessionRow.trailing'
 
 /** 会话行金额节点的统一 data 标记。 */

@@ -7,10 +7,12 @@ import { join } from 'node:path'
 import { Context } from '@deepseek-ai/cordis'
 
 // 真实运行时回归：用 @deepseek-ai/dsh-client-runtime 的模块加载器 bundle + 真实
-// SlotRegistry 验证标准包 client 对 sessionRow.trailing 的注入语义：
-// 1) 旧宿主未声明尾席时 pending、不崩溃；2) 后声明时补注册正式徽标；
+// SlotRegistry 验证标准包 client 的会话金额席位语义：
+// 1) 官方 conversation.session.header.actions 声明后立即注册正式徽标；
+// 2) 上游未声明的 sessionRow.trailing 保持 pending、不崩溃，后声明时补注册；
 // 3) 卸载时全量清除；4) 正式席位与 LegacySessionCostBridge 不双写。
 
+const HEADER = 'conversation.session.header.actions'
 const TRAILING = 'sidebar.workspaces.sessionRow.trailing'
 const OVERLAY = 'shell.overlay'
 const NODE = 'conversation.chat.node'
@@ -54,7 +56,13 @@ interface HostHandle {
   slots: Registry
   pluginFiber: { dispose(): Promise<unknown> }
   layout: { dispose(): Promise<unknown> }
-  collect(): { overlayIds: string[]; nodeKeys: string[]; dockIds: string[]; trailingCount: number }
+  collect(): {
+    overlayIds: string[]
+    nodeKeys: string[]
+    dockIds: string[]
+    headerIds: string[]
+    trailingCount: number
+  }
   teardown(): Promise<void>
   upgradeTrailing(): Promise<{ dispose(): Promise<unknown> }>
 }
@@ -77,6 +85,8 @@ function layoutChildren(withTrailing: boolean): Record<string, { kind: string; s
     [OVERLAY]: { kind: 'list', scope: 'root' },
     [NODE]: { kind: 'keyed', scope: 'session' },
     [DOCK]: { kind: 'list', scope: 'session' },
+    // 官方 ui-conversation（0.1.5-alpha / rc.7）在会话头上声明的 actions 列表席位。
+    [HEADER]: { kind: 'list', scope: 'session' },
   }
   if (withTrailing) children[TRAILING] = { kind: 'single', scope: 'session' }
   return children
@@ -122,6 +132,7 @@ async function bootHost(withTrailing: boolean): Promise<HostHandle> {
     overlayIds: registry.entriesOfSlot(OVERLAY).map((entry) => String(entry.options.id)),
     nodeKeys: registry.entriesOfSlot(NODE).map((entry) => String(entry.options.key)),
     dockIds: registry.entriesOfSlot(DOCK).map((entry) => String(entry.options.id)),
+    headerIds: registry.entriesOfSlot(HEADER).map((entry) => String(entry.options.id)),
     trailingCount: registry.entries(TRAILING).length,
   })
 
@@ -158,6 +169,7 @@ describe('built client bundle against the real SlotRegistry', () => {
         overlayIds: ['token-monitor-balance', 'token-monitor-legacy-session-cost'],
         nodeKeys: ['token-usage'],
         dockIds: ['token-monitor-stats'],
+        headerIds: ['token-monitor-session-cost'],
         trailingCount: 0,
       })
 
@@ -182,18 +194,21 @@ describe('built client bundle against the real SlotRegistry', () => {
     try {
       expect(host.slots.entries(TRAILING)).toHaveLength(1)
       expect(typeof host.slots.entries(TRAILING)[0]!.component).toBe('function')
+      expect(host.slots.entries(HEADER)[0]!.options.id).toBe('token-monitor-session-cost')
+      expect(host.slots.entries(HEADER)[0]!.options.order).toBe(-5)
       expect(host.collect().overlayIds).toEqual(['token-monitor-balance', 'token-monitor-legacy-session-cost'])
     } finally {
       await host.teardown()
     }
   })
 
-  it('removes every contribution on unload (overlay/node/dock and trailing)', async () => {
+  it('removes every contribution on unload (overlay/node/dock/header and trailing)', async () => {
     const host = await bootHost(true)
     expect(host.collect()).toEqual({
       overlayIds: ['token-monitor-balance', 'token-monitor-legacy-session-cost'],
       nodeKeys: ['token-usage'],
       dockIds: ['token-monitor-stats'],
+      headerIds: ['token-monitor-session-cost'],
       trailingCount: 1,
     })
     await host.pluginFiber.dispose()
@@ -201,6 +216,8 @@ describe('built client bundle against the real SlotRegistry', () => {
     expect(host.collect().overlayIds).toEqual([])
     expect(host.collect().nodeKeys).toEqual([])
     expect(host.collect().dockIds).toEqual([])
+    // header 席位由插件注册，卸载后同上清空（声明仍由布局持有）。
+    expect(host.slots.entries(HEADER)).toHaveLength(0)
     // trailing 由布局声明持有，布局卸载后随声明塌缩清空。
     await host.layout.dispose()
     await new Promise((resolve) => setTimeout(resolve, 10))

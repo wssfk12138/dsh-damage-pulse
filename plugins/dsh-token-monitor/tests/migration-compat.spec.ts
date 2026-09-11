@@ -71,7 +71,7 @@ describe('historical tokenCost migration compatibility', () => {
     expect(coldSnapshot).toHaveBeenNthCalledWith(2, inspection.meta, inspection.events)
   })
 
-  it('uses the exact inherited event count with the 0.1.2-rc.1 contract', async () => {
+  it('uses the exact inherited event count with the 0.1.2-rc.1 and newer contract', async () => {
     const coldSnapshot = vi.fn(function (_meta: unknown, _inheritedEventCount: unknown, _events: unknown) {
       return { values: {} }
     })
@@ -95,9 +95,17 @@ describe('historical tokenCost migration compatibility', () => {
     )
   })
 
-  it('reads current sessions through a read handle and closes it', async () => {
+  // 0.1.0-0.1.4 的 read() 直接返回事件数组；0.1.5-alpha 起返回
+  // SessionHandleReadResult（{ eventState, events }）。把包装对象当成数组传入
+  // coldSnapshot 会让每个历史会话的迁移都抛错（回归来源）。
+  it.each([
+    ['plain event array', false],
+    ['SessionHandleReadResult wrapper', true],
+  ] as const)('reads current sessions through a read handle (%s) and closes it', async (_label, wrapped) => {
     const close = vi.fn(async () => {})
-    const read = vi.fn(async () => inspection.events)
+    const read = vi.fn(async () => (wrapped
+      ? { eventState: 'frozen', events: inspection.events }
+      : inspection.events))
     const open = vi.fn(async () => ({
       header: inspection.meta,
       inheritedEventCount: inspection.inheritedEventCount,
@@ -128,7 +136,7 @@ describe('historical tokenCost migration compatibility', () => {
     )
   })
 
-  it('does not rebuild a cached current tokenCost projection', async () => {
+  it('does not rebuild a cached 0.1.3 tokenCost projection', async () => {
     const coldSnapshot = vi.fn(function (_meta: unknown, _inheritedEventCount: unknown, _events: unknown) {})
     const cachedSnapshot = vi.fn(function (_meta: unknown, _inheritedEventCount: unknown) {
       return { values: { tokenCost: { cny: 1 } } }
