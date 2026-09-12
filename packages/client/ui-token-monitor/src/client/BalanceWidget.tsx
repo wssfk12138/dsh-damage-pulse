@@ -239,8 +239,10 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   const [settingsError, setSettingsError] = useState<string>()
   const [notificationBubble, setNotificationBubble] = useState<string>()
   const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null)
-  // 悬浮窗位置（left/top），初始从 localStorage 恢复或默认右下角。
-  const [pos, setPos] = useState<{ left: number; top: number }>(() => previewOverride?.fixedPosition ?? loadPos())
+  // 用户意图位置：初始从 localStorage 恢复或默认右下角，只有拖动才会改写。
+  const [intent, setIntent] = useState<{ left: number; top: number }>(() => previewOverride?.fixedPosition ?? loadPos())
+  // 实际渲染位置：意图位置按当前视口限制后的结果，不写回存储。
+  const [pos, setPos] = useState<{ left: number; top: number }>(intent)
   const [dragging, setDragging] = useState(false)
   // 当前峰谷状态：true 高峰 / false 闲时。
   const [isPeak, setIsPeak] = useState(() => previewOverride?.forcedPeak ?? isPeakNow())
@@ -264,8 +266,8 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   const showWhaleGirlRef = useRef(showWhaleGirl)
   const balanceValueRef = useRef<HTMLSpanElement>(null)
   const cardRef = useRef<HTMLDivElement>(null)
-  // 拖拽起点：按下时的鼠标位置 + 卡片位置。
-  const dragStart = useRef<{ x: number; y: number; left: number; top: number; pointerId: number; moved: boolean } | null>(null)
+  // 拖拽起点：按下时的鼠标位置 + 卡片位置；next 记录本次拖动产生的最新位置。
+  const dragStart = useRef<{ x: number; y: number; left: number; top: number; pointerId: number; moved: boolean; next: { left: number; top: number } | null } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const settingsRef = useRef(settingsSnapshot)
   const notificationQueueRef = useRef(createNotificationQueueState())
@@ -299,19 +301,6 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
         top: clamp(rect.bottom + 4, 4, Math.max(4, window.innerHeight - 164)),
       })
     }
-  }, [])
-
-  const toggleWhaleGirl = useCallback(() => {
-    setShowWhaleGirl((visible) => {
-      const next = !visible
-      try {
-        localStorage.setItem(WHALE_VISIBLE_KEY, JSON.stringify(next))
-      } catch {
-        // 隐私模式等场景下无法持久化时，仍保留当前会话设置。
-      }
-      return next
-    })
-    setContextMenu(null)
   }, [])
 
   useEffect(() => {
@@ -401,7 +390,23 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     }
   }, [applySettingsSnapshot])
 
-  /** 卡片完整约束在视口内；窗口缩放后也会修正并保存位置。 */
+  /**
+   * 鲸鱼娘显示开关以 Host 设置为唯一所有者：先写入 Host，再由返回的权威快照更新
+   * 本地状态。localStorage 退化为首帧缓存（只由 applySettingsSnapshot 写入），
+   * 否则本地写入会被随后的焦点刷新/打开详细设置覆盖，表现为「取消勾选后自己变回勾选」。
+   */
+  const toggleWhaleGirl = useCallback(() => {
+    setContextMenu(null)
+    const next = !showWhaleGirlRef.current
+    void saveSettings({
+      ...(settingsRef.current === undefined ? {} : { expectedRevision: settingsRef.current.revision }),
+      patch: { showWhaleGirl: next },
+    }).catch(() => {
+      // 写入被拒绝时保持 Host 的权威值，不伪造本地状态。
+    })
+  }, [saveSettings])
+
+  /** 卡片完整约束在视口内。 */
   const constrainPos = useCallback((next: { left: number; top: number }) => {
     const rect = cardRef.current?.getBoundingClientRect()
     const width = rect?.width ?? 180
@@ -412,23 +417,30 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     }
   }, [])
 
+  /** 提交用户选定的位置：更新意图并持久化。视口变化不走这里。 */
+  const commitPos = useCallback((next: { left: number; top: number }) => {
+    setIntent(next)
+    savePos(next)
+  }, [])
+
+  /**
+   * 视口变化只修正渲染位置，意图位置与存储都不动。
+   * 缩小窗口或最小化时 innerHeight 会塌陷（WebView2 最小化时报 0），
+   * 把 clamp 结果写回存储会让用户调好的位置永久停在顶端。
+   */
   useEffect(() => {
-    const onResize = () => setPos((current) => {
-      const next = constrainPos(current)
-      savePos(next)
-      return next
-    })
+    const onResize = () => setPos(constrainPos(intent))
     window.addEventListener('resize', onResize)
     onResize()
     return () => window.removeEventListener('resize', onResize)
-  }, [constrainPos])
+  }, [constrainPos, intent])
 
   /** 拖拽开始：记录起点，捕获指针。 */
   const onPointerDown = useCallback((event: React.PointerEvent) => {
     if (previewOverride !== undefined) return
     if (event.button !== 0) return
     if ((event.target as HTMLElement).closest('[role=menu]') !== null) return
-    dragStart.current = { x: event.clientX, y: event.clientY, left: pos.left, top: pos.top, pointerId: event.pointerId, moved: false }
+    dragStart.current = { x: event.clientX, y: event.clientY, left: pos.left, top: pos.top, pointerId: event.pointerId, moved: false, next: null }
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
   }, [pos, previewOverride])
 
@@ -444,23 +456,22 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
       setDragging(true)
       setContextMenu(null)
     }
-    setPos(constrainPos({ left: start.left + dx, top: start.top + dy }))
+    const next = constrainPos({ left: start.left + dx, top: start.top + dy })
+    start.next = next
+    setPos(next)
   }, [constrainPos])
 
-  /** 拖拽结束：持久化位置。 */
+  /** 拖拽结束：把这次拖动的位置提交为用户意图位置。 */
   const onPointerUp = useCallback((event: React.PointerEvent) => {
-    if (dragStart.current === null) return
+    const start = dragStart.current
+    if (start === null) return
     dragStart.current = null
     setDragging(false)
     if ((event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) {
       ;(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId)
     }
-    // 持久化最终位置（用 pos 的最新值）。
-    setPos((current) => {
-      savePos(current)
-      return current
-    })
-  }, [])
+    if (start.next !== null) commitPos(start.next)
+  }, [commitPos])
 
   /** 余额节点保留同一 DOM；连续扣费从当前视觉状态接续，不再靠 key 强制重播。 */
   const pulseBalance = useCallback((kind: DamageKind) => {
@@ -580,15 +591,13 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   }, [])
 
   const cancelDrag = useCallback(() => {
-    if (dragStart.current === null) return
+    const start = dragStart.current
+    if (start === null) return
     dragStart.current = null
     setDragging(false)
-    setPos((current) => {
-      const next = constrainPos(current)
-      savePos(next)
-      return next
-    })
-  }, [constrainPos])
+    // 指针在卡片之外结束：提交已拖到的位置，不回退也不写回 clamp 结果。
+    if (start.next !== null) commitPos(start.next)
+  }, [commitPos])
 
   // 某些宿主或高刷新率指针设备可能在卡片之外结束拖动；窗口级兜底避免遗留 grabbing 状态。
   useEffect(() => {
