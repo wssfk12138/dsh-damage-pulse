@@ -52,8 +52,9 @@ function storedPos(): { left: number; top: number } | null {
   return raw === null ? null : JSON.parse(raw) as { left: number; top: number }
 }
 
+/** The card is portalled onto document.body, so queries walk the base element. */
 function card(view: ReturnType<typeof render>): HTMLElement {
-  return view.container.querySelector('[data-token-monitor-balance]') as HTMLElement
+  return view.baseElement.querySelector('[data-token-monitor-balance]') as HTMLElement
 }
 
 function renderedPos(view: ReturnType<typeof render>): { left: number; top: number } {
@@ -85,7 +86,7 @@ async function mountWidget(): Promise<ReturnType<typeof render>> {
   const loadRouteEligibility = vi.fn().mockResolvedValue(true)
   const props = { useSessions, loadRouteEligibility } as unknown as ComponentProps<typeof BalanceWidget>
   const view = render(<BalanceWidget {...props} />)
-  await waitFor(() => { expect(view.container.querySelector('[data-token-monitor-balance]')).not.toBeNull() })
+  await waitFor(() => { expect(view.baseElement.querySelector('[data-token-monitor-balance]')).not.toBeNull() })
   return view
 }
 

@@ -110,8 +110,10 @@ export function apply(ctx: Context) {
   provideTokenMonitorWechat(ctx)
 
   // 价格表：settings 可覆盖，启动时读取一次（改后需重启生效）。
-  // settings 在 web 装配里先于本插件就绪，故 inject 回调同步执行。
+  // ctx.inject 的回调不在外层同步体里执行（最早下一个 microtask，见 cordis 4.0.1
+  // 的 _reload 与子 fiber 构造），因此下游一律按引用读取，不能在此按值捕获。
   let priceTable: PricingTable = PRICE_TABLE
+  const currentPriceTable = (): PricingTable => priceTable
   let readC2Settings: () => C2RuntimeSettings = readDefaultC2Settings
   ctx.inject(['settings'], async (settingsCtx) => {
     const registration = registerTokenMonitorSettings(settingsCtx.settings)
@@ -150,7 +152,7 @@ export function apply(ctx: Context) {
     consecutiveCalls: readC2Settings().cacheHitAnomalyConsecutiveCalls,
   }))
 
-  attachCollector(ctx, storage, priceTable, {
+  attachCollector(ctx, storage, currentPriceTable, {
     onPersistedRecord: (record) => {
       const anomaly = cacheHitAnomalyDetector.observe(record)
       if (anomaly !== undefined) {
@@ -189,7 +191,7 @@ export function apply(ctx: Context) {
 
   // 条件注册 tokenCost projection：仅当组合树提供了 sessionProjections 服务时生效。
   ctx.inject(['sessionProjections'], (projectionCtx) => {
-    projectionCtx.sessionProjections.register(createTokenCostProjectionDefinition(priceTable))
+    projectionCtx.sessionProjections.register(createTokenCostProjectionDefinition(currentPriceTable))
     console.log('[dsh-token-monitor] tokenCost projection registered')
   })
 
@@ -254,7 +256,7 @@ export function apply(ctx: Context) {
     })
     console.log('[dsh-token-monitor] usage-summary route registered')
 
-    registerBudgetRoutes(webCtx, storage, () => readC2Settings().dailyBudgetCny, priceTable)
+    registerBudgetRoutes(webCtx, storage, () => readC2Settings().dailyBudgetCny, currentPriceTable)
     console.log('[dsh-token-monitor] daily budget and pricing eligibility routes registered')
 
     registerNotificationEventsRoute(webCtx, notificationEvents)

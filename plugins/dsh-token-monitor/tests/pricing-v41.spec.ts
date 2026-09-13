@@ -4,7 +4,7 @@ import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { attachCollector } from '../src/collector.ts'
 import { createTokenCostProjectionDefinition } from '../src/projection.ts'
-import { FLASH_PRICING_START, PRO_FLASH_PRICING_START, OFFICIAL_PROVIDER_ID, PRICE_TABLE, priceUsage } from '../src/pricing.ts'
+import { FLASH_PRICING_START, OFFICIAL_PROVIDER_ID, PRICE_TABLE, PRE_FLASH_PRICE_TABLE, priceUsage, selectPriceTable } from '../src/pricing.ts'
 
 const valley = Date.parse('2026-09-14T12:00:00+08:00')
 const peak = Date.parse('2026-09-14T14:00:00+08:00')
@@ -18,12 +18,12 @@ describe('official V4.1 Flash pricing', () => {
     expect(bill(model, Date.parse('2026-09-19T10:00:00+08:00'))?.cost).toBe(6.02)
   })
 
-  it.each(['deepseek-v4-pro', 'deepseek-v4-pro-0813'])('switches %s exactly at the Pro routing boundary', model => {
-    expect(PRO_FLASH_PRICING_START).toBe(valley)
+  it.each(['deepseek-v4-pro', 'deepseek-v4-pro-0813'])('keeps %s on the Pro rates after the cancelled 9-14 change', model => {
     expect(bill(model, valley - 1)?.cost).toBe(45.3)
-    expect(bill(model, valley)?.cost).toBe(6.02)
-    expect(bill(model, peak)?.cost).toBe(12.04)
+    expect(bill(model, valley)?.cost).toBe(22.65)
+    expect(bill(model, peak)?.cost).toBe(45.3)
     expect(bill(model, Date.parse('2026-09-13T12:00:00+08:00'))?.cost).toBe(22.65)
+    expect(bill(model, Date.parse('2026-09-15T12:00:00+08:00'))?.cost).toBe(22.65)
   })
 
   it('keeps historical prices and explicit custom overrides', () => {
@@ -33,6 +33,17 @@ describe('official V4.1 Flash pricing', () => {
     expect(bill('deepseek-v4-pro', Date.parse('2026-08-16T12:00:00+08:00'))?.cost).toBe(12.025)
     const custom = { ...PRICE_TABLE, version: 'custom' }
     expect(priceUsage(1_000_000, 0, 0, 0, OFFICIAL_PROVIDER_ID, 'deepseek-v4-pro', valley, custom)?.cost).toBe(4.5)
+  })
+
+  it('treats a deep-copied official table as the official table (settings default is a copy)', () => {
+    // schemastery 解析 settings 默认值时深拷贝价格表：身份变了、内容没变，
+    // 若按对象身份判断，历史分段会被整体跳过。
+    const copy = JSON.parse(JSON.stringify(PRICE_TABLE)) as typeof PRICE_TABLE
+    expect(copy).not.toBe(PRICE_TABLE)
+    const historicalValley = Date.parse('2026-09-09T12:00:00+08:00')
+    expect(selectPriceTable(historicalValley, copy)).toBe(PRE_FLASH_PRICE_TABLE)
+    expect(priceUsage(1_000_000, 0, 0, 0, OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash', historicalValley, copy)?.cost).toBe(1.5)
+    expect(priceUsage(1_000_000, 0, 0, 0, OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash', valley, copy)?.cost).toBe(1)
   })
 
   it('still rejects other providers and unregistered models', () => {
@@ -59,7 +70,7 @@ describe('official V4.1 Flash pricing', () => {
     expect(storage.add).toHaveBeenCalledTimes(4)
     expect(append).toHaveBeenCalledTimes(4)
     events.forEach((event, index) => {
-      expect(storage.add.mock.calls[index]?.[0]).toMatchObject({ model: event.data.message.source.model, cost: 6.02, sourceEventSeq: index })
+      expect(storage.add.mock.calls[index]?.[0]).toMatchObject({ model: event.data.message.source.model, cost: event.data.message.source.model === 'deepseek-v4-pro' ? 22.65 : 6.02, sourceEventSeq: index })
     })
 
     const ctx = new Context()
@@ -71,8 +82,8 @@ describe('official V4.1 Flash pricing', () => {
       const obsolete = { tokenCost: { ver: 4, seq: 3, val: { ...def.init(), calls: 1, cost: 999 } } }
       const restored = ctx.sessionProjections.restore(obsolete, events as unknown as SessionEvent[], 0)
       expect(restored.snapshot.values.tokenCost?.calls).toBe(4)
-      expect(restored.snapshot.values.tokenCost?.cost).toBeCloseTo(24.08, 10)
-      expect(restored.checkpoint.tokenCost?.ver).toBe(5)
+      expect(restored.snapshot.values.tokenCost?.cost).toBeCloseTo(40.71, 10)
+      expect(restored.checkpoint.tokenCost?.ver).toBe(6)
     } finally {
       await fiber.dispose()
     }

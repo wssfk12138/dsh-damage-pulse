@@ -13,6 +13,7 @@ const host = vi.hoisted(() => {
   const state = {
     showWhaleGirl: true,
     revision: 0,
+    failPatches: 0,
     patches: [] as { expectedRevision?: number; patch: Record<string, unknown> }[],
   }
   return {
@@ -20,6 +21,7 @@ const host = vi.hoisted(() => {
     reset(): void {
       state.showWhaleGirl = true
       state.revision = 0
+      state.failPatches = 0
       state.patches.length = 0
     },
     apply(patch: Record<string, unknown>): void {
@@ -40,6 +42,10 @@ vi.mock('../src/client/settingsApi.ts', async (importOriginal) => {
     if (init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body)) as { expectedRevision?: number; patch: Record<string, unknown> }
       host.state.patches.push(body)
+      if (host.state.failPatches > 0) {
+        host.state.failPatches -= 1
+        return new Response(JSON.stringify({ code: 'UNAVAILABLE', message: 'settings store busy' }), { status: 503, headers: { 'Content-Type': 'application/json' } })
+      }
       host.apply(body.patch)
     }
     return new Response(JSON.stringify({
@@ -89,8 +95,8 @@ function mountWidget() {
 }
 
 async function openContextMenu(view: ReturnType<typeof render>) {
-  await waitFor(() => { expect(view.container.querySelector('[data-token-monitor-balance]')).not.toBeNull() })
-  const card = view.container.querySelector('[data-token-monitor-balance]')
+  await waitFor(() => { expect(view.baseElement.querySelector('[data-token-monitor-balance]')).not.toBeNull() })
+  const card = view.baseElement.querySelector('[data-token-monitor-balance]')
   await act(async () => { fireEvent.contextMenu(card as Element) })
   return screen.getByRole('menuitemcheckbox', { name: /显示鲸鱼娘/ })
 }
@@ -124,5 +130,23 @@ describe('BalanceWidget whale-girl toggle', () => {
 
     const reopened = await openContextMenu(view)
     expect(isChecked(reopened)).toBe(false)
+  })
+
+  it('re-reads the Host value and shows a notice when the write fails', async () => {
+    host.state.failPatches = 1
+    const view = mountWidget()
+    const toggle = await openContextMenu(view)
+    expect(isChecked(toggle)).toBe(true)
+
+    await act(async () => { fireEvent.click(toggle) })
+
+    // The failure is not silent: the checkbox stays on the Host value and a
+    // visible notice replaces the previous empty catch.
+    await waitFor(() => {
+      expect(view.baseElement.querySelector('[data-token-monitor-settings-notice]')).not.toBeNull()
+    })
+    const reopened = await openContextMenu(view)
+    expect(isChecked(reopened)).toBe(true)
+    expect(host.state.showWhaleGirl).toBe(true)
   })
 })

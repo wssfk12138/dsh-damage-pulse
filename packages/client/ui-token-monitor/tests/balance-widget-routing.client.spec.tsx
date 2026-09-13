@@ -28,7 +28,9 @@ describe('BalanceWidget route gate', () => {
     expect(fetcher).toHaveBeenCalled()
 
     await act(async () => { resolveEligibility(false); await eligibility })
-    expect(view.container.childElementCount).toBe(0)
+    // The card is portalled onto document.body, so the render container stays
+    // empty for a hidden widget too; assert against the shared base element.
+    expect(view.baseElement.querySelector('[data-token-monitor-balance]')).toBeNull()
     fetcher.mockClear()
 
     await act(async () => { await vi.advanceTimersByTimeAsync(60_000) })

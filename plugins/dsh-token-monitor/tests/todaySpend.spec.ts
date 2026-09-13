@@ -143,6 +143,35 @@ describe('today spend aggregation', () => {
     expect(storage.add(first)).toBeUndefined()
   })
 
+  it('deduplicates seq-less history rows written before the session event sequence field existed', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'dsh-token-monitor-legacy-idempotency-'))
+    tempDirs.push(dataDir)
+    const now = Date.parse('2026-08-23T05:00:00.000Z')
+    const legacy = record(now, 0.25)
+    writeFileSync(join(dataDir, 'usage.jsonl'), `${JSON.stringify(legacy)}\n${JSON.stringify(legacy)}\n`)
+    const storage = new UsageStorage(() => true, dataDir)
+    expect(storage.history()).toHaveLength(1)
+    expect(storage.get('session-1')).toMatchObject({ calls: 1, cost: 0.25 })
+    expect(storage.add(legacy)).toBeUndefined()
+    expect(storage.todaySpend(now)).toMatchObject({ calls: 1, cost: 0.25 })
+  })
+
+  it('keeps distinct seq-less rows that share session, turn and step', () => {
+    const dataDir = mkdtempSync(join(tmpdir(), 'dsh-token-monitor-legacy-distinct-'))
+    tempDirs.push(dataDir)
+    const now = Date.parse('2026-08-23T05:00:00.000Z')
+    writeFileSync(join(dataDir, 'usage.jsonl'), [
+      record(now - 1_000, 0.25),
+      record(now, 0.25),
+    ].map(JSON.stringify).join('\n') + '\n')
+    const storage = new UsageStorage(() => true, dataDir)
+    expect(storage.history()).toHaveLength(2)
+    expect(storage.get('session-1')).toMatchObject({ calls: 2, cost: 0.5 })
+    expect(storage.todaySpend(now).calls).toBe(2)
+  })
+
+  // 该用例做 2_100 次真实同步落盘（每次 add 都 appendFileSync），单跑约 1 s，
+  // 但全量并行时多个 worker 争抢 CPU 会超过 vitest 默认的 5 s，故显式放宽。
   it('retains replay identities beyond the transient animation window', () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'dsh-token-monitor-idempotency-long-'))
     const storage = new UsageStorage(() => true, dataDir)
@@ -153,5 +182,5 @@ describe('today spend aggregation', () => {
     }
     expect(storage.add(first)).toBeUndefined()
     expect(storage.get('long-session')?.calls).toBe(2_100)
-  })
+  }, 30_000)
 })

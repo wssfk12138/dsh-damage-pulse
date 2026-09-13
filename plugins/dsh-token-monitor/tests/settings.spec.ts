@@ -9,6 +9,7 @@ import {
   registerTokenMonitorSettings,
   TOKEN_MONITOR_SETTINGS_NS,
 } from '../src/settings.ts'
+import { OFFICIAL_PROVIDER_ID, PRICE_TABLE, PRE_FLASH_PRICE_TABLE, priceUsage, selectPriceTable } from '../src/pricing.ts'
 
 const disposers: Array<() => Promise<void>> = []
 
@@ -88,6 +89,16 @@ describe('Token Monitor settings Host API', () => {
       dailyBudgetCny: 25,
       budgetExceededNotificationEnabled: false,
     })
+  })
+
+  it('keeps the settings-resolved default table on the official history segments', async () => {
+    const { registration } = await boot()
+    // settings 解析默认值时会深拷贝价格表：内容与内置表一致，必须仍按官方表做历史分段。
+    const table = registration.scope.get().priceTable
+    expect(table).toEqual(PRICE_TABLE)
+    const historicalValley = Date.parse('2026-09-09T12:00:00+08:00')
+    expect(selectPriceTable(historicalValley, table)).toBe(PRE_FLASH_PRICE_TABLE)
+    expect(priceUsage(1_000_000, 0, 0, 0, OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash', historicalValley, table)?.cost).toBe(1.5)
   })
 
   it('supports GET, HEAD, partial PATCH, no-op PATCH, and revision conflicts', async () => {

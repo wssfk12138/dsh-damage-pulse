@@ -72,6 +72,9 @@ const nativeRequire = createRequire(import.meta.url)
 const requireShim = (id: string): unknown => {
   if (id === 'react') return nativeRequire('react')
   if (id === 'react/jsx-runtime') return nativeRequire('react/jsx-runtime')
+  // 宿主平台种子（packages/client/web/src/seed.ts）里有 react-dom，卡片 portal 到
+  // document.body 后需要它；保持 shim 与平台表一致，其余仍然显式报错。
+  if (id === 'react-dom') return nativeRequire('react-dom')
   if (id === '@deepseek-ai/cordis') return nativeRequire('@deepseek-ai/cordis')
   if (id === '@deepseek-ai/dsh-client-ui-slots') return nativeRequire('@deepseek-ai/dsh-client-ui-slots')
   throw new Error('unexpected module-loader require: ' + id)

@@ -52,8 +52,10 @@ type TokenCostProjectionDefinition = Omit<
 
 /** 按给定价格表构造 tokenCost projection 单元。 */
 export function createTokenCostProjectionDefinition(
-  priceTable: PricingTable,
+  priceTable: PricingTable | (() => PricingTable),
 ): TokenCostProjectionDefinition {
+  // 价格表可传活引用：settings 的表在 inject 回调就绪，注册后再改动也要能被 fold 读到。
+  const readPriceTable = typeof priceTable === 'function' ? priceTable : () => priceTable
   /** 共享的 state → wire 投影：旧宿主经 view 读取，新宿主经 wire.view 读取。 */
   const wireView = (state: TokenCostState): TokenCostProjection => ({
     calls: state.calls,
@@ -97,7 +99,7 @@ export function createTokenCostProjectionDefinition(
         source.provider,
         source.model,
         event.time,
-        priceTable,
+        readPriceTable(),
       )
       if (breakdown === undefined) return state
 
@@ -119,7 +121,8 @@ export function createTokenCostProjectionDefinition(
     // 旧 DSH 宿主字段：schema 校验 wire 值、view 输出 wire 值，与新宿主共用实现。
     schema: viewSchema,
     view: wireView,
-    // v5 重算 Flash 调价、新名称及 Pro 转路由的历史金额；不改写 usage 账本。
-    stateVersion: 5,
+    // v6 重算 Flash 调价、新名称、Pro 转路由以及 settings 默认表绕过历史分段的历史金额；
+    // 版本不符时宿主会丢弃缓存行并从事件重算，不会改写 usage 账本。
+    stateVersion: 6,
   }
 }

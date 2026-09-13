@@ -72,9 +72,11 @@ export interface CollectorOptions {
 export function attachCollector(
   ctx: Context,
   storage: UsageStorage,
-  priceTable: PricingTable,
+  priceTable: PricingTable | (() => PricingTable),
   options: CollectorOptions = {},
 ): void {
+  // 价格表可传活引用：settings 提供的表要等 inject 回调才就绪，按值捕获会一直用内置表。
+  const readPriceTable = typeof priceTable === 'function' ? priceTable : () => priceTable
   ctx.on('session/event', (session: Session, event: SessionEvent) => {
     if (event.type !== 'assistant/message') return
     const usage = event.data.usage
@@ -91,7 +93,7 @@ export function attachCollector(
       source.provider,
       source.model,
       usage,
-      priceTable,
+      readPriceTable(),
     )
     if (record === undefined) return
     if (storage.add(record) === undefined) return

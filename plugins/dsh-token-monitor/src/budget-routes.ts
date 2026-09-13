@@ -24,8 +24,10 @@ export function registerBudgetRoutes(
   ctx: Context,
   storage: Pick<UsageStorage, 'todaySpend'>,
   getBudget: () => number,
-  table: PricingTable,
+  table: PricingTable | (() => PricingTable),
 ): void {
+  // 价格表可传活引用：路由按请求读取，避免装配顺序决定用哪张表。
+  const readPriceTable = typeof table === 'function' ? table : () => table
   ctx.webServer.register({
     kind: 'exact',
     path: '/api/token-monitor/daily-budget',
@@ -40,7 +42,7 @@ export function registerBudgetRoutes(
     path: '/api/token-monitor/pricing-eligibility',
     handler: (_req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
-      res.end(JSON.stringify(pricingEligibilityInfo(table)))
+      res.end(JSON.stringify(pricingEligibilityInfo(readPriceTable())))
     },
   })
 }

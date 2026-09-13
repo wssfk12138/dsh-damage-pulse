@@ -1,5 +1,7 @@
 /**
- * 余额悬浮卡片：挂载在 frame 级浮动层（shell.overlay，右下角）。
+ * 余额悬浮卡片：注册在 frame 级浮动层（shell.overlay，右下角），但渲染时 portal 到
+ * document.body —— 宿主 .overlayLayer 是 z-index 20 的层叠上下文，卡片留在其中时
+ * 自身 z-index 只在层内比较，会被 z-index 60 的右侧栏浮动面板整块盖住（见 CARD_Z_INDEX）。
  *
  * 数据源两个：
  * - 扣费：每秒增量拉取 /api/token-monitor/charge-events（Host collector 每次模型调用算出的精确 cost），
@@ -10,6 +12,7 @@
  * 全局（root scope）组件，无 session 依赖。
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { type TokenMonitorSettingsSnapshot, type TokenMonitorSettingsPatchRequest } from '../../../../util/token-monitor-contract/src/index.ts'
 import type { RouteEligibilityLoader } from './routeEligibility.ts'
@@ -41,6 +44,14 @@ const settingsApi = createTokenMonitorSettingsApi()
 const notificationEventsApi = createNotificationEventsApi()
 const wechatConnectionApi = createWechatConnectionApi()
 
+/**
+ * 卡片 portal 到 body，所以该 z-index 与宿主同层比较。宿主分档：
+ * shell.overlay 所在的 .overlayLayer = 20、右侧栏浮动面板 .floatHost = 60
+ * （ui-sidebar-right 同样 portal 到 body）、dockkit 菜单 = 70、宿主浮层/菜单 ≥ 100、
+ * 宿主 Modal/Toast ≥ 1000。取 65：盖过侧边栏浮动面板，又不压住宿主菜单与模态。
+ */
+const CARD_Z_INDEX = 65
+
 const CARD: React.CSSProperties = {
   position: 'fixed',
   padding: '6px 12px',
@@ -54,7 +65,7 @@ const CARD: React.CSSProperties = {
   cursor: 'grab',
   userSelect: 'none',
   boxShadow: '0 2px 8px rgba(0,0,0,0.25)',
-  zIndex: 1000,
+  zIndex: CARD_Z_INDEX,
 }
 
 const RED = '#ff3b30'
@@ -238,6 +249,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsError, setSettingsError] = useState<string>()
   const [notificationBubble, setNotificationBubble] = useState<string>()
+  const [settingsNotice, setSettingsNotice] = useState<string>()
   const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null)
   // 用户意图位置：初始从 localStorage 恢复或默认右下角，只有拖动才会改写。
   const [intent, setIntent] = useState<{ left: number; top: number }>(() => previewOverride?.fixedPosition ?? loadPos())
@@ -273,6 +285,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   const notificationQueueRef = useRef(createNotificationQueueState())
   const notificationSeeded = useRef(false)
   const notificationBubbleTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const settingsNoticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   /** 右键打开余额显示设置菜单，并限制菜单不超出视口。 */
   const onContextMenu = useCallback((event: React.MouseEvent) => {
@@ -360,6 +373,16 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     }
   }, [])
 
+  /** 短暂显示一次操作反馈（当前用于设置写入失败），4 秒后自动消失。 */
+  const showSettingsNotice = useCallback((message: string) => {
+    setSettingsNotice(message)
+    if (settingsNoticeTimer.current !== undefined) clearTimeout(settingsNoticeTimer.current)
+    settingsNoticeTimer.current = setTimeout(() => {
+      settingsNoticeTimer.current = undefined
+      setSettingsNotice(undefined)
+    }, 4_000)
+  }, [])
+
   const openSettings = useCallback(async () => {
     setContextMenu(null)
     setSettingsOpen(true)
@@ -401,10 +424,17 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     void saveSettings({
       ...(settingsRef.current === undefined ? {} : { expectedRevision: settingsRef.current.revision }),
       patch: { showWhaleGirl: next },
-    }).catch(() => {
-      // 写入被拒绝时保持 Host 的权威值，不伪造本地状态。
+    }).catch(async () => {
+      // 写入失败不能静默：错误本身分不清「Host 未落盘」与「已落盘但响应丢失」，
+      // 因此回读一次权威快照对齐界面，并给出可见提示（原来空 catch 表现为点了没反应）。
+      try {
+        applySettingsSnapshot(await settingsApi.get())
+        showSettingsNotice('设置保存失败，已按服务器上的值恢复。')
+      } catch {
+        showSettingsNotice('设置保存失败，请稍后重试。')
+      }
     })
-  }, [saveSettings])
+  }, [applySettingsSnapshot, saveSettings, showSettingsNotice])
 
   /** 卡片完整约束在视口内。 */
   const constrainPos = useCallback((next: { left: number; top: number }) => {
@@ -818,6 +848,10 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     return () => clearInterval(timer)
   }, [consumeNotification, shouldPoll])
 
+  useEffect(() => () => {
+    if (settingsNoticeTimer.current !== undefined) clearTimeout(settingsNoticeTimer.current)
+  }, [])
+
   useEffect(() => {
     if (!shouldPoll) return
     let cancelled = false
@@ -859,7 +893,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     setReviving(false)
     setWhalePose('idle')
   }
-  return (
+  const cardElement = (
     <div
       ref={cardRef}
       style={{ ...CARD, left: pos.left, top: pos.top, cursor: previewOverride === undefined ? (dragging ? 'grabbing' : 'grab') : 'default' }}
@@ -1097,6 +1131,34 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
           {notificationBubble}
         </div>
       )}
+      {settingsNotice !== undefined && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-token-monitor-settings-notice=""
+          style={{
+            position: 'absolute',
+            right: 0,
+            top: 'calc(100% + 8px)',
+            maxWidth: 260,
+            transform: 'none',
+            zIndex: 5,
+            pointerEvents: 'none',
+            padding: '7px 11px',
+            borderRadius: 12,
+            background: 'rgba(255,255,255,0.96)',
+            color: '#a13a3a',
+            border: '1px solid rgba(196, 78, 78, 0.32)',
+            boxShadow: '0 7px 20px rgba(42, 27, 69, 0.18)',
+            fontSize: 12,
+            lineHeight: 1.35,
+            textAlign: 'center',
+            whiteSpace: 'normal',
+          }}
+        >
+          {settingsNotice}
+        </div>
+      )}
       <div style={{ position: 'relative', zIndex: 4 }} data-token-monitor-display="">
       {'余额'}{' '}
       <span
@@ -1138,4 +1200,6 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
       </div>
     </div>
   )
+
+  return createPortal(cardElement, document.body)
 }

@@ -1,6 +1,6 @@
 /**
  * DeepSeek 峰谷定价价格表与计费引擎。
- * 价格表版本：2026-09-10（Flash 系列含 Vision-Exp 分时调价）。
+ * 价格表版本：2026-09-13（Flash 系列含 Vision-Exp 分时调价；V4 Pro 计费方式不变）。
  * 来源：https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
  * 单位：元 / 百万 tokens。
  */
@@ -23,9 +23,9 @@ export interface PricingTable {
   version: string
 }
 
-/** 2026-09-10 生效规则：V4.1 Flash 与两个旧名称共用新价；Pro 在 9-14 切换前保留原价。 */
+/** 2026-09-10 生效规则：V4.1 Flash 与两个旧名称共用新价；V4 Pro 计费方式不变（官网已取消 9-14 起按 Flash 价计费）。 */
 export const PRICE_TABLE: PricingTable = {
-  version: '2026-09-10',
+  version: '2026-09-13',
   // 工作日高峰：北京时间 9:00-12:00、14:00-18:00；周末全天按低谷价。
   peakHours: [[9, 12], [14, 18]],
   models: {
@@ -47,13 +47,6 @@ export const PRICE_TABLE: PricingTable = {
       peak: { input: 9.0, cacheHit: 0.30, output: 27.0 },
     },
   },
-}
-
-/** 官网规定：9-14 12:00 起 Pro 请求按 Flash 价计费，直至未来 V4.1 Pro 上线另行更新。 */
-const PRO_ROUTED_PRICE_TABLE: PricingTable = {
-  ...PRICE_TABLE,
-  version: '2026-09-14',
-  models: { ...PRICE_TABLE.models, 'deepseek-v4-pro': PRICE_TABLE.models['deepseek-flash']! },
 }
 
 /**
@@ -97,16 +90,29 @@ export const PRE_FLASH_PRICE_TABLE: PricingTable = {
 const PEAK_PRICING_START = Date.UTC(2026, 7, 16, 16, 0, 0)
 /** Flash 调价生效时刻：2026-09-10 12:00 北京时间 = 04:00 UTC。 */
 export const FLASH_PRICING_START = Date.UTC(2026, 8, 10, 4, 0, 0)
-/** Pro 转按 Flash 计费：2026-09-14 12:00 北京时间 = 04:00 UTC。 */
-export const PRO_FLASH_PRICING_START = Date.UTC(2026, 8, 14, 4, 0, 0)
 
-/** 默认价格按历史生效时间选择；显式自定义表保留原覆盖行为。 */
+/**
+ * 官方内置表的精确序列化快照。settings 的 `priceTable` 默认值经 schemastery
+ * 解析后会变成深拷贝副本：内容与内置表一致，对象身份不再相同。
+ */
+const OFFICIAL_TABLE_SNAPSHOT = JSON.stringify(PRICE_TABLE)
+
+/** 按内容判断是否为官方内置表（settings 深拷贝得到的默认值同样算官方表）。 */
+export function isOfficialPriceTable(table: PricingTable): boolean {
+  return JSON.stringify(table) === OFFICIAL_TABLE_SNAPSHOT
+}
+
+/**
+ * 默认价格按历史生效时间选择；显式自定义表保留整体覆盖行为（不做历史分段）。
+ * 判定必须按内容而非对象身份：settings 的默认表恒为深拷贝副本，
+ * 用 `table !== PRICE_TABLE` 判断会永远为真，8-17 至 9-10 的历史时段会被
+ * 整体按现行 Flash 价计费（4.0.7/4.0.8 的会话金额由此少算）。
+ */
 export function selectPriceTable(ts: number, table: PricingTable = PRICE_TABLE): PricingTable {
   if (ts < PEAK_PRICING_START) return LEGACY_PRICE_TABLE
-  if (table !== PRICE_TABLE) return table
+  if (!isOfficialPriceTable(table)) return table
   if (ts < FLASH_PRICING_START) return PRE_FLASH_PRICE_TABLE
-  if (ts >= PRO_FLASH_PRICING_START) return PRO_ROUTED_PRICE_TABLE
-  return table
+  return PRICE_TABLE
 }
 
 /** 单次调用的费用明细。 */

@@ -33,8 +33,8 @@
 
 - 北京时间 9 月 10 日 12:00 起，`deepseek-flash`（V4.1 Flash）、`deepseek-v4-flash` 和 `deepseek-v4-flash-vision-exp` 共用 Flash 新价。每百万 tokens：空闲时段缓存命中输入 ¥0.02、未命中输入 ¥1、输出 ¥4；高峰时段分别为 ¥0.04、¥2、¥8。
 - 高峰为北京时间工作日 09:00–12:00、14:00–18:00，周末全天空闲。
-- 北京时间 9 月 14 日 12:00 起，`deepseek-v4-pro` 按 Flash 价格计费；此前的调用保留原 Pro 价格。未来 V4.1 Pro 上线后的规则另行更新。
-- 会话金额缓存升级后会按可用事件重算；不会重写已持久化的 usage 账本。显式自定义价格表继续优先于默认价格，更新后需重启插件宿主加载新规则。
+- 官方已取消原定北京时间 9 月 14 日 12:00 起 `deepseek-v4-pro` 按 Flash 价格计费的调整：V4 Pro 继续按原 Pro 价格计费；空闲时段缓存命中输入 ¥0.15、未命中输入 ¥4.5、输出 ¥13.5，高峰时段分别为 ¥0.3、¥9、¥27。如有变动按官网通知另行更新。
+- 会话金额缓存升级后会按可用事件重算；不会重写已持久化的 usage 账本。官方内置价格表按生效时间分段计价：北京时间 8 月 17 日 00:00 之前按旧统一价，8 月 17 日 00:00 至 9 月 10 日 12:00 按旧峰谷价，之后按现行价格。显式自定义价格表整体优先于默认表、不做历史分段；更新价格规则后需重启插件宿主加载。
 - 价格依据：[DeepSeek 官方模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)。
 
 ### 精准计费与持久账本
@@ -109,7 +109,7 @@
 
 ## 安装
 
-本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。`4.0.8` 修复 DSH `0.1.5-alpha.2`（官方 0.1.5 线）下的两项失效：Host 半兼容 0.1.5 的 `SessionHandleReadResult`（`{ eventState, events }` 包裹结果），会话历史金额投影不再整体迁移失败；Client 半改用官方席位 `conversation.session.header.actions`。`4.0.3` 明确兼容 DSH Desktop `2.0.4`（DSH `0.1.2-alpha.1`），并继续支持 `0.1.0-rc.5` 之后的旧版兼容宿主（含 `0.1.0-rc.6/rc.7/rc.8` 与 `0.1.1-rc.2`）。无需复制源码、修改 DSH `tsconfig`、手动传入 `--patch` 或重建 Client bundle。
+本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。`4.0.9` 跟随官网 2026 年 9 月的计价说明修正 V4 Pro 计价：官方已取消原定 9 月 14 日 12:00 起按 Flash 价格计费的调整，`deepseek-v4-pro` 继续按 Pro 原价计费，不再在边界时刻切换价格表。`4.0.9` 同时修复三处历史缺陷（内置价格表的历史分段因对象身份判定而从未生效、余额卡片与鲸鱼娘被右侧栏浮动面板遮挡、无事件序号的历史账本行重复计入），并把鲸鱼娘开关写入失败从静默改为提示；`4.0.8` 修复 DSH `0.1.5-alpha.2`（官方 0.1.5 线）下的两项失效：Host 半兼容 0.1.5 的 `SessionHandleReadResult`（`{ eventState, events }` 包裹结果），会话历史金额投影不再整体迁移失败；Client 半改用官方席位 `conversation.session.header.actions`。`4.0.3` 明确兼容 DSH Desktop `2.0.4`（DSH `0.1.2-alpha.1`），并继续支持 `0.1.0-rc.5` 之后的旧版兼容宿主（含 `0.1.0-rc.6/rc.7/rc.8` 与 `0.1.1-rc.2`）。无需复制源码、修改 DSH `tsconfig`、手动传入 `--patch` 或重建 Client bundle。
 
 Desktop `2.0.4` 不再提供旧的 `@deepseek-ai/dsh-client-runtime` 模块；`4.0.3` 已将该包从产品 peer 与 Client 注入图中移除，仅在开发环境保留旧宿主回归测试。
 
@@ -162,7 +162,7 @@ corepack pnpm run check:bundle
 
 ### 价格表（可选覆盖）
 
-价格表默认内置（见 `src/pricing.ts`），可通过 settings namespace `dsh-token-monitor` 的 `priceTable` 字段覆盖价格和工作日高峰时段。周一至周五默认按北京时间 `9:00–12:00`、`14:00–18:00` 为峰价，其余时间为谷价；周六、周日无论时段均按谷价。官方依据：[模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)、[图像理解 Token 用量](https://api-docs.deepseek.com/zh-cn/guides/vision#token-usage)。
+价格表默认内置（见 `src/pricing.ts`），可通过 settings namespace `dsh-token-monitor` 的 `priceTable` 字段覆盖价格和工作日高峰时段。周一至周五默认按北京时间 `9:00–12:00`、`14:00–18:00` 为峰价，其余时间为谷价；周六、周日无论时段均按谷价。内置默认表按生效时间分段：8 月 17 日 00:00 之前按旧统一价，8 月 17 日 00:00 至 9 月 10 日 12:00 按旧峰谷价，之后按上表现行价格。传入自定义 `priceTable` 时视为整体覆盖，直接用于当年 8 月 17 日及之后的全部历史与新增调用；8 月 17 日之前的调用仍按官方旧统一价计费。官方依据：[模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)、[图像理解 Token 用量](https://api-docs.deepseek.com/zh-cn/guides/vision#token-usage)。
 
 ## HTTP 端点
 
@@ -205,6 +205,8 @@ dsh --profile web
 ## 社区与反馈
 
 欢迎在 [LINUX DO 社区](https://linux.do/) 交流使用体验、反馈问题和分享改进建议。插件的安装、运行和全部功能均不依赖任何中转服务或充值渠道。
+
+社区提交经复核后会合并进主线，并在发行说明与本文件中署名。已合入：`@gurio-wine`（PR #17：桌面端卡片位置与鲸鱼娘开关修复，包含在 `4.0.9`）。
 
 ## 许可证
 
