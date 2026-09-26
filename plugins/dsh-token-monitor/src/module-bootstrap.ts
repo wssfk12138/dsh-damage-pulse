@@ -1,11 +1,11 @@
 /** This small loader stays inert after whole-plugin removal; it never regenerates deleted files. */
 import type { Context } from '@deepseek-ai/cordis'
 import { readFile, mkdir } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import { dirname, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import { recoverModuleTransaction } from './module-transaction.ts'
-import { validateManifest, verifyArtifact, type ArtifactRoots } from './module-files.ts'
+import { atomicJson, validateManifest, verifyArtifact, type ArtifactRoots } from './module-files.ts'
 import { ModuleManager } from './module-manager.ts'
 import type * as Runtime from './runtime-host.ts'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
@@ -13,18 +13,36 @@ import { eraseRemovedPlugin } from './module-cleanup.ts'
 import { acquireModuleLease, recoverModuleLock } from './module-lease.ts'
 
 export async function bootModules(ctx: Context, pluginRoot: string, clientRoot: string): Promise<void> {
-  const runtime = resolve(pluginRoot, 'runtime'), stateFile = resolve(runtime, 'state.json')
+  const runtime = resolve(pluginRoot, 'runtime')
+  // Package managers replace node_modules during upgrades. Keep tombstones and
+  // the transaction journal in the profile, outside the installed payload.
+  const stateFile = resolve(pluginRoot, '..', '..', '.dsh-damage-pulse', 'module-state.json')
+  const legacyStateFile = resolve(runtime, 'state.json')
   const roots: ArtifactRoots = { host: resolve(runtime, 'host'), assets: resolve(runtime, 'assets'), client: clientRoot }
-  await mkdir(runtime, { recursive: true })
+  await mkdir(dirname(stateFile), { recursive: true })
   const releaseLease = await acquireModuleLease(stateFile)
   ctx.effect(() => releaseLease, 'token-monitor: exclusive installed runtime')
   await recoverModuleLock(stateFile)
   const { manifest, removed } = await withFileLock(stateFile, async () => {
+    try { await readFile(stateFile, 'utf8') }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+      // In-place installations can migrate the old package-local state.
+      // A legacy transaction needs recovery with its original package first.
+      try {
+        await readFile(legacyStateFile + '.transaction.json', 'utf8')
+        throw new Error('LEGACY_MODULE_RECOVERY_REQUIRED')
+      } catch (journalError) {
+        if ((journalError as NodeJS.ErrnoException).code !== 'ENOENT') throw journalError
+      }
+      try { await atomicJson(stateFile, JSON.parse(await readFile(legacyStateFile, 'utf8'))) }
+      catch (legacyError) { if ((legacyError as NodeJS.ErrnoException).code !== 'ENOENT') throw legacyError }
+    }
     await recoverModuleTransaction(stateFile, roots)
     let state: { manifest?: unknown; wholePlugin?: unknown } | undefined
     try { state = JSON.parse(await readFile(stateFile, 'utf8')) }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-    const manifest = validateManifest(state?.manifest ?? JSON.parse(await readFile(resolve(runtime, 'manifest.json'), 'utf8')))
+    const manifest = validateManifest(JSON.parse(await readFile(resolve(runtime, 'manifest.json'), 'utf8')))
     if (!state?.wholePlugin) for (const file of manifest.core) await verifyArtifact(roots, file)
     return { manifest, removed: !!state?.wholePlugin }
   })

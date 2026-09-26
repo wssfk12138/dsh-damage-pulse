@@ -15,7 +15,7 @@ import WebServer from '@deepseek-ai/dsh-host-webserver'
 const directory = dirname(fileURLToPath(import.meta.url))
 const sourcePackage = process.argv[2] && resolve(process.argv[2])
 if (!sourcePackage) throw new Error('Specify the extracted package directory from the tgz')
-const root = await mkdtemp(join(dirname(sourcePackage), '.tgz-smoke-'))
+const root = await mkdtemp(join(directory, '.tgz-smoke-'))
 process.env.DSH_HOME = join(root, 'home')
 const installedPackage = join(root, 'node_modules', 'dsh-damage-pulse')
 await cp(sourcePackage, installedPackage, { recursive: true })
@@ -34,7 +34,16 @@ try {
     peak: false, billingStatus: 'priced',
   }) + '\n')
   const manifest = JSON.parse(await readFile(join(installedPackage, 'runtime/manifest.json'), 'utf8'))
+  await writeFile(join(installedPackage, 'runtime/state.json'), JSON.stringify({
+    schemaVersion: 1, revision: 4, version: '4.0.10', removed: {}, restartRequired: false,
+    manifest: { ...manifest, version: '4.0.10' },
+  }))
   assert.equal((await readFile(join(installedPackage, 'runtime/host/core.mjs'), 'utf8')).includes('quickjs-emscripten'), false)
+  const packageManifest = JSON.parse(await readFile(join(installedPackage, 'package.json'), 'utf8'))
+  assert.equal(packageManifest.dependencies?.['quickjs-emscripten'], '0.31.0', 'billing runtime needs its own QuickJS install')
+  const bundlePatch = await readFile(join(installedPackage, 'cordis.patch.yml'), 'utf8')
+  assert.match(bundlePatch, /^\s+- id: dsh-token-monitor\s*$/m, 'installed profile entry must own the settings namespace')
+  assert.match(bundlePatch, /^\s+name: dsh-damage-pulse\s*$/m, 'profile entry must load the public package')
   const start = async () => {
     await mkdir(join(root, 'profile'), { recursive: true })
     const profileHome = realpathSync(join(root, 'profile'))
@@ -65,6 +74,9 @@ try {
     return 'http://127.0.0.1:' + ctx.webServer.port
   }
   let url = await start()
+  const migratedState = JSON.parse(await readFile(join(root, '.dsh-damage-pulse', 'module-state.json'), 'utf8'))
+  assert.equal(migratedState.version, manifest.version)
+  assert.equal(migratedState.revision, 5)
   const snapshot = async () => (await fetch(url + '/api/token-monitor/modules')).json()
   const uninstall = async (ids, wholePlugin = false, preserveData = true) => {
     const current = await snapshot()
@@ -120,7 +132,7 @@ try {
   for (const file of manifest.core) await assert.rejects(readFile(join(installedPackage, 'runtime', file.root, file.path)), { code: 'ENOENT' })
   await ctx.fiber.dispose()
   // Retry whole-plugin erasure with the core already physically absent.
-  const statePath = join(installedPackage, 'runtime/state.json')
+  const statePath = join(root, '.dsh-damage-pulse', 'module-state.json')
   const state = JSON.parse(await readFile(statePath, 'utf8'))
   state.wholePlugin.erased = false; state.wholePlugin.pending = true
   await writeFile(statePath, JSON.stringify(state))
@@ -129,10 +141,10 @@ try {
   assert.equal(JSON.parse(await readFile(statePath, 'utf8')).wholePlugin.pending, false)
   assert.equal((await readFile(join(sourcePackage, 'runtime/manifest.json'), 'utf8')).length > 0, true)
   assert.equal((await readFile(join(root, 'profile', 'profiles', 'fixture', 'cordis.profile.yml'), 'utf8')).includes('showWhaleGirl'), false)
-  console.log('Built payload smoke: boot, physical removal, tombstone restart, whole removal, absent-core cleanup PASS')
+  console.log('Built payload smoke: legacy state migration, boot, physical removal, tombstone restart, whole removal, absent-core cleanup PASS')
 } finally {
   await ctx?.fiber.dispose()
   // root is generated inside this script directory and never accepts user input.
-  assert.equal(dirname(root), dirname(sourcePackage))
+  assert.equal(dirname(root), directory)
   await rm(root, { recursive: true, force: true })
 }

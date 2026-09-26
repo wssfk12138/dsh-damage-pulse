@@ -20,6 +20,9 @@ importers:
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
+      quickjs-emscripten:
+        specifier: 0.31.0
+        version: 0.31.0
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.1
@@ -249,9 +252,6 @@ importers:
       pixi.js:
         specifier: 8.14.0
         version: 8.14.0
-      quickjs-emscripten:
-        specifier: 0.31.0
-        version: 0.31.0
       react:
         specifier: ^18.2.0
         version: 18.3.1

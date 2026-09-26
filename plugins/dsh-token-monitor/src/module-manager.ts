@@ -2,7 +2,7 @@ import { mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import type { ModuleArtifact, ModuleReleaseManifest, ModuleSnapshot, ModuleUninstallRequest } from '@deepseek-ai/dsh-token-monitor-contract'
-import { atomicJson, compareReleaseVersions, removeArtifact, validModuleId, validateManifest, verifyArtifact, type ArtifactRoots } from './module-files.ts'
+import { atomicJson, compareReleaseVersions, removeArtifact, validModuleId, validReleaseVersion, validateManifest, verifyArtifact, type ArtifactRoots } from './module-files.ts'
 import { ModuleCommittedError, ModuleRollbackError, recoverModuleTransaction, type PersistModuleState } from './module-transaction.ts'
 
 interface Removal { preserveData: boolean; preserveConfig?: boolean; preserveHistory?: boolean; pending: boolean; erased?: boolean }
@@ -56,16 +56,29 @@ export class ModuleManager {
     try {
       state = JSON.parse(await readFile(stateFile, 'utf8'))
       if (state.schemaVersion !== 1 || !Number.isSafeInteger(state.revision) || state.revision < 0
-        || state.version !== release.version || !state.removed || typeof state.removed !== 'object' || Array.isArray(state.removed)
+        || !validReleaseVersion(state.version) || compareReleaseVersions(state.version, release.version) > 0
+        || !state.removed || typeof state.removed !== 'object' || Array.isArray(state.removed)
         || typeof state.restartRequired !== 'boolean') throw new Error('INVALID_MODULE_STATE')
       for (const [id, record] of Object.entries(state.removed)) {
         if (!validModuleId(id) || !validRemoval(record)) throw new Error('INVALID_MODULE_STATE')
       }
       if (state.wholePlugin && !validRemoval(state.wholePlugin)) throw new Error('INVALID_MODULE_STATE')
-      if (state.manifest && !sameManifest(validateManifest(state.manifest), release)) throw new Error('RELEASE_CONTENT_CHANGED')
+      if (state.manifest) {
+        const previous = validateManifest(state.manifest)
+        if (previous.version !== state.version || state.version === release.version && !sameManifest(previous, release)) throw new Error('RELEASE_CONTENT_CHANGED')
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       state = { schemaVersion: 1, revision: 0, version: release.version, removed: {}, restartRequired: false, manifest: release }
+      await atomicJson(stateFile, state)
+    }
+    if (state.version !== release.version) {
+      // Package-manager upgrade has already put the new payload on disk.
+      // Preserve tombstones before cleanup removes recopied module files.
+      state.version = release.version
+      state.manifest = release
+      state.restartRequired = false
+      state.revision++
       await atomicJson(stateFile, state)
     }
     const manager = new ModuleManager(release, state, stateFile, roots, lifecycle)

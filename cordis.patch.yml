@@ -1,5 +1,5 @@
 # Standard DSH profile bundle. The patch loads the Host half; package.json's
 # dsh.client declaration makes DSH discover lib/client.js for the Web UI.
 - insert:
-    - id: dsh-damage-pulse
+    - id: dsh-token-monitor
       name: dsh-damage-pulse

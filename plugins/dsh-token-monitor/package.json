@@ -6,7 +6,7 @@
   "description": "dsh plugin: monitor token usage, cost, balance, budget alerts, and whale-girl feedback.",
   "dependencies": {
     "ipaddr.js": "2.5.0",
-    "quickjs-emscripten": "0.32.0",
+    "quickjs-emscripten": "0.31.0",
     "yaml": "^2.8.1"
   }
 }

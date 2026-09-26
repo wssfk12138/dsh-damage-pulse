@@ -49,6 +49,19 @@ describe('physical module lifecycle', () => {
     await ModuleManager.open(f.manifest, f.state, f.roots, f.lifecycle)
     await expect(readFile(join(f.roots.host, 'pet.js'))).rejects.toMatchObject({ code: 'ENOENT' })
   })
+  it('keeps a tombstone when a package-manager upgrade replaces the payload', async () => {
+    const f = await fixture()
+    await f.manager.uninstall({ ids: ['pet'], preserveData: true, expectedRevision: 0 })
+    const next = structuredClone(f.manifest); next.version = '4.0.4'
+    await writeFile(join(f.roots.host, 'pet.js'), 'payload')
+    const upgraded = await ModuleManager.open(next, f.state, f.roots, f.lifecycle)
+    expect(upgraded.snapshot()).toMatchObject({ version: '4.0.4', revision: 2 })
+    expect(upgraded.snapshot().modules.find(m => m.id === 'pet')).toMatchObject({ status: 'removed', autoInstallBlocked: true })
+    await expect(readFile(join(f.roots.host, 'pet.js'))).rejects.toMatchObject({ code: 'ENOENT' })
+    const saved = JSON.parse(await readFile(f.state, 'utf8'))
+    expect(saved.manifest.version).toBe('4.0.4')
+    expect(saved.removed.pet).toBeDefined()
+  })
   it('does not erase newly collected history again when boot cleanup removes recopied files', async () => {
     const f = await fixture()
     await f.manager.uninstall({ ids: ['overview'], preserveData: false, expectedRevision: 0 })
