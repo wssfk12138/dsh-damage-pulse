@@ -1,9 +1,17 @@
 /** Freeze exact model rules and CNY costs at collection time. */
 import { createHash } from 'node:crypto'
 import { emptyBillingRule, type BillingSnapshot, type BillingRules, type BillingModelRule, type BillingApplied } from '@deepseek-ai/dsh-token-monitor-contract'
-import { PRICE_TABLE, type CostBreakdown, type PricingTable } from './pricing.ts'
+import { PRICE_TABLE, isStatutoryHoliday, type CostBreakdown, type PricingTable } from './pricing.ts'
 
 /** Rule identity and settlement facts stored with each usage ledger record. */
+/**
+ * 官方峰谷口径的适用范围：DeepSeek 模型无论由官方供应商还是第三方接入，
+ * 都在中国法定节假日整天空闲、工作日按配置窗口计高峰。
+ */
+function isDeepseekBillingModel(provider: string, model: string): boolean {
+  return provider === 'deepseek-official' || /deepseek/i.test(model)
+}
+
 export interface BillingDecision extends CostBreakdown {
   billingStatus: 'priced' | 'unpriced' | 'disabled'
   billingRuleVersion: number
@@ -75,7 +83,8 @@ export function billUsage(snapshot: BillingSnapshot, usage: { inputTokens: numbe
   if (!rule) return { ...result, billingReason: 'rule-missing' }
   const date = new Date(timestamp + 8 * 3600_000)
   const minute = date.getUTCHours() * 60 + date.getUTCMinutes()
-  const peak = rule.mode === 'peak' && rule.periods.some(period => period.days.includes(date.getUTCDay()) && minute >= period.start && minute < period.end)
+  const statutoryHoliday = isDeepseekBillingModel(provider, rule.model) && isStatutoryHoliday(timestamp)
+  const peak = rule.mode === 'peak' && !statutoryHoliday && rule.periods.some(period => period.days.includes(date.getUTCDay()) && minute >= period.start && minute < period.end)
   const baseRate = rule.mode === 'fixed' ? rule.fixed : peak ? rule.peak : rule.offPeak
   const contextTokens = usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens
   const tiers = rule.mode === 'fixed' ? rule.tiers : (peak ? rule.peakTiers : rule.offPeakTiers) ?? rule.tiers
