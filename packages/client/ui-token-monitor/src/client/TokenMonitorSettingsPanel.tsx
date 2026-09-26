@@ -8,6 +8,8 @@ import {
 } from 'react'
 import {
   TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY,
+  TOKEN_MONITOR_MAX_HEALTH_BAR_CNY,
+  TOKEN_MONITOR_MIN_HEALTH_BAR_CNY,
   type TokenMonitorSettings,
   type TokenMonitorSettingsPatch,
   type TokenMonitorSettingsPatchRequest,
@@ -28,6 +30,7 @@ const CUTE_ASSET_ROOT = '/assets/dsh-token-monitor/settings-ui/cute'
 function cuteAsset(name: string): string { return `${CUTE_ASSET_ROOT}/${name}.png` }
 
 const SETTINGS_KEYS = [
+  'healthBarMaxCny',
   'dailyBudgetEnabled',
   'dailyBudgetCny',
   'budgetExceededNotificationEnabled',
@@ -308,6 +311,7 @@ function actionButtonStyle(disabled: boolean, dangerous = false): CSSProperties 
 export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps): ReactNode {
   const { snapshot } = props
   const [draft, setDraft] = useState<TokenMonitorSettings>(() => ({ ...snapshot.settings }))
+  const [healthBarMaxInput, setHealthBarMaxInput] = useState(() => String(snapshot.settings.healthBarMaxCny))
   const [budgetInput, setBudgetInput] = useState(() => String(snapshot.settings.dailyBudgetCny))
   const [cacheThresholdInput, setCacheThresholdInput] = useState(() => String(snapshot.settings.cacheHitAnomalyThreshold))
   const [cacheCallsInput, setCacheCallsInput] = useState(() => String(snapshot.settings.cacheHitAnomalyConsecutiveCalls))
@@ -335,6 +339,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
 
   useEffect(() => {
     setDraft({ ...snapshot.settings })
+    setHealthBarMaxInput(String(snapshot.settings.healthBarMaxCny))
     setBudgetInput(String(snapshot.settings.dailyBudgetCny))
     setCacheThresholdInput(String(snapshot.settings.cacheHitAnomalyThreshold))
     setCacheCallsInput(String(snapshot.settings.cacheHitAnomalyConsecutiveCalls))
@@ -550,6 +555,12 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     if (saveState === 'saving') return
+    const healthBarMax = Number(healthBarMaxInput)
+    if (!Number.isFinite(healthBarMax) || healthBarMax < TOKEN_MONITOR_MIN_HEALTH_BAR_CNY || healthBarMax > TOKEN_MONITOR_MAX_HEALTH_BAR_CNY
+      || Math.abs(healthBarMax * 100 - Math.round(healthBarMax * 100)) > 1e-9) {
+      setSaveError(`血条满血值必须在 ${String(TOKEN_MONITOR_MIN_HEALTH_BAR_CNY)} 到 ${String(TOKEN_MONITOR_MAX_HEALTH_BAR_CNY)} 之间，且最多两位小数。`)
+      return
+    }
     const budget = Number(budgetInput)
     if (!Number.isFinite(budget) || budget <= 0 || budget > TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY
       || Math.abs(budget * 100 - Math.round(budget * 100)) > 1e-9) {
@@ -560,7 +571,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
     const cacheCalls = Number(cacheCallsInput)
     if (!Number.isInteger(cacheThreshold) || cacheThreshold < 0 || cacheThreshold > 100) { setSaveError('缓存命中率阈值必须是 0 到 100 的整数。'); return }
     if (!Number.isInteger(cacheCalls) || cacheCalls < 2 || cacheCalls > 20) { setSaveError('连续低于次数必须是 2 到 20 的整数。'); return }
-    const normalizedDraft = { ...draft, dailyBudgetCny: budget, cacheHitAnomalyThreshold: cacheThreshold, cacheHitAnomalyConsecutiveCalls: cacheCalls }
+    const normalizedDraft = { ...draft, healthBarMaxCny: healthBarMax, dailyBudgetCny: budget, cacheHitAnomalyThreshold: cacheThreshold, cacheHitAnomalyConsecutiveCalls: cacheCalls }
     const patch: TokenMonitorSettingsPatch = {}
     for (const key of SETTINGS_KEYS) {
       if (normalizedDraft[key] !== snapshot.settings[key]) {
@@ -573,6 +584,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
       const nextSnapshot = await props.onSave({ expectedRevision: snapshot.revision, patch })
       if (!mounted.current) return
       setDraft({ ...nextSnapshot.settings })
+      setHealthBarMaxInput(String(nextSnapshot.settings.healthBarMaxCny))
       setBudgetInput(String(nextSnapshot.settings.dailyBudgetCny))
       setSaveState('saved')
     } catch (error) {
@@ -741,6 +753,24 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
               <span className="token-monitor-settings__budget-row"><input id="cache-hit-anomaly-consecutive" className="token-monitor-settings__budget-input" inputMode="numeric" value={cacheCallsInput} onChange={(event) => { setCacheCallsInput(event.currentTarget.value); setSaveState('idle') }} /><span>次</span></span>
             </label>
           </div>
+        </section>
+
+        <section className="token-monitor-settings__section" style={SECTION} aria-labelledby="health-bar-settings-title">
+          <div id="health-bar-settings-title"><SectionTitle iconName="cute-icon-account-balance" title="余额血条" /></div>
+          <label htmlFor="health-bar-max-cny" className="token-monitor-settings__budget">
+            <span style={{ display: 'block', fontSize: 14, fontWeight: 650 }}>满血值</span>
+            <span className="token-monitor-settings__budget-row">
+              <span aria-hidden="true" style={{ color: '#6874a8' }}>¥</span>
+              <input
+                id="health-bar-max-cny"
+                className="token-monitor-settings__budget-input"
+                inputMode="decimal"
+                value={healthBarMaxInput}
+                onChange={(event) => { setHealthBarMaxInput(event.currentTarget.value); setSaveState('idle'); setSaveError(undefined) }}
+              />
+            </span>
+          </label>
+          <p style={descriptionStyle()}>悬浮卡的余额以血条呈现：余额等于满血值时为满格，花费会逐笔扣血，越低越红，归零即空血。</p>
         </section>
 
         <section className="token-monitor-settings__section token-monitor-settings__section--updates" style={SECTION} aria-labelledby="update-settings-title">

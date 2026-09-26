@@ -251,6 +251,30 @@ describe('TokenMonitorSettingsPanel', () => {
     expect(screen.queryByRole('switch', { name: /显示鲸鱼娘/ })).toBeNull()
   })
 
+  it('edits and saves the health bar full-HP value, rejecting an out-of-range draft', async () => {
+    const onSave = vi.fn().mockResolvedValue({
+      ...snapshot,
+      revision: 8,
+      settings: { ...snapshot.settings, healthBarMaxCny: 250.5 },
+    })
+    renderPanel({ onSave })
+
+    const input = screen.getByRole('textbox', { name: /满血值/ }) as HTMLInputElement
+    expect(input.value).toBe('100')
+
+    // A draft the Host would reject never leaves the panel.
+    fireEvent.change(input, { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存设置' }))
+    expect(onSave).not.toHaveBeenCalled()
+    expect(await screen.findByText(/血条满血值必须在/)).not.toBeNull()
+
+    fireEvent.change(input, { target: { value: '250.5' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存设置' }))
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith({ expectedRevision: 7, patch: { healthBarMaxCny: 250.5 } })
+    })
+  })
+
   it('keeps a failed save visible without reporting success', async () => {
     renderPanel({ onSave: vi.fn().mockRejectedValue(new Error('revision conflict')) })
     fireEvent.click(screen.getByRole('switch', { name: /^微信通知/ }))

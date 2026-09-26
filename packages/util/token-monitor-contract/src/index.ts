@@ -7,12 +7,38 @@
 export const TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION = 3 as const
 export const TOKEN_MONITOR_SETTINGS_MAX_BODY_BYTES = 16 * 1024
 export const TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY = 1_000_000
+/** Upper bound for the balance health-bar ceiling; the bar is a ratio against it. */
+export const TOKEN_MONITOR_MIN_HEALTH_BAR_CNY = 0.01
+export const TOKEN_MONITOR_MAX_HEALTH_BAR_CNY = 1_000_000
 
 export type TokenMonitorDisplayMode = 'balance' | 'spend'
+
+/**
+ * Health-bar palette presets. The wire carries only the id; the Client owns the
+ * concrete gradient, so retuning a palette never needs a settings migration.
+ */
+export const TOKEN_MONITOR_HEALTH_BAR_COLORS = ['red', 'green', 'blue', 'amber', 'violet', 'cyan', 'rose'] as const
+export type TokenMonitorHealthBarColor = (typeof TOKEN_MONITOR_HEALTH_BAR_COLORS)[number]
+
+/**
+ * 扣血特效强度档位。`off` 关掉抖动/冲击环/火花/闪白，但保留飘字与血条扣减——
+ * 那些是信息而不是特效。档位到具体倍率的映射由 Client 拥有。
+ */
+export const TOKEN_MONITOR_DAMAGE_EFFECT_LEVELS = ['off', 'subtle', 'normal', 'strong', 'extreme'] as const
+export type TokenMonitorDamageEffectLevel = (typeof TOKEN_MONITOR_DAMAGE_EFFECT_LEVELS)[number]
 
 /** Stable user-editable settings. Runtime connection state is not persisted here. */
 export interface TokenMonitorSettings {
   displayMode: TokenMonitorDisplayMode
+  /**
+   * Balance that fills the card's health bar completely. The bar drains as the
+   * account is spent, so this is the "full HP" reference, not a spending limit.
+   */
+  healthBarMaxCny: number
+  /** Palette preset for the health bar and its hit effects. */
+  healthBarColor: TokenMonitorHealthBarColor
+  /** How large the per-charge hit effects are drawn. */
+  damageEffectLevel: TokenMonitorDamageEffectLevel
   showWhaleGirl: boolean
   dailyBudgetEnabled: boolean
   dailyBudgetCny: number
@@ -67,6 +93,9 @@ export type ParseResult<T> =
 
 export const DEFAULT_TOKEN_MONITOR_SETTINGS: Readonly<TokenMonitorSettings> = Object.freeze({
   displayMode: 'balance',
+  healthBarMaxCny: 100,
+  healthBarColor: 'red',
+  damageEffectLevel: 'normal',
   showWhaleGirl: true,
   dailyBudgetEnabled: true,
   dailyBudgetCny: 10,
@@ -84,6 +113,9 @@ export const DEFAULT_TOKEN_MONITOR_SETTINGS: Readonly<TokenMonitorSettings> = Ob
 
 export const TOKEN_MONITOR_SETTING_KEYS = Object.freeze([
   'displayMode',
+  'healthBarMaxCny',
+  'healthBarColor',
+  'damageEffectLevel',
   'showWhaleGirl',
   'dailyBudgetEnabled',
   'dailyBudgetCny',
@@ -138,6 +170,24 @@ function validateSettingValue(key: keyof TokenMonitorSettings, value: unknown): 
       return `必须大于 0 且不超过 ${String(TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY)}`
     }
     if (!hasAtMostTwoDecimalPlaces(value)) return '最多保留两位小数'
+  }
+  if (key === 'healthBarMaxCny') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return '必须是有限数字'
+    if (value < TOKEN_MONITOR_MIN_HEALTH_BAR_CNY || value > TOKEN_MONITOR_MAX_HEALTH_BAR_CNY) {
+      return `必须在 ${String(TOKEN_MONITOR_MIN_HEALTH_BAR_CNY)} 到 ${String(TOKEN_MONITOR_MAX_HEALTH_BAR_CNY)} 之间`
+    }
+    if (!hasAtMostTwoDecimalPlaces(value)) return '最多保留两位小数'
+  }
+  if (key === 'healthBarColor') {
+    // 只接受预设 id：具体渐变在 Client，wire 上不接受任意颜色字符串。
+    return typeof value === 'string' && (TOKEN_MONITOR_HEALTH_BAR_COLORS as readonly string[]).includes(value)
+      ? undefined
+      : `只能是 ${TOKEN_MONITOR_HEALTH_BAR_COLORS.join('、')} 之一`
+  }
+  if (key === 'damageEffectLevel') {
+    return typeof value === 'string' && (TOKEN_MONITOR_DAMAGE_EFFECT_LEVELS as readonly string[]).includes(value)
+      ? undefined
+      : `只能是 ${TOKEN_MONITOR_DAMAGE_EFFECT_LEVELS.join('、')} 之一`
   }
   if (key === 'cacheHitAnomalyThreshold') {
     if (typeof value !== 'number' || !Number.isSafeInteger(value)) return '必须是 0 到 100 的整数百分比'

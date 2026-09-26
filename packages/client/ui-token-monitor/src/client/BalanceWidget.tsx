@@ -14,9 +14,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { type TokenMonitorSettingsSnapshot, type TokenMonitorSettingsPatchRequest } from '../../../../util/token-monitor-contract/src/index.ts'
+import { DEFAULT_TOKEN_MONITOR_SETTINGS, TOKEN_MONITOR_DAMAGE_EFFECT_LEVELS, TOKEN_MONITOR_MIN_HEALTH_BAR_CNY, type TokenMonitorDamageEffectLevel, type TokenMonitorHealthBarColor, type TokenMonitorSettingsPatch, type TokenMonitorSettingsSnapshot, type TokenMonitorSettingsPatchRequest } from '../../../../util/token-monitor-contract/src/index.ts'
 import type { RouteEligibilityLoader } from './routeEligibility.ts'
-import { createTokenMonitorSettingsApi } from './settingsApi.ts'
+import { createTokenMonitorSettingsApi, isUnknownSettingFieldError } from './settingsApi.ts'
 import { TokenMonitorSettingsApiError } from './settingsApi.ts'
 import { TokenMonitorSettingsPanel } from './TokenMonitorSettingsPanel.tsx'
 import { createWechatConnectionApi } from './wechatConnectionApi.ts'
@@ -27,6 +27,8 @@ import { useRouteEligibility } from './useRouteEligibility.ts'
 import { WhaleGirlStage, type WhalePose as AnimatedWhalePose } from './WhaleGirlStage.tsx'
 import { isPeakPeriod } from './peakPeriod.ts'
 import { applyDebitToDisplay } from './balanceMath.ts'
+import { HEALTH_BAR_PALETTES, healthBarPalette } from './healthBarPalette.ts'
+import { damageMagnitude, damageVisuals, sampleDirections, applyEffectLevel, DAMAGE_EFFECT_LABELS, MIN_MAGNITUDE, type DamageKind } from './damageScale.ts'
 
 type BalanceWidgetProps = PropsRuntime<'shell.overlay'> & {
   loadRouteEligibility?: RouteEligibilityLoader
@@ -74,6 +76,28 @@ const WHALE_ASSET_ROOT = '/assets/dsh-token-monitor/whale-girl'
 type WhalePose = AnimatedWhalePose
 const DEATH_ASSET = `${WHALE_ASSET_ROOT}/death-stranded-v6-trim.png`
 
+/**
+ * 余额血条：余额占「满血值」的比例就是血条长度，扣费逐笔扣血，充值回血。
+ * 配色来自用户在右键菜单里选的预设（见 healthBarPalette.ts），默认经典红；
+ * 扣血的轻重不用换色表达，而是交给特效强度。
+ */
+/** 回血用的绿色冲击环与火花，与血条自身配色无关。 */
+const HEALTH_HEAL = 'rgba(126, 255, 178, 0.95)'
+
+/** 空血阈值：到达该比例后血条开始脉动告警。 */
+const HEALTH_CRITICAL_RATIO = 0.2
+const HEALTH_BAR_HEIGHT = 11
+/** 一次受击特效的存活时间，与冲击环/火花动画时长对齐。 */
+const BURST_MS = 460
+
+/** 血条分段刻度：十格，和游戏血量条的读数习惯一致。 */
+const HEALTH_BAR_TICKS: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  pointerEvents: 'none',
+  backgroundImage: 'repeating-linear-gradient(90deg, transparent 0, transparent calc(10% - 1px), rgba(255,255,255,0.16) calc(10% - 1px), rgba(255,255,255,0.16) 10%)',
+}
+
 /** 附件参考节奏：扣费文字以最终字号快速显现，平稳上飘后渐隐。 */
 const KEYFRAMES = `
 @keyframes tkm-impact-float {
@@ -88,10 +112,29 @@ const KEYFRAMES = `
   35%  { opacity: 1; transform: translate3d(0, -6px, 0); }
   100% { opacity: 0; transform: translate3d(0, -30px, 0); }
 }
+@keyframes tkm-health-critical {
+  0%, 100% { box-shadow: inset 0 1px 3px rgba(0,0,0,0.55), 0 0 0 0 rgba(255,59,48,0); border-color: rgba(255,255,255,0.16); }
+  50%      { box-shadow: inset 0 1px 3px rgba(0,0,0,0.55), 0 0 10px 1px rgba(255,59,48,0.72); border-color: rgba(255,96,84,0.62); }
+}
+/* 受击冲击环：从扣血位置炸开一圈，随后消失。 */
+@keyframes tkm-health-shock {
+  0%   { opacity: .95; transform: translate(-50%, -50%) scale(.3); }
+  70%  { opacity: .45; }
+  100% { opacity: 0;   transform: translate(-50%, -50%) scale(2.7); }
+}
+/* 受击火花：方向由 --tkm-spark-x / --tkm-spark-y 给出，一套关键帧覆盖六个方向。 */
+@keyframes tkm-health-spark {
+  0%   { opacity: 1; transform: translate(-50%, -50%) translate3d(0, 0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate3d(var(--tkm-spark-x, 0px), var(--tkm-spark-y, 0px), 0) scale(.25); }
+}
 @media (prefers-reduced-motion: reduce) {
   .tkm-impact-float {
     animation: tkm-impact-float-reduced 180ms ease-out forwards !important;
   }
+  [data-token-monitor-health-bar] { animation: none !important; }
+  [data-token-monitor-health-bar] > [data-health-fill] { transition: none !important; }
+  [data-health-trail] { transition: none !important; }
+  [data-health-burst] { display: none !important; }
 }
 `
 
@@ -192,9 +235,9 @@ interface FloatAnim {
   color: 'red' | 'green'
   damageKind: DamageKind
   label?: '命中' | '未命中' | '输出'
+  /** 扣血特效倍率，决定飘字字号。 */
+  magnitude: number
 }
-
-type DamageKind = 'normal' | 'miss' | 'output'
 
 interface PendingFloat {
   eventId: string
@@ -204,8 +247,37 @@ interface PendingFloat {
   kind: DamageKind
   label?: FloatAnim['label']
   debit?: number
+  /** 这一笔的金额（元），只用于决定特效强度；回血时是充值额。 */
+  amount?: number
   suppressWhaleReaction?: boolean
 }
+
+/** 除事件本身外还能带上的信息；用对象而不是继续加位置参数，避免调用点出现一长串 undefined。 */
+interface TriggerOptions {
+  label?: FloatAnim['label']
+  seq?: number
+  debit?: number
+  /** 这一笔的金额（元），用于决定特效强度。 */
+  amount?: number
+  suppressWhaleReaction?: boolean
+}
+
+/** 满血值：设置未到达或不可用时回落到共享默认值。 */
+function resolveHealthMax(settings: TokenMonitorSettingsSnapshot | undefined): number {
+  const configured = settings?.settings.healthBarMaxCny
+  return typeof configured === 'number' && Number.isFinite(configured) && configured >= TOKEN_MONITOR_MIN_HEALTH_BAR_CNY
+    ? configured
+    : DEFAULT_TOKEN_MONITOR_SETTINGS.healthBarMaxCny
+}
+
+/**
+ * 扣血火花方向环：十个方向等分一圈。取用数量随扣血多少变化，
+ * 采样时按角度等分，避免截断前 N 个让火花全挤在一侧。
+ */
+const HEALTH_SPARKS: ReadonlyArray<{ x: number; y: number }> = [
+  { x: 2, y: -17 }, { x: 13, y: -13 }, { x: 18, y: -4 }, { x: 17, y: 7 }, { x: 8, y: 14 },
+  { x: -3, y: 16 }, { x: -13, y: 12 }, { x: -18, y: 3 }, { x: -16, y: -9 }, { x: -9, y: -15 },
+]
 
 interface RawChargeEvent {
   id?: string
@@ -241,6 +313,8 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   // 余额数字闪烁：'red' 扣费 / 'green' 加费 / null 正常。
   const [flash, setFlash] = useState<'red' | 'green' | null>(null)
   const [anims, setAnims] = useState<FloatAnim[]>([])
+  /** 每次扣血/回血重挂一次受击特效层：key 变化即重播 CSS 动画。 */
+  const [hitBurst, setHitBurst] = useState<{ id: number; color: 'red' | 'green'; magnitude: number } | null>(null)
   const [whalePose, setWhalePose] = useState<WhalePose>('idle')
   const [whaleImpactPulse, setWhaleImpactPulse] = useState(0)
   const [reviving, setReviving] = useState(false)
@@ -264,6 +338,9 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   // 扣费游标是否已建立基线：首次拉取只取当前 seq（余额接口值已含历史扣费），跳过历史 events。
   const chargeSeeded = useRef(false)
   const animId = useRef(0)
+  const burstId = useRef(0)
+  const burstTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const healthBarRef = useRef<HTMLDivElement>(null)
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const animTimers = useRef<Set<ReturnType<typeof setTimeout>>>(new Set())
   const animQueue = useRef<PendingFloat[]>([])
@@ -290,8 +367,9 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     event.preventDefault()
     dragStart.current = null
     setDragging(false)
-    const menuWidth = 176
-    const menuHeight = 160
+    const menuWidth = 200
+    // 首帧的估算高度（含血条颜色色板与特效档位）；随后由渲染后的实测尺寸再夹一次。
+    const menuHeight = 300
     setContextMenu({
       left: clamp(event.clientX, 4, Math.max(4, window.innerWidth - menuWidth - 4)),
       top: clamp(event.clientY, 4, Math.max(4, window.innerHeight - menuHeight - 4)),
@@ -412,27 +490,52 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   }, [applySettingsSnapshot])
 
   /**
-   * 鲸鱼娘显示开关以 Host 设置为唯一所有者：先写入 Host，再由返回的权威快照更新
-   * 本地状态。localStorage 退化为首帧缓存（只由 applySettingsSnapshot 写入），
-   * 否则本地写入会被随后的焦点刷新/打开详细设置覆盖，表现为「取消勾选后自己变回勾选」。
+   * 菜单里的单项设置写入：先写 Host，再由返回的权威快照更新界面。
+   * 失败不能静默——错误本身分不清「Host 未落盘」与「已落盘但响应丢失」，
+   * 因此回读一次权威快照对齐界面，并给出可见提示（原来空 catch 表现为点了没反应）。
    */
-  const toggleWhaleGirl = useCallback(() => {
-    setContextMenu(null)
-    const next = !showWhaleGirlRef.current
+  const saveSettingsPatch = useCallback((patch: TokenMonitorSettingsPatch, failureNotice: string) => {
     void saveSettings({
       ...(settingsRef.current === undefined ? {} : { expectedRevision: settingsRef.current.revision }),
-      patch: { showWhaleGirl: next },
-    }).catch(async () => {
-      // 写入失败不能静默：错误本身分不清「Host 未落盘」与「已落盘但响应丢失」，
-      // 因此回读一次权威快照对齐界面，并给出可见提示（原来空 catch 表现为点了没反应）。
+      patch,
+    }).catch(async (error: unknown) => {
+      // 宿主不认识这个字段时，回读快照也必然失败（整份快照过不了契约校验），
+      // 套用「已按服务器上的值恢复」会误导：真正要做的是重启 DSH 让宿主对齐。
+      if (isUnknownSettingFieldError(error)) {
+        showSettingsNotice('宿主插件比当前页面旧，重启 DSH 后可保存该项设置')
+        return
+      }
       try {
         applySettingsSnapshot(await settingsApi.get())
-        showSettingsNotice('设置保存失败，已按服务器上的值恢复。')
+        showSettingsNotice(`${failureNotice}，已按服务器上的值恢复。`)
       } catch {
-        showSettingsNotice('设置保存失败，请稍后重试。')
+        showSettingsNotice(`${failureNotice}，请稍后重试。`)
       }
     })
   }, [applySettingsSnapshot, saveSettings, showSettingsNotice])
+
+  /**
+   * 鲸鱼娘显示开关以 Host 设置为唯一所有者：localStorage 退化为首帧缓存
+   * （只由 applySettingsSnapshot 写入），否则本地写入会被随后的焦点刷新/打开详细
+   * 设置覆盖，表现为「取消勾选后自己变回勾选」。
+   */
+  const toggleWhaleGirl = useCallback(() => {
+    setContextMenu(null)
+    saveSettingsPatch({ showWhaleGirl: !showWhaleGirlRef.current }, '设置保存失败')
+  }, [saveSettingsPatch])
+
+  /**
+   * 换血条配色。菜单保持打开：用户可以连着点几个颜色当场比，选中态由 Host 快照回填，
+   * 不依赖本地乐观状态，避免写入失败时菜单显示的颜色和血条实际颜色不一致。
+   */
+  const chooseHealthBarColor = useCallback((color: TokenMonitorHealthBarColor) => {
+    saveSettingsPatch({ healthBarColor: color }, '血条颜色保存失败')
+  }, [saveSettingsPatch])
+
+  /** 换扣血特效档位；同样保持菜单打开，方便对着下一笔扣费直接比。 */
+  const chooseDamageEffectLevel = useCallback((level: TokenMonitorDamageEffectLevel) => {
+    saveSettingsPatch({ damageEffectLevel: level }, '扣血特效设置保存失败')
+  }, [saveSettingsPatch])
 
   /** 卡片完整约束在视口内。 */
   const constrainPos = useCallback((next: { left: number; top: number }) => {
@@ -518,15 +621,45 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     ], { duration: strong ? 620 : 440, easing: 'cubic-bezier(.2,.86,.25,1)', fill: 'forwards' })
   }, [])
 
+  /**
+   * 血条受击抖动：位移与时长都由扣血倍率给出，掉得多就抖得更狠更久。
+   * 抖动放在血条容器上，与鲸鱼娘受击、数字回弹同一帧发生，冲击感才对得起来。
+   */
+  const pulseHealthBar = useCallback((color: 'red' | 'green', magnitude: number) => {
+    const node = healthBarRef.current
+    if (magnitude <= 0) return
+    if (node === null || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const visuals = damageVisuals(magnitude)
+    // 回血是好事，抖动收窄成轻快的一下，不跟扣血一样砸。
+    const amplitude = color === 'green' ? 1.4 : visuals.shakeAmplitude
+    const duration = color === 'green' ? 240 : visuals.shakeDuration
+    node.animate([
+      { transform: 'translate3d(0,0,0)' },
+      { transform: `translate3d(${String(-amplitude)}px,0,0)`, offset: .12 },
+      { transform: `translate3d(${String(amplitude)}px,0,0)`, offset: .3 },
+      { transform: `translate3d(${String(-amplitude * .55)}px,0,0)`, offset: .5 },
+      { transform: `translate3d(${String(amplitude * .35)}px,0,0)`, offset: .7 },
+      { transform: 'translate3d(0,0,0)' },
+    ], { duration, easing: 'ease-out' })
+  }, [])
+
   /** 将一条反馈真正发射到共同轨道。 */
   const emit = useCallback((pending: PendingFloat) => {
-    const { eventId, seq, text, color, kind, label, debit, suppressWhaleReaction = false } = pending
+    const { eventId, seq, text, color, kind, label, debit, amount, suppressWhaleReaction = false } = pending
     const id = ++animId.current
+    // 特效强度只看这一笔掉了多少（占血条的比例用当前的满血值算），再按用户档位缩放；
+    // 「掉得多 → 特效更重」对任何满血值与档位组合都成立。
+    const effectLevel = settingsRef.current?.settings.damageEffectLevel ?? DEFAULT_TOKEN_MONITOR_SETTINGS.damageEffectLevel
+    const magnitude = applyEffectLevel(
+      damageMagnitude(kind, amount ?? debit, (amount ?? debit ?? 0) / resolveHealthMax(settingsRef.current)),
+      effectLevel,
+    )
     const next = {
       eventId,
       text,
       color,
       damageKind: kind,
+      magnitude,
       ...(seq === undefined ? {} : { seq }),
       ...(label === undefined ? {} : { label }),
     }
@@ -561,6 +694,18 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     }
     setFlash(color)
     pulseBalance(kind)
+    // 关闭档不产生任何受击特效：抖动、冲击环、火花、闪白统统跳过，
+    // 飘字与血条扣减照旧——那是信息，不是特效。
+    pulseHealthBar(color, magnitude)
+    if (magnitude > 0) {
+      // 受击特效层靠 key 变化重播；连续扣费时直接换 key，不排队也不丢帧。
+      setHitBurst({ id: ++burstId.current, color, magnitude })
+      if (burstTimer.current !== undefined) clearTimeout(burstTimer.current)
+      burstTimer.current = setTimeout(() => {
+        burstTimer.current = undefined
+        setHitBurst(null)
+      }, BURST_MS)
+    }
     if (flashTimer.current !== undefined) clearTimeout(flashTimer.current)
     flashTimer.current = setTimeout(() => setFlash(null), FLASH_MS)
     const timer = setTimeout(() => {
@@ -568,7 +713,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
       setAnims((list) => list.filter((anim) => anim.id !== id))
     }, FLOAT_MS)
     animTimers.current.add(timer)
-  }, [pulseBalance])
+  }, [pulseBalance, pulseHealthBar])
 
   /** FIFO 发射器：首条立即出现，后续按指定 GIF 的约 450ms 节奏发射。 */
   const drainQueue = useCallback(function drain() {
@@ -592,11 +737,9 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
     text: string,
     color: 'red' | 'green',
     kind: DamageKind = 'normal',
-    label?: FloatAnim['label'],
-    seq?: number,
-    debit?: number,
-    suppressWhaleReaction = false,
+    options: TriggerOptions = {},
   ) => {
+    const { label, seq, debit, amount, suppressWhaleReaction = false } = options
     animQueue.current.push({
       eventId,
       text,
@@ -605,6 +748,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
       ...(seq === undefined ? {} : { seq }),
       ...(label === undefined ? {} : { label }),
       ...(debit === undefined ? {} : { debit }),
+      ...(amount === undefined ? {} : { amount }),
       ...(suppressWhaleReaction ? { suppressWhaleReaction } : {}),
     })
     // 队列非空且没有在跑的发射链就启动，避免残留的定时器 id 让后续反馈永远排不出去。
@@ -613,6 +757,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
 
   useEffect(() => () => {
     if (flashTimer.current !== undefined) clearTimeout(flashTimer.current)
+    if (burstTimer.current !== undefined) clearTimeout(burstTimer.current)
     if (queueTimer.current !== undefined) {
       clearTimeout(queueTimer.current)
       queueTimer.current = undefined
@@ -740,7 +885,12 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
           }
           for (const part of parts) {
             if (!Number.isFinite(part.cost) || part.cost <= 0) continue
-            trigger(`${eventId}-${part.suffix}`, `-${fmtCost(part.cost)}¥`, 'red', part.kind, part.label, event.seq, part.cost)
+            trigger(`${eventId}-${part.suffix}`, `-${fmtCost(part.cost)}¥`, 'red', part.kind, {
+              label: part.label,
+              seq: event.seq,
+              debit: part.cost,
+              amount: part.cost,
+            })
           }
         }
       } catch {
@@ -783,10 +933,11 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
               `+${fmtCost(data.totalBalance - previousSnapshot)}¥`,
               'green',
               'normal',
-              undefined,
-              undefined,
-              undefined,
-              crossedFromDepleted,
+              {
+                // 充值额同时决定回血特效的强度：充得多，回血也更明显。
+                amount: data.totalBalance - previousSnapshot,
+                suppressWhaleReaction: crossedFromDepleted,
+              },
             )
           }
           if (crossedFromDepleted && showWhaleGirlRef.current) {
@@ -894,6 +1045,25 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
   const balanceAvailable = balanceInfo !== undefined && balanceInfo !== null && !error
   const shownBalance = display ?? balanceInfo?.totalBalance ?? 0
   const depleted = balanceAvailable && shownBalance <= 0
+  // 满血值来自设置；设置尚未到达或不可用时回落到共享默认值，血条先按 100 元满格渲染。
+  const healthMax = resolveHealthMax(settingsSnapshot)
+  // 配色同样以 Host 快照为准；设置未到达时按默认红色渲染，菜单选中态也据此回填。
+  const healthBarColor = settingsSnapshot?.settings.healthBarColor ?? DEFAULT_TOKEN_MONITOR_SETTINGS.healthBarColor
+  const palette = healthBarPalette(healthBarColor)
+  // 特效档位同样以 Host 快照为准，菜单选中态据此回填。
+  const damageEffectLevel = settingsSnapshot?.settings.damageEffectLevel ?? DEFAULT_TOKEN_MONITOR_SETTINGS.damageEffectLevel
+  // 本次受击特效的全部尺寸都由倍率推出，扣血多少 → 特效多重只有一处定义。
+  const burstVisuals = damageVisuals(hitBurst?.magnitude ?? MIN_MAGNITUDE)
+  // 透支（负数余额）按空血显示；超过满血值时血条封顶，数字仍显示真实余额。
+  const healthRatio = balanceAvailable ? clamp(shownBalance / healthMax, 0, 1) : 0
+  // 百分比先取两位小数再进 DOM：ratio * 100 会带出 7.000000000000001 这类浮点尾数。
+  const healthPercent = Math.round(healthRatio * 10_000) / 100
+  const healthCritical = balanceAvailable && !depleted && healthRatio <= HEALTH_CRITICAL_RATIO
+  // 只在能取到余额时才渲染血条，因此这里只有三种可呈现的状态。
+  const healthState = depleted ? 'empty' : healthCritical ? 'critical' : healthRatio > 0.5 ? 'healthy' : 'low'
+  const healthLabel = balanceAvailable
+    ? `${balanceInfo.currency} ${shownBalance.toFixed(2)} / ${healthMax.toFixed(2)}`
+    : ''
   const onWhalePoseComplete = (completedPose: WhalePose) => {
     if (completedPose !== 'revive-recharge' || !revivingRef.current) return
     revivingRef.current = false
@@ -907,7 +1077,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
       data-token-monitor-balance=""
       data-showcase-instance={previewOverride?.instanceId}
       data-showcase-peak={isPeak ? 'peak' : 'valley'}
-      title="DeepSeek 账户余额（扣费实时、余额 60s 校准；可拖动）"
+      title="DeepSeek 账户余额血条（满血值可在详细设置里调整；扣费实时、余额 60s 校准；可拖动）"
       tabIndex={0}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
@@ -934,7 +1104,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
             position: 'fixed',
             left: contextMenu.left,
             top: contextMenu.top,
-            minWidth: 176,
+            minWidth: 200,
             padding: 6,
             borderRadius: 6,
             background: 'var(--dsh-color-surface-overlay, rgba(28, 28, 28, 0.96))',
@@ -961,6 +1131,74 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
             <span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>{showWhaleGirl ? '✓' : ''}</span>
             <span>显示鲸鱼娘</span>
           </button>
+          <div style={{ padding: '4px 8px 5px', fontSize: 11, opacity: 0.65 }}>血条颜色</div>
+          <div
+            role="group"
+            aria-label="血条颜色"
+            style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '0 8px 6px' }}
+          >
+            {HEALTH_BAR_PALETTES.map((entry) => {
+              const active = entry.id === healthBarColor
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={active}
+                  aria-label={`血条颜色：${entry.label}`}
+                  title={entry.label}
+                  data-health-color-option={entry.id}
+                  onClick={() => { chooseHealthBarColor(entry.id) }}
+                  style={{
+                    width: 20,
+                    height: 20,
+                    padding: 0,
+                    borderRadius: '50%',
+                    border: active ? '2px solid #fff' : '1px solid rgba(255,255,255,0.35)',
+                    background: entry.fill,
+                    boxShadow: active ? `0 0 8px ${entry.glow}` : 'none',
+                    cursor: 'pointer',
+                  }}
+                />
+              )
+            })}
+          </div>
+          <div style={{ padding: '4px 8px 5px', fontSize: 11, opacity: 0.65 }}>扣血特效</div>
+          <div
+            role="radiogroup"
+            aria-label="扣血特效强度"
+            style={{ display: 'flex', gap: 3, padding: '0 8px 6px' }}
+          >
+            {TOKEN_MONITOR_DAMAGE_EFFECT_LEVELS.map((level) => {
+              const active = level === damageEffectLevel
+              return (
+                <button
+                  key={level}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  aria-label={`扣血特效强度：${DAMAGE_EFFECT_LABELS[level]}`}
+                  title={DAMAGE_EFFECT_LABELS[level]}
+                  data-damage-effect-option={level}
+                  onClick={() => { chooseDamageEffectLevel(level) }}
+                  style={{
+                    flex: '1 1 0',
+                    minWidth: 0,
+                    padding: '3px 0',
+                    fontSize: 11,
+                    font: 'inherit',
+                    borderRadius: 6,
+                    border: active ? '1px solid #79b8ff' : '1px solid rgba(255,255,255,0.2)',
+                    background: active ? 'rgba(121,184,255,0.24)' : 'transparent',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                  }}
+                >
+                  {DAMAGE_EFFECT_LABELS[level]}
+                </button>
+              )
+            })}
+          </div>
           <button
             type="button"
             role="menuitem"
@@ -1088,7 +1326,7 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
                 alignItems: 'baseline',
                 justifyContent: 'center',
                 gap: anim.damageKind === 'miss' ? 5 : 4,
-                fontSize: anim.damageKind === 'miss' ? 23 : FLOAT.fontSize,
+                fontSize: damageVisuals(anim.magnitude).floatFontSize,
                 fontWeight: 800,
                 animation: FLOAT.animation,
                 textShadow: anim.damageKind === 'miss'
@@ -1166,7 +1404,11 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
           {settingsNotice}
         </div>
       )}
-      <div style={{ position: 'relative', zIndex: 4 }} data-token-monitor-display="">
+      <div
+        style={{ position: 'relative', zIndex: 4, display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'stretch' }}
+        data-token-monitor-display=""
+      >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       {'余额'}{' '}
       <span
         style={{
@@ -1187,14 +1429,14 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
           }}
         >
           {balanceAvailable
-            ? <>{balanceInfo.currency} {shownBalance.toFixed(2)}</>
+            ? <>{balanceInfo.currency} {shownBalance.toFixed(2)}{' / '}{healthMax.toFixed(2)}</>
             : <>未配置 API Key 或查询失败</>}
         </span>
       </span>
       <span
         style={{
           fontWeight: 700,
-          marginLeft: 6,
+          marginLeft: 'auto',
           color: isPeak ? RED : GREEN,
           textShadow: isPeak
             ? '0 0 6px rgba(255,59,48,0.9), 0 0 14px rgba(255,59,48,0.55)'
@@ -1204,6 +1446,168 @@ export function BalanceWidget({ previewOverride, loadRouteEligibility, useSessio
       >
         {isPeak ? '峰' : '谷'}
       </span>
+      </div>
+      {balanceAvailable && (
+        // 外层不裁剪，受击冲击环与火花才能炸出血条之外；内层才是被裁剪的血条本体。
+        // 抖动加在外层，特效与血条同帧位移。
+        <div ref={healthBarRef} style={{ position: 'relative', width: '100%' }}>
+        <div
+          data-token-monitor-health-bar=""
+          data-health-state={healthState}
+          data-health-color={palette.id}
+          data-health-ratio={healthRatio.toFixed(4)}
+          role="progressbar"
+          aria-label="余额血条"
+          aria-valuemin={0}
+          aria-valuemax={healthMax}
+          aria-valuenow={clamp(shownBalance, 0, healthMax)}
+          aria-valuetext={healthLabel}
+          style={{
+            position: 'relative',
+            width: '100%',
+            height: HEALTH_BAR_HEIGHT,
+            borderRadius: HEALTH_BAR_HEIGHT / 2,
+            border: '1px solid rgba(255,255,255,0.16)',
+            background: 'rgba(8, 10, 16, 0.72)',
+            boxShadow: `inset 0 1px 3px rgba(0,0,0,0.55), 0 0 6px ${palette.glow}`,
+            overflow: 'hidden',
+            ...(healthCritical ? { animation: 'tkm-health-critical 1.5s ease-in-out infinite' } : {}),
+          }}
+        >
+          {/* 延迟残影：同一进度但过渡晚 220ms，于是被扣掉的那一段先亮着再被追平。 */}
+          <div
+            aria-hidden="true"
+            data-health-trail=""
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${String(healthPercent)}%`,
+              background: palette.trail,
+              opacity: 0.85,
+              transition: 'width 520ms cubic-bezier(.2,.8,.2,1) 220ms',
+            }}
+          />
+          <div
+            data-health-fill=""
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: `${String(healthPercent)}%`,
+              background: palette.fill,
+              boxShadow: `0 0 9px ${palette.glow}`,
+              transition: 'width 480ms cubic-bezier(.2,.8,.2,1)',
+            }}
+          />
+          <div aria-hidden="true" style={HEALTH_BAR_TICKS} />
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              height: '46%',
+              background: 'linear-gradient(180deg, rgba(255,255,255,0.32), rgba(255,255,255,0))',
+              pointerEvents: 'none',
+            }}
+          />
+          {/* 整条闪白：颜色取自 flash，是否存在与多亮取自受击层。
+              两者分开是必要的——关闭档下 flash 仍会亮（数字要变色），但受击层不存在，
+              所以这里以 hitBurst 为准，否则关闭档还会闪一下整条。 */}
+          <div
+            aria-hidden="true"
+            data-health-screen-flash={flash ?? 'none'}
+            style={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              opacity: hitBurst === null ? 0 : burstVisuals.flashOpacity,
+              background: flash === 'green' ? 'rgba(150,255,196,0.85)' : '#fff',
+              transition: 'opacity 150ms ease-out',
+            }}
+          />
+          {/* 扣费闪光落在血条前沿（正在退去的那一格），充值则在新回血的边缘亮起。 */}
+          <div
+            aria-hidden="true"
+            data-health-flash={flash ?? 'none'}
+            style={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: `${String(healthPercent)}%`,
+              width: 14,
+              marginLeft: -14,
+              pointerEvents: 'none',
+              opacity: flash === null ? 0 : 1,
+              background: flash === 'green'
+                ? 'linear-gradient(90deg, rgba(126,255,178,0) 0%, rgba(126,255,178,0.92) 100%)'
+                : 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.9) 100%)',
+              transition: 'opacity 160ms ease-out, left 480ms cubic-bezier(.2,.8,.2,1)',
+            }}
+          />
+        </div>
+        {hitBurst !== null && (
+          <div
+            key={hitBurst.id}
+            aria-hidden="true"
+            data-health-burst={hitBurst.color}
+            data-health-burst-magnitude={hitBurst.magnitude.toFixed(2)}
+            style={{
+              position: 'absolute',
+              left: `${String(healthPercent)}%`,
+              top: '50%',
+              width: 0,
+              height: 0,
+              zIndex: 3,
+              pointerEvents: 'none',
+              overflow: 'visible',
+            }}
+          >
+            {/* 冲击环：直径随扣血倍率增长 */}
+            <span
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: burstVisuals.ringSize,
+                height: burstVisuals.ringSize,
+                border: `2px solid ${hitBurst.color === 'green' ? HEALTH_HEAL : palette.light}`,
+                borderRadius: '50%',
+                boxShadow: `0 0 10px ${hitBurst.color === 'green' ? 'rgba(126,255,178,0.75)' : palette.glow}`,
+                animation: `tkm-health-shock ${String(BURST_MS)}ms cubic-bezier(.15,.7,.3,1) forwards`,
+              }}
+            />
+            {/* 火花：数量、尺寸与飞散距离都随扣血倍率变化，方向由 CSS 变量给出 */}
+            {sampleDirections(HEALTH_SPARKS, burstVisuals.sparkCount).map((spark, index) => {
+              // 扣血向外炸开；回血整体上飘，读起来才像「涨回来」。
+              const dy = hitBurst.color === 'green' ? spark.y - 14 : spark.y
+              return (
+                <span
+                  key={index}
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: 0,
+                    width: burstVisuals.sparkSize,
+                    height: burstVisuals.sparkSize,
+                    borderRadius: '50%',
+                    background: hitBurst.color === 'green' ? '#c8ffdd' : palette.light,
+                    boxShadow: `0 0 6px ${hitBurst.color === 'green' ? 'rgba(126,255,178,0.9)' : palette.glow}`,
+                    '--tkm-spark-x': `${String(spark.x * burstVisuals.magnitude)}px`,
+                    '--tkm-spark-y': `${String(dy * burstVisuals.magnitude)}px`,
+                    animation: `tkm-health-spark ${String(BURST_MS)}ms cubic-bezier(.2,.7,.35,1) forwards`,
+                  } as React.CSSProperties}
+                />
+              )
+            })}
+          </div>
+        )}
+        </div>
+      )}
       </div>
     </div>
   )

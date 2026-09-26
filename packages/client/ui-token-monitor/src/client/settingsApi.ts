@@ -26,6 +26,22 @@ export class TokenMonitorSettingsProtocolError extends Error {
   }
 }
 
+/**
+ * 宿主拒绝了补丁里的字段，理由是「未知设置字段」。
+ *
+ * 这只可能发生在「内存里的宿主插件比页面上的客户端旧」：客户端发得出这个字段，
+ * 说明契约里有它；宿主说不知道，说明它加载的是更早的构建。页面刷新会重新取客户端
+ * bundle，但宿主插件只在进程启动时加载一次，所以刷新页面并不足以对齐两半。
+ *
+ * 这类失败下回读快照也一定会失败（整份快照都过不了契约校验），调用方应当直接
+ * 给出「重启 DSH」的行动建议，而不是套用通用的「已按服务器上的值恢复」。
+ */
+export function isUnknownSettingFieldError(error: unknown): boolean {
+  return error instanceof TokenMonitorSettingsApiError
+    && error.code === 'VALIDATION_ERROR'
+    && Object.values(error.fields ?? {}).some(message => message.includes('未知设置字段'))
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

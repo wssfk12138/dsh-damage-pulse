@@ -10,13 +10,19 @@ import {
 } from '@deepseek-ai/dsh-settings'
 import {
   DEFAULT_TOKEN_MONITOR_SETTINGS,
+  TOKEN_MONITOR_DAMAGE_EFFECT_LEVELS,
+  TOKEN_MONITOR_HEALTH_BAR_COLORS,
   TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY,
+  TOKEN_MONITOR_MAX_HEALTH_BAR_CNY,
+  TOKEN_MONITOR_MIN_HEALTH_BAR_CNY,
   TOKEN_MONITOR_SETTINGS_MAX_BODY_BYTES,
   TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION,
   UnsupportedTokenMonitorSettingsVersionError,
   parseTokenMonitorSettingsPatchRequest,
   pickPublicTokenMonitorSettings,
   planTokenMonitorSettingsMigration,
+  type TokenMonitorDamageEffectLevel,
+  type TokenMonitorHealthBarColor,
   type TokenMonitorSettingsErrorCode,
   type TokenMonitorSettingsErrorResponse,
   type TokenMonitorSettingsPatchRequest,
@@ -32,6 +38,9 @@ export interface TokenMonitorStoredSettings {
   schemaVersion: number
   priceTable: PricingTable
   displayMode: 'balance' | 'spend'
+  healthBarMaxCny: number
+  healthBarColor: TokenMonitorHealthBarColor
+  damageEffectLevel: TokenMonitorDamageEffectLevel
   showWhaleGirl: boolean
   dailyBudgetEnabled: boolean
   dailyBudgetCny: number
@@ -52,6 +61,12 @@ const settingsSchema: z<TokenMonitorStoredSettings> = z.object({
   // Internal pricing override: intentionally omitted from the public settings API.
   priceTable: z.any().default(PRICE_TABLE),
   displayMode: z.union(['balance', 'spend'] as const).default(DEFAULT_TOKEN_MONITOR_SETTINGS.displayMode),
+  healthBarMaxCny: z.number()
+    .min(TOKEN_MONITOR_MIN_HEALTH_BAR_CNY)
+    .max(TOKEN_MONITOR_MAX_HEALTH_BAR_CNY)
+    .default(DEFAULT_TOKEN_MONITOR_SETTINGS.healthBarMaxCny),
+  healthBarColor: z.union([...TOKEN_MONITOR_HEALTH_BAR_COLORS]).default(DEFAULT_TOKEN_MONITOR_SETTINGS.healthBarColor),
+  damageEffectLevel: z.union([...TOKEN_MONITOR_DAMAGE_EFFECT_LEVELS]).default(DEFAULT_TOKEN_MONITOR_SETTINGS.damageEffectLevel),
   showWhaleGirl: z.boolean().default(DEFAULT_TOKEN_MONITOR_SETTINGS.showWhaleGirl),
   dailyBudgetEnabled: z.boolean().default(DEFAULT_TOKEN_MONITOR_SETTINGS.dailyBudgetEnabled),
   dailyBudgetCny: z.number()

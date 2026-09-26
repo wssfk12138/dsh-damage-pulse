@@ -133,6 +133,67 @@ describe('Token Monitor settings Host API', () => {
     expect(await conflict.json()).toMatchObject({ error: { code: 'CONFLICT' } })
   })
 
+  it('round-trips a health bar colour preset and rejects a non-preset', async () => {
+    const { provider, registration } = await boot()
+    const endpoint = `${await serve(createTokenMonitorSettingsRouteHandler(
+      createTokenMonitorSettingsController(provider, registration.scope),
+    ))}/api/token-monitor/settings`
+
+    const initial = await (await fetch(endpoint)).json() as {
+      revision: number
+      settings: { healthBarColor: string; healthBarMaxCny: number }
+    }
+    // 旧配置没有这个字段时，schema 默认值必须补上，否则客户端换色无从选择。
+    expect(initial.settings.healthBarColor).toBe('red')
+
+    const changed = await (await fetch(endpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedRevision: initial.revision, patch: { healthBarColor: 'cyan' } }),
+    })).json() as { settings: { healthBarColor: string } }
+    expect(changed.settings.healthBarColor).toBe('cyan')
+    // 重新读取仍然生效，说明它真的落到了 settings store 而不是只改了响应。
+    expect(((await (await fetch(endpoint)).json()) as { settings: { healthBarColor: string } }).settings.healthBarColor).toBe('cyan')
+
+    const rejected = await fetch(endpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patch: { healthBarColor: '#ff0000' } }),
+    })
+    expect(rejected.status).toBe(400)
+    expect(await rejected.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR', details: { fields: { 'patch.healthBarColor': expect.any(String) } } } })
+  })
+
+  it('round-trips a damage effect level and rejects a non-preset', async () => {
+    const { provider, registration } = await boot()
+    const endpoint = `${await serve(createTokenMonitorSettingsRouteHandler(
+      createTokenMonitorSettingsController(provider, registration.scope),
+    ))}/api/token-monitor/settings`
+
+    const initial = await (await fetch(endpoint)).json() as {
+      revision: number
+      settings: { damageEffectLevel: string }
+    }
+    // 旧配置没有这个字段时必须补成正常档，而不是悄悄把特效关掉。
+    expect(initial.settings.damageEffectLevel).toBe('normal')
+
+    const changed = await (await fetch(endpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ expectedRevision: initial.revision, patch: { damageEffectLevel: 'off' } }),
+    })).json() as { settings: { damageEffectLevel: string } }
+    expect(changed.settings.damageEffectLevel).toBe('off')
+    expect(((await (await fetch(endpoint)).json()) as { settings: { damageEffectLevel: string } }).settings.damageEffectLevel).toBe('off')
+
+    const rejected = await fetch(endpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ patch: { damageEffectLevel: 2 } }),
+    })
+    expect(rejected.status).toBe(400)
+    expect(await rejected.json()).toMatchObject({ error: { code: 'VALIDATION_ERROR', details: { fields: { 'patch.damageEffectLevel': expect.any(String) } } } })
+  })
+
   it.each([
     [{ method: 'POST' }, 405, 'METHOD_NOT_ALLOWED'],
     [{ method: 'PATCH', body: '{}' }, 415, 'UNSUPPORTED_MEDIA_TYPE'],
