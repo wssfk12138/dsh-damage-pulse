@@ -197,7 +197,7 @@ describe('token monitor update Host routes', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const installed: Array<{ profile: string; packagePath: string }> = []
-    const endpoint = `${await serve({ runtime: { argv: ['node', 'E:/deepseek-harness/apps/cli/src/bin.ts', 'web'], execArgv: ['--import', 'tsx/esm'], execPath: 'node' }, installPackage: async (profile, packagePath) => { installed.push({ profile, packagePath }) } })}${UPDATE_INSTALL_PATH}`
+    const endpoint = `${await serve({ runtime: { argv: ['node', 'apps/cli/src/bin.ts', 'web'], execArgv: ['--import', 'tsx/esm'], execPath: 'node' }, installPackage: async (profile, packagePath) => { installed.push({ profile, packagePath }) } })}${UPDATE_INSTALL_PATH}`
     const response = await fetch(endpoint, { method: 'POST' })
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({ latestVersion: NEWER_RELEASE, installed: true, staged: true, profile: 'web', stagedAsset: assetName, sha256: digest })
