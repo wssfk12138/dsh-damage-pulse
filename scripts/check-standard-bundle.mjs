@@ -57,6 +57,11 @@ check('WeChat route paths and tool names', ['/api/token-monitor/wechat', '/statu
 check('WeChat source uses CLI environment', wechatSource.includes('WECHAT_NOTIFY_CLAWBOT_INDEX') && wechatSource.includes('wechat_notify') && !wechatSource.includes('cli-in-wechat-v1'))
 check('client loader and complete interaction markers', client.includes('__ModuleLoader__') && client.includes('WhaleGirlStage') && client.includes('revive-recharge') && client.includes('/api/token-monitor/charge-events') && client.includes('conversation.session.header.actions') && client.includes('sidebar.workspaces.sessionRow.trailing'))
 check('client bundle reflects source session and module markers', ['WhaleGirlStage', 'wechatNotificationsEnabled', 'aria-selected', 'sidebar.workspaces.sessionRow.trailing'].every(marker => sourceClient.includes(marker) && client.includes(marker)))
+// The standard package ships only the files listed in package.json, so the
+// client bundle has to own its styles. An extracted lib/style.css never
+// reaches the browser and leaves every hashed class without its rules.
+check('client bundle carries its own compiled styles', client.includes('dataset.pluginCss') && /\.\w{4,10}_\w+\{/.test(client))
+check('no extracted stylesheet left for the client', !exists(join(repo, 'lib', 'style.css')))
 check('migration keeps events compatibility', sourceHost.includes("'events' in result") || sourceHost.includes('"events" in result'))
 check('notification defaults are explicit and public-safe', readText(join(repo, 'packages/util/token-monitor-contract/src/index.ts')).includes('DEFAULT_TOKEN_MONITOR_SETTINGS') && readText(join(repo, 'packages/util/token-monitor-contract/src/index.ts')).includes('budgetExceededNotificationEnabled: false'))
 check('no private absolute paths in packaged runtime', ![host, client, JSON.stringify(manifest)].some(value => /(?:[A-Z]:\\Users\\|C:\\Users\\|E:\\Codex\\)/i.test(value)))
