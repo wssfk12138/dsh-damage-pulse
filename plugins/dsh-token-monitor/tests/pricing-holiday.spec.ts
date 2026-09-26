@@ -53,4 +53,3 @@ describe('Chinese statutory holiday valley pricing', () => {
     expect(CHINA_STATUTORY_HOLIDAYS.size).toBe(33)
   })
 })
-
