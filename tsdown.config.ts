@@ -1,4 +1,5 @@
 import type { TsdownPlugin, UserConfig } from 'tsdown'
+import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import { basename, dirname, isAbsolute, resolve as resolvePath } from 'node:path'
@@ -43,6 +44,20 @@ const GLOBAL_CSS_VIRTUAL_PREFIX = '\0dsh-global-css:'
 const CSS_VIRTUAL_SUFFIX = '.mjs'
 const CLIENT_ID = 'dsh-damage-pulse'
 
+/**
+ * Rolldown prints resolved module ids in the region comments it emits, so a
+ * virtual stylesheet id must not carry the physical path: the bundle is served
+ * to a browser and must not expose a local directory layout. The real path
+ * stays in this map, keyed by the opaque id.
+ */
+const stylesheetFiles = new Map<string, string>()
+
+function virtualStylesheetId(prefix: string, fileId: string): string {
+  const id = prefix + createHash('sha256').update(fileId).digest('hex').slice(0, 16) + CSS_VIRTUAL_SUFFIX
+  stylesheetFiles.set(id, fileId)
+  return id
+}
+
 /** Emit one plugin-owned style injector and an optional CSS Modules export. */
 function styleInjectionModule(fileId: string, css: string, classMap?: Readonly<Record<string, string>>): string {
   const source = [
@@ -71,11 +86,11 @@ const cssModulesInline: TsdownPlugin = {
   resolveId(source, importer) {
     if (!source.endsWith('.module.css')) return null
     const fileId = importer === undefined ? source : resolveStylesheet(source, importer)
-    return CSS_VIRTUAL_PREFIX + fileId + CSS_VIRTUAL_SUFFIX
+    return virtualStylesheetId(CSS_VIRTUAL_PREFIX, fileId)
   },
   async load(virtualId) {
-    if (!virtualId.startsWith(CSS_VIRTUAL_PREFIX)) return null
-    const fileId = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+    const fileId = stylesheetFiles.get(virtualId)
+    if (fileId === undefined) return null
     this.addWatchFile(fileId)
     const source = await readFile(fileId)
     const { code, exports: cssExports } = transform({
@@ -96,11 +111,11 @@ const globalCssInline: TsdownPlugin = {
   resolveId(source, importer) {
     if (!source.endsWith('.css') || source.endsWith('.module.css')) return null
     const fileId = importer === undefined ? source : resolveStylesheet(source, importer)
-    return GLOBAL_CSS_VIRTUAL_PREFIX + fileId + CSS_VIRTUAL_SUFFIX
+    return virtualStylesheetId(GLOBAL_CSS_VIRTUAL_PREFIX, fileId)
   },
   async load(virtualId) {
-    if (!virtualId.startsWith(GLOBAL_CSS_VIRTUAL_PREFIX)) return null
-    const fileId = virtualId.slice(GLOBAL_CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+    const fileId = stylesheetFiles.get(virtualId)
+    if (fileId === undefined) return null
     this.addWatchFile(fileId)
     const source = await readFile(fileId)
     const { code } = transform({ filename: fileId, code: source, minify: true })
