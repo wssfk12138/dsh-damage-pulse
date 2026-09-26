@@ -25,7 +25,7 @@ export interface PricingTable {
 
 /** 2026-09-10 生效规则：V4.1 Flash 与两个旧名称共用新价；V4 Pro 计费方式不变（官网已取消 9-14 起按 Flash 价计费）。 */
 export const PRICE_TABLE: PricingTable = {
-  version: '2026-09-13',
+  version: '2026-09-27',
   // 工作日高峰：北京时间 9:00-12:00、14:00-18:00；周末全天按低谷价。
   peakHours: [[9, 12], [14, 18]],
   models: {
@@ -142,10 +142,57 @@ export function beijingWeekday(ts: number): number {
   return weekday === undefined ? -1 : ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekday)
 }
 
-/** 工作日按原峰谷时段判断；周六、周日始终返回低谷。 */
-export function isPeakHour(ts: number, peakHours: Array<[number, number]>): boolean {
+/**
+ * 中国法定节假日（北京时间日期，YYYY-MM-DD）。
+ *
+ * 官方计费说明：北京时间周一至周五（不含中国法定节假日）9:00 - 12:00、14:00 - 18:00
+ * 为高峰时段；其余时段，包括周末及中国法定节假日全天均为空闲时段。
+ * 来源：https://api-docs.deepseek.com/zh-cn/quick_start/pricing/
+ * 数据：国务院办公厅 2026 年部分节假日安排。该年度的调休上班日（2026-01-04、02-14、
+ * 02-28、05-09、09-20、10-10）按官方口径仍属「周一至周五」之外，因此不收进本表；
+ * 新年度安排公布后需要同步更新，未收录的年份按周末规则处理。
+ */
+export const CHINA_STATUTORY_HOLIDAYS: ReadonlySet<string> = new Set([
+  '2026-01-01', '2026-01-02', '2026-01-03',
+  '2026-02-15', '2026-02-16', '2026-02-17', '2026-02-18', '2026-02-19', '2026-02-20', '2026-02-21', '2026-02-22', '2026-02-23',
+  '2026-04-04', '2026-04-05', '2026-04-06',
+  '2026-05-01', '2026-05-02', '2026-05-03', '2026-05-04', '2026-05-05',
+  '2026-06-19', '2026-06-20', '2026-06-21',
+  '2026-09-25', '2026-09-26', '2026-09-27',
+  '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07',
+])
+
+/** 取时间戳对应的北京时间日期（YYYY-MM-DD）；解析失败返回空串。 */
+export function beijingDate(ts: number): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(ts))
+  const pick = (type: string) => parts.find((p) => p.type === type)?.value
+  const year = pick('year'); const month = pick('month'); const day = pick('day')
+  return year === undefined || month === undefined || day === undefined ? '' : `${year}-${month}-${day}`
+}
+
+/** 是否为北京时间当天的中国法定节假日；未收录年份或解析失败返回 false。 */
+export function isStatutoryHoliday(ts: number, holidays: ReadonlySet<string> = CHINA_STATUTORY_HOLIDAYS): boolean {
+  const date = beijingDate(ts)
+  return date !== '' && holidays.has(date)
+}
+
+/**
+ * 高峰时段判定：周一至周五（不含中国法定节假日）按配置窗口为高峰；
+ * 周末与中国法定节假日全天为空闲时段。
+ */
+export function isPeakHour(
+  ts: number,
+  peakHours: Array<[number, number]>,
+  holidays: ReadonlySet<string> = CHINA_STATUTORY_HOLIDAYS,
+): boolean {
   const weekday = beijingWeekday(ts)
   if (weekday === 0 || weekday === 6) return false
+  if (isStatutoryHoliday(ts, holidays)) return false
   const hour = beijingHour(ts)
   return peakHours.some(([start, end]) => hour >= start && hour < end)
 }
