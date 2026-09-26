@@ -1,27 +1,29 @@
 // @vitest-environment jsdom
 
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { act, cleanup, render } from '@testing-library/react'
-import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, render, waitFor } from '@testing-library/react'
+import type { GlobalStandardProps, SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
+import type { UseSessions } from '@deepseek-ai/dsh-client-ui-session/client'
 import type { ClientContextLike, SessionId, SessionListStateLike, SessionSummaryLike } from '../src/client/host-contracts.ts'
 import { LegacySessionCostBridge } from '../src/client/LegacySessionCostBridge.tsx'
 import { SessionCostBadge } from '../src/client/SessionCostBadge.tsx'
 import {
   apply,
   inject,
-  LegacySessionCostBridge as RegisteredBridge,
-  SessionCostBadge as RegisteredBadge,
 } from '../src/client/index.ts'
 import {
   formatSessionCost,
   readSessionCost,
   SESSION_COST_MARKER,
   SESSION_COST_TITLE,
-  SESSION_HEADER_ACTIONS_SLOT,
   SESSION_ROW_TRAILING_SLOT,
 } from '../src/client/sessionCost.ts'
 
+const pluginDisposers: Array<() => void> = []
+const installedSnapshot = { schemaVersion: 1, revision: 0, version: '4.0.3', pluginRemoved: false, restartRequired: false, modules: ['pet', 'overview', 'notify', 'billing', 'wechat'].map(id => ({ id, status: 'installed', autoInstallBlocked: false })) }
+beforeEach(() => { vi.stubGlobal('fetch', vi.fn(async (url: string) => new Response(JSON.stringify(url.includes('/modules') ? installedSnapshot : null)))) })
 afterEach(() => {
+  for (const dispose of pluginDisposers.splice(0)) dispose()
   cleanup()
   document.body.innerHTML = ''
   vi.unstubAllGlobals()
@@ -33,9 +35,6 @@ function summary(id: string, displayTitle: string, cost?: number): SessionSummar
   return {
     id: sid(id),
     displayTitle,
-    running: false,
-    blank: false,
-    updatedAt: 0,
     ...(cost === undefined ? {} : { projectionValues: { tokenCost: { cost } } }),
   }
 }
@@ -53,9 +52,17 @@ function hookFor(state: SessionListStateLike): SnapshotSelectorHook<SessionListS
 
 /** 全局 kit（useSessions + useWorkspaces），供正式徽标与旧桥组件渲染。 */
 function kitFor(state: SessionListStateLike) {
+  const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({ activePanelId: null })
+  const useResource: GlobalStandardProps['useResource'] = () => { throw new Error('unused resource hook') }
+  const useSessionStatus: GlobalStandardProps['useSessionStatus'] = selector => selector(new Map())
+  const useSessionRetainInfo = (() => undefined) as GlobalStandardProps['useSessionRetainInfo']
   return {
-    useSessions: hookFor(state),
-    // 旧桥组件声明了完整 GlobalStandardProps；测试只关心 useSessions。
+    usePanelInfo,
+    useResource,
+    // 金额组件只读取 byId；其余新版 SessionListState 字段不影响这些测试。
+    useSessions: hookFor(state) as unknown as UseSessions,
+    useSessionStatus,
+    useSessionRetainInfo,
     useWorkspaces: (() => undefined) as SnapshotSelectorHook<never>,
   }
 }
@@ -167,10 +174,14 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
       routable: true,
     })
     const modelDirectories = { directoryFor: vi.fn(() => ({ load: directoryLoad })) }
+    const modelCatalog = vi.fn().mockResolvedValue({ ok: true, value: { groups: [], failures: [] } })
     return {
       ctx: {
+        effect: (factory: () => unknown) => { const remove = factory(); if (typeof remove === 'function') pluginDisposers.push(remove as () => void); return remove },
         get: (name: string) => {
+          if (name === 'locale') return { register: () => () => {} }
           if (name === 'connection') return { api: { sessions: {} } }
+          if (name === 'remote') return { session: { modelCatalog } }
           if (name === 'conversationEvents') return conversationEvents
           if (name === 'modelDirectories') return modelDirectories
           return undefined
@@ -182,32 +193,35 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
       conversationEvents,
       directoryLoad,
       modelDirectories,
+      modelCatalog,
     }
   }
 
   it('keeps the legacy event registry optional in the activation contract', () => {
-    expect(inject).toEqual(['slots', 'connection', 'modelDirectories'])
+    expect(inject).toEqual(['slots', 'connection', 'remote.session', 'modelDirectories', 'locale'])
   })
 
-  it('activates the remaining UI when the new host has no conversationEvents service', () => {
+  it('activates the remaining UI when the new host has no conversationEvents service', async () => {
     const { ctx, injected } = createFakeClientContext({ withConversationEvents: false })
     expect(() => apply(ctx)).not.toThrow()
+    await waitFor(() => expect(injected.some(entry => entry.key === 'conversation.composer.dock')).toBe(true))
     expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(false)
     expect(injected.some(entry => entry.key === 'conversation.composer.dock')).toBe(true)
-    expect(injected.some(entry => entry.key === SESSION_HEADER_ACTIONS_SLOT)).toBe(true)
     expect(injected.filter(entry => entry.key === 'shell.overlay')).toHaveLength(2)
   })
 
-  it('preserves the single-usage node on old hosts that provide conversationEvents', () => {
+  it('preserves the single-usage node on old hosts that provide conversationEvents', async () => {
     const { ctx, injected, conversationEvents } = createFakeClientContext()
     apply(ctx)
+    await waitFor(() => expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true))
     expect(conversationEvents?.register).toHaveBeenCalledTimes(1)
     expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true)
   })
 
-  it('waits for the trailing seat declaration instead of crashing on old hosts', () => {
+  it('waits for the trailing seat declaration instead of crashing on old hosts', async () => {
     const { ctx, injected, registered } = createFakeClientContext()
     apply(ctx)
+    await waitFor(() => expect(injected.some(entry => entry.key === SESSION_ROW_TRAILING_SLOT)).toBe(true))
     const trailing = injected.find(entry => entry.key === SESSION_ROW_TRAILING_SLOT)
     expect(trailing).toBeDefined()
     // 旧宿主未声明该席位：回调被登记但从未执行 → 没有任何该席位注册、不抛错。
@@ -221,52 +235,48 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
     expect(ids).toContain('token-monitor-legacy-session-cost')
   })
 
-  it('registers the amount badge on the official conversation header seat', () => {
-    const { ctx, injected, registered } = createFakeClientContext()
-    apply(ctx)
-    const header = injected.find(entry => entry.key === SESSION_HEADER_ACTIONS_SLOT)
-    expect(header).toBeDefined()
-    header?.callback()
-    const entry = registered.find(item => item.options.name === SESSION_HEADER_ACTIONS_SLOT)
-    expect(entry).toBeDefined()
-    // list 席位：必须按 id 占一格，排序在官方 agent-preset(-10) 之后、schedule(10) 之前。
-    expect(entry?.options.id).toBe('token-monitor-session-cost')
-    expect(entry?.options.order).toBe(-5)
-    expect(entry?.component).toBe(RegisteredBadge)
-  })
-
-  it('injects a balance route loader backed by the model directory service', async () => {
+  it('injects a display scope loader backed by the idle model directory', async () => {
     const { ctx, injected, registered, modelDirectories } = createFakeClientContext()
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      provider: 'deepseek-official',
-      models: ['deepseek-v4-pro'],
-      updatedAt: 1,
-    }), { status: 200 })))
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('null', { status: 200 })))
     apply(ctx)
     injected.find(entry => entry.key === 'shell.overlay')?.callback()
     const balance = registered.find(entry => entry.options.id === 'token-monitor-balance')
     const injectedProps = (balance?.options.inject as (() => Record<string, unknown>))()
-    const load = injectedProps.loadRouteEligibility as (
+    const load = injectedProps.loadDisplayScope as (
       sessionId: SessionId,
       signal: AbortSignal,
-    ) => Promise<boolean | undefined>
+    ) => Promise<{ sessionId: SessionId; provider: string; model: string } | undefined>
 
-    await expect(load(sid('directory-session'), new AbortController().signal)).resolves.toBe(true)
+    await expect(load(sid('directory-session'), new AbortController().signal)).resolves.toMatchObject({ sessionId: sid('directory-session'), provider: 'deepseek-official' })
     expect(modelDirectories.directoryFor).toHaveBeenCalledWith(sid('directory-session'))
   })
 
-  it('registers the formal badge once the trailing seat is declared', () => {
+  it('registers the formal badge once the trailing seat is declared', async () => {
     const { ctx, injected, registered } = createFakeClientContext()
     apply(ctx)
+    await waitFor(() => expect(injected.some(entry => entry.key === SESSION_ROW_TRAILING_SLOT)).toBe(true))
     const trailing = injected.find(entry => entry.key === SESSION_ROW_TRAILING_SLOT)
     expect(trailing).toBeDefined()
     trailing?.callback()
     const entry = registered.find(item => item.options.name === SESSION_ROW_TRAILING_SLOT)
     expect(entry).toBeDefined()
-    expect(entry?.component).toBe(RegisteredBadge)
+    expect(entry?.component).toBe(SessionCostBadge)
     // 导出面与内部组件同一引用。
-    expect(RegisteredBridge).toBe(LegacySessionCostBridge)
-    expect(RegisteredBadge).toBe(SessionCostBadge)
+    expect(LegacySessionCostBridge).toBe(LegacySessionCostBridge)
+    expect(SessionCostBadge).toBe(SessionCostBadge)
+  })
+
+  it('loads the global catalog through the Host remote service and propagates failures', async () => {
+    const { ctx, injected, registered, modelCatalog } = createFakeClientContext()
+    apply(ctx)
+    injected.find(entry => entry.key === 'shell.overlay')?.callback()
+    const balance = registered.find(entry => entry.options.id === 'token-monitor-balance')
+    const props = (balance?.options.inject as () => Record<string, unknown>)()
+    const load = props.loadModelCatalog as () => Promise<unknown>
+    await expect(load()).resolves.toEqual({ groups: [], failures: [] })
+    expect(modelCatalog).toHaveBeenCalledTimes(1)
+    modelCatalog.mockResolvedValueOnce({ ok: false })
+    await expect(load()).rejects.toThrow('Host model catalog unavailable')
   })
 })
 
@@ -505,7 +515,7 @@ describe('LegacySessionCostBridge (old-host fallback)', () => {
   it('ignores same-title helper structures without treeitem/aria-selected', () => {
     const row = appendRow(legacyRowHtml('One'))
     // hover 卡片式辅助结构：同一标题文本，但不是 treeitem 行。
-    appendRow(`<div class="x_hover_card"><span>One</span></div>`)
+    appendRow('<div class="x_hover_card"><span>One</span></div>')
     render(<LegacySessionCostBridge {...kitFor(listState([summary('s1', 'One', 0.008)]))} />)
     const nodes = injectedNodes()
     expect(nodes).toHaveLength(1)

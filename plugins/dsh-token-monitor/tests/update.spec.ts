@@ -4,6 +4,23 @@ import { createHash } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CURRENT_RELEASE_VERSION, inferRunningProfile, registerUpdateRoutes, UPDATE_INSTALL_PATH, UPDATE_STATUS_PATH } from '../src/update.ts'
 
+/** Release fixtures stay relative to the running build so a version bump cannot silently close the install path. */
+function shiftPatch(version: string, delta: number): string {
+  const [major, minor, patch] = version.split('.').map(Number)
+  return `${String(major)}.${String(minor)}.${String(Math.max(0, (patch ?? 0) + delta))}`
+}
+
+const PRIOR_RELEASE = shiftPatch(CURRENT_RELEASE_VERSION, -1)
+const NEWER_RELEASE = shiftPatch(CURRENT_RELEASE_VERSION, 1)
+
+function releaseAsset(tag: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    name: `dsh-damage-pulse-${tag}.tgz`,
+    browser_download_url: `https://github.com/wssfk12138/dsh-damage-pulse/releases/download/${tag}/dsh-damage-pulse-${tag}.tgz`,
+    ...extra,
+  }
+}
+
 const disposers: Array<() => Promise<void>> = []
 
 afterEach(async () => {
@@ -13,7 +30,10 @@ afterEach(async () => {
 
 async function serve(options: Parameters<typeof registerUpdateRoutes>[1] = {}) {
   const routes = new Map<string, (request: any, response: any) => Promise<void> | void>()
-  registerUpdateRoutes({ webServer: { register: (route: any) => routes.set(route.path, route.handler) } } as any, options)
+  registerUpdateRoutes({
+    connection: { requestRejection: () => undefined },
+    webServer: { register: (route: any) => routes.set(route.path, route.handler) },
+  } as any, options)
   const server: Server = createServer((request, response) => {
     const handler = routes.get(new URL(request.url ?? '/', 'http://localhost').pathname)
     if (handler === undefined) { response.writeHead(404); response.end(); return }
@@ -27,11 +47,12 @@ async function serve(options: Parameters<typeof registerUpdateRoutes>[1] = {}) {
   return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`
 }
 
-function githubRelease(overrides: Record<string, unknown> = {}) {
+function githubRelease(version: string, overrides: Record<string, unknown> = {}) {
+  const tag = `v${version}`
   return {
-    tag_name: 'v4.0.3',
-    html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.0.3',
-    assets: [{ name: 'dsh-damage-pulse-v4.0.3.tgz', size: 3, digest: 'sha256:ignored', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.0.3/dsh-damage-pulse-v4.0.3.tgz' }],
+    tag_name: tag,
+    html_url: `https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/${tag}`,
+    assets: [releaseAsset(tag, { size: 3, digest: 'sha256:ignored' })],
     ...overrides,
   }
 }
@@ -42,13 +63,13 @@ describe('token monitor update Host routes', () => {
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       return url.startsWith('https://api.github.com/')
-        ? Promise.resolve(new Response(JSON.stringify(githubRelease()), { status: 200 }))
+        ? Promise.resolve(new Response(JSON.stringify(githubRelease(PRIOR_RELEASE)), { status: 200 }))
         : realFetch(input, init)
     }))
     const endpoint = `${await serve()}${UPDATE_STATUS_PATH}`
     const response = await fetch(endpoint)
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ repository: 'wssfk12138/dsh-damage-pulse', currentVersion: CURRENT_RELEASE_VERSION, latestVersion: '4.0.3', hasUpdate: false })
+    expect(await response.json()).toMatchObject({ repository: 'wssfk12138/dsh-damage-pulse', currentVersion: CURRENT_RELEASE_VERSION, latestVersion: PRIOR_RELEASE, hasUpdate: false })
     const head = await fetch(endpoint, { method: 'HEAD' })
     expect(head.status).toBe(200)
     expect(await head.text()).toBe('')
@@ -58,10 +79,8 @@ describe('token monitor update Host routes', () => {
   })
 
   it('accepts the real release asset naming without a v prefix', async () => {
-    const release = githubRelease({
-      tag_name: 'v99.0.0',
-      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v99.0.0',
-      assets: [{ name: 'dsh-damage-pulse-99.0.0.tgz', size: 3, digest: `sha256:${'0'.repeat(64)}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v99.0.0/dsh-damage-pulse-99.0.0.tgz' }],
+    const release = githubRelease(NEWER_RELEASE, {
+      assets: [releaseAsset(`v${NEWER_RELEASE}`, { name: `dsh-damage-pulse-${NEWER_RELEASE}.tgz`, size: 3, digest: `sha256:${'0'.repeat(64)}` })],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('https://api.github.com/')
@@ -69,13 +88,12 @@ describe('token monitor update Host routes', () => {
       : realFetch(input, init)))
     const response = await fetch(`${await serve()}${UPDATE_STATUS_PATH}`)
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ latestVersion: '99.0.0', hasUpdate: true, asset: { name: 'dsh-damage-pulse-99.0.0.tgz' } })
+    expect(await response.json()).toMatchObject({ latestVersion: NEWER_RELEASE, hasUpdate: true, asset: { name: `dsh-damage-pulse-${NEWER_RELEASE}.tgz` } })
   })
 
   it('reports no installable asset when the release digest is missing', async () => {
-    const release = githubRelease({
-      tag_name: 'v99.0.0',
-      assets: [{ name: 'dsh-damage-pulse-v99.0.0.tgz', size: 3, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v99.0.0/dsh-damage-pulse-v99.0.0.tgz' }],
+    const release = githubRelease(CURRENT_RELEASE_VERSION, {
+      assets: [releaseAsset(`v${CURRENT_RELEASE_VERSION}`, { size: 3 })],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('https://api.github.com/')
@@ -84,16 +102,15 @@ describe('token monitor update Host routes', () => {
     const endpoint = await serve()
     const status = await fetch(`${endpoint}${UPDATE_STATUS_PATH}`)
     expect(status.status).toBe(200)
-    expect(await status.json()).toMatchObject({ latestVersion: '99.0.0', asset: null })
+    expect(await status.json()).toMatchObject({ latestVersion: CURRENT_RELEASE_VERSION, asset: null })
     const install = await fetch(`${endpoint}${UPDATE_INSTALL_PATH}`, { method: 'POST' })
     expect(install.status).toBe(502)
     expect(await install.json()).toMatchObject({ error: { code: 'UPDATE_INSTALL_FAILED' } })
   })
 
   it('ignores assets with malformed digests', async () => {
-    const release = githubRelease({
-      tag_name: 'v99.0.0',
-      assets: [{ name: 'dsh-damage-pulse-v99.0.0.tgz', size: 3, digest: 'sha256:short', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v99.0.0/dsh-damage-pulse-v99.0.0.tgz' }],
+    const release = githubRelease(CURRENT_RELEASE_VERSION, {
+      assets: [releaseAsset(`v${CURRENT_RELEASE_VERSION}`, { size: 3, digest: 'sha256:short' })],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('https://api.github.com/')
@@ -101,13 +118,17 @@ describe('token monitor update Host routes', () => {
       : realFetch(input, init)))
     const response = await fetch(`${await serve()}${UPDATE_STATUS_PATH}`)
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ latestVersion: '99.0.0', asset: null })
+    expect(await response.json()).toMatchObject({ latestVersion: CURRENT_RELEASE_VERSION, asset: null })
   })
 
   it('ignores assets whose version does not match the release tag', async () => {
-    const release = githubRelease({
-      tag_name: 'v99.0.0',
-      assets: [{ name: 'dsh-damage-pulse-v4.0.3.tgz', size: 3, digest: `sha256:${'0'.repeat(64)}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v99.0.0/dsh-damage-pulse-v4.0.3.tgz' }],
+    const release = githubRelease(CURRENT_RELEASE_VERSION, {
+      assets: [releaseAsset(`v${CURRENT_RELEASE_VERSION}`, {
+        name: `dsh-damage-pulse-v${PRIOR_RELEASE}.tgz`,
+        browser_download_url: `https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v${CURRENT_RELEASE_VERSION}/dsh-damage-pulse-v${PRIOR_RELEASE}.tgz`,
+        size: 3,
+        digest: `sha256:${'0'.repeat(64)}`,
+      })],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => String(input).startsWith('https://api.github.com/')
@@ -115,7 +136,7 @@ describe('token monitor update Host routes', () => {
       : realFetch(input, init)))
     const response = await fetch(`${await serve()}${UPDATE_STATUS_PATH}`)
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ latestVersion: '99.0.0', asset: null })
+    expect(await response.json()).toMatchObject({ latestVersion: CURRENT_RELEASE_VERSION, asset: null })
   })
 
   it('rejects an oversized install request before checking GitHub', async () => {
@@ -163,10 +184,9 @@ describe('token monitor update Host routes', () => {
   it('stages a newer asset only after size and digest validation', async () => {
     const bytes = new TextEncoder().encode('valid tgz fixture')
     const digest = createHash('sha256').update(bytes).digest('hex')
-    const release = githubRelease({
-      tag_name: 'v99.0.0',
-      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v99.0.0',
-      assets: [{ name: 'dsh-damage-pulse-v99.0.0.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v99.0.0/dsh-damage-pulse-v99.0.0.tgz' }],
+    const assetName = `dsh-damage-pulse-v${NEWER_RELEASE}.tgz`
+    const release = githubRelease(NEWER_RELEASE, {
+      assets: [releaseAsset(`v${NEWER_RELEASE}`, { size: bytes.byteLength, digest: `sha256:${digest}` })],
     })
     const realFetch = globalThis.fetch
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -180,20 +200,19 @@ describe('token monitor update Host routes', () => {
     const endpoint = `${await serve({ runtime: { argv: ['node', 'E:/deepseek-harness/apps/cli/src/bin.ts', 'web'], execArgv: ['--import', 'tsx/esm'], execPath: 'node' }, installPackage: async (profile, packagePath) => { installed.push({ profile, packagePath }) } })}${UPDATE_INSTALL_PATH}`
     const response = await fetch(endpoint, { method: 'POST' })
     expect(response.status).toBe(200)
-    expect(await response.json()).toMatchObject({ latestVersion: '99.0.0', installed: true, staged: true, profile: 'web', stagedAsset: 'dsh-damage-pulse-v99.0.0.tgz', sha256: digest })
+    expect(await response.json()).toMatchObject({ latestVersion: NEWER_RELEASE, installed: true, staged: true, profile: 'web', stagedAsset: assetName, sha256: digest })
     expect(installed).toHaveLength(1)
     expect(installed[0]?.profile).toBe('web')
-    expect(installed[0]?.packagePath).toMatch(/dsh-damage-pulse-v99\.0\.0\.tgz$/)
-   expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith('https://')).length).toBe(2)
+    expect(installed[0]?.packagePath.endsWith(assetName)).toBe(true)
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).startsWith('https://')).length).toBe(2)
     const method = await fetch(endpoint)
     expect(method.status).toBe(405)
     expect(method.headers.get('allow')).toBe('POST')
   })
 
   it('rejects a digest mismatch without staging', async () => {
-    const release = githubRelease({
-      tag_name: 'v99.0.0',
-      assets: [{ name: 'dsh-damage-pulse-v99.0.0.tgz', size: 4, digest: 'sha256:0000', browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v99.0.0/dsh-damage-pulse-v99.0.0.tgz' }],
+    const release = githubRelease(NEWER_RELEASE, {
+      assets: [releaseAsset(`v${NEWER_RELEASE}`, { size: 4, digest: 'sha256:0000' })],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -218,10 +237,8 @@ describe('token monitor update Host routes', () => {
   it('does not invoke installation when profile cannot be identified', async () => {
     const bytes = new TextEncoder().encode('valid tgz fixture')
     const digest = createHash('sha256').update(bytes).digest('hex')
-    const release = githubRelease({
-      tag_name: 'v99.0.0',
-      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v99.0.0',
-      assets: [{ name: 'dsh-damage-pulse-v99.0.0.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v99.0.0/dsh-damage-pulse-v99.0.0.tgz' }],
+    const release = githubRelease(NEWER_RELEASE, {
+      assets: [releaseAsset(`v${NEWER_RELEASE}`, { size: bytes.byteLength, digest: `sha256:${digest}` })],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
@@ -240,10 +257,8 @@ describe('token monitor update Host routes', () => {
   it('rejects redirects outside GitHub release asset hosts', async () => {
     const bytes = new TextEncoder().encode('valid tgz fixture')
     const digest = createHash('sha256').update(bytes).digest('hex')
-    const release = githubRelease({
-      tag_name: 'v99.0.0',
-      html_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v99.0.0',
-      assets: [{ name: 'dsh-damage-pulse-v99.0.0.tgz', size: bytes.byteLength, digest: `sha256:${digest}`, browser_download_url: 'https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v99.0.0/dsh-damage-pulse-v99.0.0.tgz' }],
+    const release = githubRelease(NEWER_RELEASE, {
+      assets: [releaseAsset(`v${NEWER_RELEASE}`, { size: bytes.byteLength, digest: `sha256:${digest}` })],
     })
     const realFetch = globalThis.fetch
     vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, init?: RequestInit) => {

@@ -31,3 +31,9 @@ Thumbs.db
 /PROJECT_NOTES.md
 /readme-preview.html
 /docs/readme-preview.html
+/runtime/
+# Local migration fixtures and private review artifacts
+/.tmp-rel-*/
+/.tmp-settings-results.json
+/change-report*.md
+/AGENTS.md

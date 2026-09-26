@@ -6,48 +6,16 @@
  */
 
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { replaceHistoryFile } from './history-file.ts'
+import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { join } from 'node:path'
 import { beijingDateKey } from './todaySpend.ts'
 import { isValidUsageRecord, normalizeUsageRecord, type SessionSummary, type TodaySpendInfo, type UsageRecord } from './types.ts'
 
 /** 明细数据目录：~/.dsh/data/dsh-token-monitor/ */
-const DATA_DIR = join(homedir(), '.dsh', 'data', 'dsh-token-monitor')
+const DATA_DIR = dshHomePath('data', 'dsh-token-monitor')
 
-/**
- * 明细去重身份。
- *
- * 当前采集器写入的记录携带 `sourceEventSeq`，用 (sessionId, seq) 作为全账本持久身份，
- * 拦得住长会话重放与进程重启后的重复投递；早于该字段的历史行没有 seq 可依据，
- * 退化为整行内容身份（调用定位 + 时间戳 + provider/model + token + 金额），
- * 保证冷启动回读与重复追加都只接受一次，同时不会合并两条内容不同的真实调用。
- */
-function usageIdentity(record: UsageRecord): string {
-  if (record.sourceEventSeq !== undefined) {
-    return JSON.stringify(['seq', record.sessionId, record.sourceEventSeq])
-  }
-  return JSON.stringify([
-    'content',
-    record.sessionId,
-    record.turn,
-    record.step,
-    record.timestamp,
-    record.provider,
-    record.model,
-    record.inputTokens,
-    record.cacheReadTokens,
-    record.cacheWriteTokens,
-    record.outputTokens,
-    record.reasoningTokens,
-    record.costInput,
-    record.costCacheRead,
-    record.costCacheWrite,
-    record.costOutput,
-    record.cost,
-  ])
-}
-
-/** 存储层防御性资格门禁；历史原文件保留，只过滤运行时读取与新增。 */
+  /** 保留参数用于兼容既有构造器；历史记录按写入时状态读取，不按当前规则重算。 */
 export type UsageEligibility = (record: UsageRecord) => boolean
 
 /** 按会话累计用量与金额，并追加持久化单次明细。 */
@@ -55,13 +23,36 @@ export class UsageStorage {
   private readonly summaries = new Map<string, SessionSummary>()
   private readonly records: UsageRecord[] = []
   private readonly dailySpend = new Map<string, { cost: number; calls: number }>()
-  /** 已接受的明细去重身份；有 seq 的行走持久身份，历史无 seq 行退化为整行内容身份。 */
   private readonly seenSourceEvents = new Set<string>()
-  private readonly isEligible: UsageEligibility
   private readonly dataDir: string
 
-  constructor(isEligible: UsageEligibility, dataDir: string = DATA_DIR) {
-    this.isEligible = isEligible
+  /** Clear plugin-owned history without touching host session logs. */
+  clear(): void {
+    this.replaceHistory([])
+  }
+
+  /** Erase saved monetary decisions while retaining token usage; never reprice. */
+  clearBilling(): void {
+    this.replaceHistory(this.records.map(record => {
+      const cleared: UsageRecord = { ...record, cost: 0, costInput: 0, costOutput: 0,
+        costCache: 0, costCacheRead: 0, costCacheWrite: 0, billingStatus: 'unpriced', peak: false }
+      delete cleared.billingRule
+      delete cleared.billingApplied
+      delete cleared.billingReason
+      delete cleared.billingRuleVersion
+      delete cleared.modelMultiplier
+      return cleared
+    }))
+  }
+
+  private replaceHistory(records: UsageRecord[]): void {
+    replaceHistoryFile(join(this.dataDir, 'usage.jsonl'), records.map(record => JSON.stringify(record) + '\n').join(''))
+    this.records.length = 0
+    this.summaries.clear(); this.dailySpend.clear(); this.seenSourceEvents.clear()
+    this.loadHistory()
+  }
+
+  constructor(_isEligible: UsageEligibility, dataDir: string = DATA_DIR) {
     this.dataDir = dataDir
     try {
       mkdirSync(this.dataDir, { recursive: true })
@@ -81,8 +72,8 @@ export class UsageStorage {
         if (trimmed === '') continue
         try {
           const record = normalizeUsageRecord(JSON.parse(trimmed))
-          if (record !== undefined && isValidUsageRecord(record) && this.isEligible(record)) {
-            if (this.isDuplicateRecord(record)) continue
+          if (record !== undefined && isValidUsageRecord(record)) {
+            if (this.isDuplicateSourceEvent(record)) continue
             this.records.push(record)
             this.summaries.set(record.sessionId, this.fold(record))
             this.addToDailySpend(record)
@@ -134,6 +125,7 @@ export class UsageStorage {
 
   /** 将合格明细累加到北京时间日期索引，避免今日消费查询重复扫描全部历史。 */
   private addToDailySpend(record: UsageRecord): void {
+    if (record.billingStatus !== undefined && record.billingStatus !== 'priced') return
     const date = beijingDateKey(record.timestamp)
     const previous = this.dailySpend.get(date)
     if (previous === undefined) {
@@ -146,8 +138,8 @@ export class UsageStorage {
 
   /** 把一条单次记录累加到对应会话，并追加持久化明细。 */
   add(record: UsageRecord): SessionSummary | undefined {
-    if (!isValidUsageRecord(record) || !this.isEligible(record)) return undefined
-    if (this.isDuplicateRecord(record)) return undefined
+    if (!isValidUsageRecord(record)) return undefined
+    if (this.isDuplicateSourceEvent(record)) return undefined
     const next = this.fold(record)
     this.summaries.set(record.sessionId, next)
 
@@ -163,9 +155,9 @@ export class UsageStorage {
     return next
   }
 
-  /** 冷启动回读与新增共用同一身份集合：同一身份只接受第一条。 */
-  private isDuplicateRecord(record: UsageRecord): boolean {
-    const key = usageIdentity(record)
+  private isDuplicateSourceEvent(record: UsageRecord): boolean {
+    if (record.sourceEventSeq === undefined) return false
+    const key = JSON.stringify([record.sessionId, record.sourceEventSeq])
     if (this.seenSourceEvents.has(key)) return true
     this.seenSourceEvents.add(key)
     return false

@@ -3,5 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "dsh-damage-pulse: 用扣血动画呈现每次 token 消耗，并监控会话用量、金额与 DeepSeek 账户余额。"
+  "description": "dsh plugin: monitor token usage, cost, balance, budget alerts, and whale-girl feedback.",
+  "dependencies": {
+    "ipaddr.js": "2.5.0",
+    "quickjs-emscripten": "0.32.0",
+    "yaml": "^2.8.1"
+  }
 }

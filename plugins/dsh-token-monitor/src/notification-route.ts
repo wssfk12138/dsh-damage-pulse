@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { NotificationEventBuffer } from './notification-events.ts'
+import { createRouteGuard } from './http-trust.ts'
 
 export const TOKEN_MONITOR_NOTIFICATION_EVENTS_PATH = '/api/token-monitor/notification-events'
 
@@ -59,9 +60,14 @@ export function createNotificationEventsRouteHandler(buffer: NotificationEventBu
 
 /** Register the Host-owned notification stream used by the whale bubble client. */
 export function registerNotificationEventsRoute(ctx: Context, buffer: NotificationEventBuffer): void {
-  ctx.webServer.register({
+  const guard = createRouteGuard(ctx)
+  const handler = createNotificationEventsRouteHandler(buffer)
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: TOKEN_MONITOR_NOTIFICATION_EVENTS_PATH,
-    handler: createNotificationEventsRouteHandler(buffer),
-  })
+    handler: (request, response) => {
+      if (!guard(request, response)) return
+      handler(request, response)
+    },
+  }), 'token-monitor: notification events route')
 }

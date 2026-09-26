@@ -105,7 +105,7 @@ export function createCacheHitAnomalyDetector(
       threshold,
       sampleCount: samples.length,
       consecutiveCalls: settings.consecutiveCalls,
-      observedAt: samples[samples.length - 1].observedAt,
+      observedAt: samples[samples.length - 1]!.observedAt,
     }
   }
 

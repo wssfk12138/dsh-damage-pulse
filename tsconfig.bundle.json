@@ -10,11 +10,24 @@
     "resolveJsonModule": true,
     "esModuleInterop": true,
     "paths": {
-      "@deepseek-ai/dsh-session/types": ["./node_modules/@deepseek-ai/dsh-session/lib/types/types.d.ts"],
-      "@deepseek-ai/dsh-session-projection/types": ["./node_modules/@deepseek-ai/dsh-session-projection/lib/types/types.d.ts"]
+      "@deepseek-ai/dsh-session/types": [
+        "./node_modules/@deepseek-ai/dsh-session/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-session-projection/types": [
+        "./node_modules/@deepseek-ai/dsh-session-projection/lib/types/types.d.ts"
+      ],
+      "@deepseek-ai/dsh-token-monitor-contract": [
+        "./packages/util/token-monitor-contract/src/index.ts"
+      ]
     },
-    "lib": ["ES2024", "DOM", "DOM.Iterable"],
-    "types": ["node"]
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "plugins/dsh-token-monitor/src",

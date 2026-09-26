@@ -1,0 +1,7 @@
+{
+  "name": "wechat-notify",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "dsh plugin: registers a wechat_notify tool that sends WeChat notifications through the local ClawBot channel."
+}

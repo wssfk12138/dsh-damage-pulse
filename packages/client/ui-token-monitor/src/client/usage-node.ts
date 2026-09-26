@@ -11,6 +11,13 @@ import type {
   ConversationNodeDefinitionLike,
 } from './host-contracts.ts'
 
+/** Extend the official Chat keyed-node data map for the local usage renderer. */
+declare module '@deepseek-ai/dsh-client-ui-chat/client' {
+  interface ChatNodeDataMap {
+    'token-usage': TokenUsageRecord
+  }
+}
+
 /** 单事件即完整 checkpoint，故 Definition 内部 state 就是记录本身。 */
 type TokenUsageState = TokenUsageRecord
 
@@ -18,6 +25,7 @@ function locationOf(context: ConversationNodeContextLike): ConversationLocationL
   return context.start?.location ?? context.matches[0]?.location ?? { kind: 'unresolved' }
 }
 
+/** Conversation-node definition that folds token-usage events into session projections. */
 export const tokenUsageNodeDefinition: ConversationNodeDefinitionLike<TokenUsageState> = {
   kind: 'token-usage',
   target: 'chat',
@@ -33,7 +41,7 @@ export const tokenUsageNodeDefinition: ConversationNodeDefinitionLike<TokenUsage
     if (record === undefined) throw new Error('token-usage event is missing its record')
     return record
   },
-  update: (context) => context.state,
+  update: context => context.state,
   publication: () => 'immediate',
   buildViewNode: (context) => {
     if (context.state === undefined) return null

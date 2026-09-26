@@ -71,7 +71,7 @@ describe('historical tokenCost migration compatibility', () => {
     expect(coldSnapshot).toHaveBeenNthCalledWith(2, inspection.meta, inspection.events)
   })
 
-  it('uses the exact inherited event count with the 0.1.2-rc.1 and newer contract', async () => {
+  it('uses the exact inherited event count with the 0.1.2-rc.1 contract', async () => {
     const coldSnapshot = vi.fn(function (_meta: unknown, _inheritedEventCount: unknown, _events: unknown) {
       return { values: {} }
     })
@@ -95,17 +95,28 @@ describe('historical tokenCost migration compatibility', () => {
     )
   })
 
-  // 0.1.0-0.1.4 的 read() 直接返回事件数组；0.1.5-alpha 起返回
-  // SessionHandleReadResult（{ eventState, events }）。把包装对象当成数组传入
-  // coldSnapshot 会让每个历史会话的迁移都抛错（回归来源）。
-  it.each([
-    ['plain event array', false],
-    ['SessionHandleReadResult wrapper', true],
-  ] as const)('reads current sessions through a read handle (%s) and closes it', async (_label, wrapped) => {
+  it('reads current cache without passing an inherited count as projection keys', async () => {
+    const cachedSnapshot = vi.fn(function (_meta: unknown, keys?: readonly string[]) {
+      // Current host treats argument two as an optional iterable key filter.
+      expect([...(keys ?? ['tokenCost'])]).toContain('tokenCost')
+      return undefined
+    })
+    const coldSnapshot = vi.fn(function (_meta: unknown, _inheritedEventCount: unknown, _events: unknown) {
+      return { values: { tokenCost: { cost: 0.01 } } }
+    })
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await migrateMissingTokenCost(migrationContext(coldSnapshot, vi.fn(async () => inspection), cachedSnapshot))
+
+    expect(warn).not.toHaveBeenCalled()
+    expect(cachedSnapshot).toHaveBeenCalledWith(header)
+    expect(coldSnapshot).toHaveBeenCalledWith(inspection.meta, inspection.inheritedEventCount, inspection.events)
+    warn.mockRestore()
+  })
+
+  it.each([false, true])('reads legacy and 0.1.5 wrapped handle results and closes them (%s)', async wrapped => {
     const close = vi.fn(async () => {})
-    const read = vi.fn(async () => (wrapped
-      ? { eventState: 'frozen', events: inspection.events }
-      : inspection.events))
+    const read = vi.fn(async () => wrapped ? { events: inspection.events, eventState: 'frozen' } : inspection.events)
     const open = vi.fn(async () => ({
       header: inspection.meta,
       inheritedEventCount: inspection.inheritedEventCount,
@@ -138,7 +149,8 @@ describe('historical tokenCost migration compatibility', () => {
 
   it('does not rebuild a cached 0.1.3 tokenCost projection', async () => {
     const coldSnapshot = vi.fn(function (_meta: unknown, _inheritedEventCount: unknown, _events: unknown) {})
-    const cachedSnapshot = vi.fn(function (_meta: unknown, _inheritedEventCount: unknown) {
+    const cachedSnapshot = vi.fn(function (_meta: unknown, inheritedEventCount: unknown) {
+      if (inheritedEventCount === undefined) throw new TypeError('SessionLogOffset must be a non-negative safe integer, got undefined')
       return { values: { tokenCost: { cny: 1 } } }
     })
     const inspect = vi.fn(async () => inspection)

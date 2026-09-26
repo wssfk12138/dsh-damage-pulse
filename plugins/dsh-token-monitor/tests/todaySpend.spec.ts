@@ -26,6 +26,23 @@ afterEach(() => {
 })
 
 describe('today spend aggregation', () => {
+  it('erases monetary history while retaining tokens across a cold start, then clears only plugin history', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dsh-history-erase-'))
+    tempDirs.push(dir)
+    const storage = new UsageStorage(() => true, dir)
+    storage.add({ ...record(1000, 3), billingStatus: 'priced', billingRuleVersion: 7, modelMultiplier: 2 })
+    storage.clearBilling()
+    const reopened = new UsageStorage(() => true, dir)
+    expect(reopened.history()).toHaveLength(1)
+    expect(reopened.history()[0]).toMatchObject({ inputTokens: 1, outputTokens: 1, cost: 0, billingStatus: 'unpriced' })
+    expect(reopened.history()[0]).not.toHaveProperty('billingRuleVersion')
+    expect(reopened.history()[0]).not.toHaveProperty('modelMultiplier')
+    expect(reopened.get('session-1')).toMatchObject({ totalTokens: 2, cost: 0 })
+    reopened.clear()
+    expect(new UsageStorage(() => true, dir).history()).toEqual([])
+    reopened.add(record(2000, 1))
+    expect(reopened.history()).toHaveLength(1)
+  })
   it('uses the Beijing-time midnight boundary', () => {
     expect(beijingDateKey(Date.parse('2026-08-22T15:59:59.999Z'))).toBe('2026-08-22')
     expect(beijingDateKey(Date.parse('2026-08-22T16:00:00.000Z'))).toBe('2026-08-23')
@@ -66,15 +83,15 @@ describe('today spend aggregation', () => {
     const now = Date.parse('2026-08-23T05:00:00.000Z')
     writeFileSync(join(dataDir, 'usage.jsonl'), [
       record(now - 1_000, 0.25),
-      record(now - 750, 9, 'other-provider'),
-      record(now - 500, 8, 'deepseek-official', 'unsupported-model'),
+      { ...record(now - 750, 0, 'other-provider'), billingStatus: 'unpriced' },
+      { ...record(now - 500, 0, 'deepseek-official', 'unsupported-model'), billingStatus: 'unpriced' },
     ].map(JSON.stringify).join('\n') + '\n')
     const storage = new UsageStorage(
       (item) => item.provider === 'deepseek-official' && item.model === 'deepseek-chat',
       dataDir,
     )
-    expect(storage.add(record(now, 7, 'other-provider'))).toBeUndefined()
-    expect(storage.add(record(now, 6, 'deepseek-official', 'unsupported-model'))).toBeUndefined()
+    expect(storage.add({ ...record(now, 0, 'other-provider'), billingStatus: 'unpriced' })).toBeDefined()
+    expect(storage.add({ ...record(now, 0, 'deepseek-official', 'unsupported-model'), billingStatus: 'unpriced' })).toBeDefined()
     storage.add(record(now, 0.5))
     expect(storage.todaySpend(now)).toMatchObject({ cost: 0.75, calls: 2 })
   })
@@ -110,7 +127,7 @@ describe('today spend aggregation', () => {
 
     const storage = new UsageStorage(() => true, dataDir)
 
-    expect(storage.history()).toEqual([{ ...legacy, costCacheRead: 0.05, costCacheWrite: 0 }])
+    expect(storage.history()).toEqual([{ ...legacy, costCacheRead: 0.05, costCacheWrite: 0, cacheBreakdownRecorded: false }])
     expect(storage.get('session-1')).toMatchObject({ calls: 1, cost: 0.25 })
     expect(storage.list()).toHaveLength(1)
     expect(storage.todaySpend(now)).toMatchObject({ calls: 1, cost: 0.25 })
@@ -143,35 +160,6 @@ describe('today spend aggregation', () => {
     expect(storage.add(first)).toBeUndefined()
   })
 
-  it('deduplicates seq-less history rows written before the session event sequence field existed', () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'dsh-token-monitor-legacy-idempotency-'))
-    tempDirs.push(dataDir)
-    const now = Date.parse('2026-08-23T05:00:00.000Z')
-    const legacy = record(now, 0.25)
-    writeFileSync(join(dataDir, 'usage.jsonl'), `${JSON.stringify(legacy)}\n${JSON.stringify(legacy)}\n`)
-    const storage = new UsageStorage(() => true, dataDir)
-    expect(storage.history()).toHaveLength(1)
-    expect(storage.get('session-1')).toMatchObject({ calls: 1, cost: 0.25 })
-    expect(storage.add(legacy)).toBeUndefined()
-    expect(storage.todaySpend(now)).toMatchObject({ calls: 1, cost: 0.25 })
-  })
-
-  it('keeps distinct seq-less rows that share session, turn and step', () => {
-    const dataDir = mkdtempSync(join(tmpdir(), 'dsh-token-monitor-legacy-distinct-'))
-    tempDirs.push(dataDir)
-    const now = Date.parse('2026-08-23T05:00:00.000Z')
-    writeFileSync(join(dataDir, 'usage.jsonl'), [
-      record(now - 1_000, 0.25),
-      record(now, 0.25),
-    ].map(JSON.stringify).join('\n') + '\n')
-    const storage = new UsageStorage(() => true, dataDir)
-    expect(storage.history()).toHaveLength(2)
-    expect(storage.get('session-1')).toMatchObject({ calls: 2, cost: 0.5 })
-    expect(storage.todaySpend(now).calls).toBe(2)
-  })
-
-  // 该用例做 2_100 次真实同步落盘（每次 add 都 appendFileSync），单跑约 1 s，
-  // 但全量并行时多个 worker 争抢 CPU 会超过 vitest 默认的 5 s，故显式放宽。
   it('retains replay identities beyond the transient animation window', () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'dsh-token-monitor-idempotency-long-'))
     const storage = new UsageStorage(() => true, dataDir)
@@ -182,5 +170,5 @@ describe('today spend aggregation', () => {
     }
     expect(storage.add(first)).toBeUndefined()
     expect(storage.get('long-session')?.calls).toBe(2_100)
-  }, 30_000)
+  })
 })

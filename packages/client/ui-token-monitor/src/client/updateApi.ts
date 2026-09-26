@@ -1,11 +1,13 @@
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
+/** Download metadata for one Token Monitor update asset. */
 export interface TokenMonitorUpdateAsset {
   name: string
   size: number
   digest: string | null
 }
 
+/** Available Token Monitor update and its release metadata. */
 export interface TokenMonitorUpdateStatus {
   repository: string
   currentVersion: string
@@ -15,6 +17,7 @@ export interface TokenMonitorUpdateStatus {
   asset: TokenMonitorUpdateAsset | null
 }
 
+/** Result returned after installing a Token Monitor update. */
 export interface TokenMonitorInstallResult extends TokenMonitorUpdateStatus {
   installed: boolean
   staged: boolean
@@ -23,6 +26,7 @@ export interface TokenMonitorInstallResult extends TokenMonitorUpdateStatus {
   message: string
 }
 
+/** HTTP error returned by the Token Monitor update endpoint. */
 export class TokenMonitorUpdateApiError extends Error {
   constructor(readonly status: number, readonly code: string, message: string) {
     super(message)
@@ -30,6 +34,7 @@ export class TokenMonitorUpdateApiError extends Error {
   }
 }
 
+/** Protocol error raised when an update response has an invalid shape. */
 export class TokenMonitorUpdateProtocolError extends Error {
   constructor(readonly field: string) {
     super(`更新接口返回了不符合契约的数据：${field}`)
@@ -49,7 +54,10 @@ function parseStatus(value: unknown): TokenMonitorUpdateStatus {
     if (!text(value.asset.name, 200) || typeof value.asset.size !== 'number' || !Number.isSafeInteger(value.asset.size) || value.asset.size <= 0 || (value.asset.digest !== null && !text(value.asset.digest, 100))) throw new TokenMonitorUpdateProtocolError('status.asset')
     asset = { name: value.asset.name, size: value.asset.size, digest: value.asset.digest as string | null }
   }
-  return { repository: value.repository, currentVersion: value.currentVersion, latestVersion: value.latestVersion, hasUpdate: value.hasUpdate, releaseUrl: value.releaseUrl, asset }
+  return {
+    repository: value.repository, currentVersion: value.currentVersion, latestVersion: value.latestVersion,
+    hasUpdate: value.hasUpdate, releaseUrl: value.releaseUrl, asset,
+  }
 }
 async function readJson(response: Response): Promise<unknown> {
   try { return await response.json() } catch { throw new TokenMonitorUpdateProtocolError('response') }
@@ -65,9 +73,26 @@ async function parse<T>(response: Response, parser: (value: unknown) => T): Prom
 function parseInstall(value: unknown): TokenMonitorInstallResult {
   if (!record(value) || typeof value.installed !== 'boolean' || typeof value.staged !== 'boolean' || !text(value.message, 512)) throw new TokenMonitorUpdateProtocolError('install')
   const base = parseStatus(value)
-  return { ...base, installed: value.installed, staged: value.staged, ...(text(value.stagedAsset, 200) ? { stagedAsset: value.stagedAsset } : {}), ...(text(value.sha256, 100) ? { sha256: value.sha256 } : {}), message: value.message }
+  return {
+    ...base,
+    installed: value.installed,
+    staged: value.staged,
+    ...(text(value.stagedAsset, 200) ? { stagedAsset: value.stagedAsset } : {}),
+    ...(text(value.sha256, 100) ? { sha256: value.sha256 } : {}),
+    message: value.message,
+  }
 }
-export interface TokenMonitorUpdateApi { check(signal?: AbortSignal): Promise<TokenMonitorUpdateStatus>; install(signal?: AbortSignal): Promise<TokenMonitorInstallResult> }
+/** Client operations supported by the Token Monitor update endpoint. */
+export interface TokenMonitorUpdateApi {
+  check(signal?: AbortSignal): Promise<TokenMonitorUpdateStatus>
+  install(signal?: AbortSignal): Promise<TokenMonitorInstallResult>
+}
+/**
+ * Create a client for checking and installing Token Monitor updates.
+ * @param fetcher - HTTP implementation used to read the Host endpoint.
+ * @param basePath - Base path of the update endpoint.
+ * @returns An update API client bound to the supplied base path.
+ */
 export function createTokenMonitorUpdateApi(fetcher: FetchLike = fetch, basePath = '/api/token-monitor/update'): TokenMonitorUpdateApi {
   return {
     async check(signal) { return parse(await fetcher(basePath, { cache: 'no-store', ...(signal === undefined ? {} : { signal }) }), parseStatus) },

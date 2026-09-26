@@ -1,106 +1,87 @@
-import { existsSync } from 'node:fs'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { createServer, type Server } from 'node:http'
+import { AddressInfo } from 'node:net'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it, vi, type Mock } from 'vitest'
+import { tmpdir } from 'node:os'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  createTokenMonitorAssetHandler,
   registerTokenMonitorAssetRoutes,
-  registerWhaleAssetRoute,
-  resolveTokenMonitorAssetRoot,
+  TOKEN_MONITOR_ASSET_ROUTES,
 } from '../src/assets.ts'
 
-type AssetRoute = {
-  kind: string
-  path: string
-  handler: (req: { method: string; url?: string }, res: { writeHead: Mock; end: Mock }) => Promise<void>
-}
+const cleanup: Array<() => Promise<void>> = []
 
-function captureRoutes(register: (ctx: unknown) => void): AssetRoute[] {
-  const routes: AssetRoute[] = []
-  const ctx = { webServer: { register: (route: AssetRoute) => routes.push(route) } }
-  register(ctx)
-  return routes
-}
-
-function invoke(route: AssetRoute, url: string, method = 'GET') {
-  const writeHead = vi.fn()
-  const end = vi.fn()
-  const request = { method, url }
-  const response = { writeHead, end }
-  return route.handler(request as never, response as never).then(() => ({ writeHead, end }))
-}
-
-function statusOf(result: { writeHead: Mock }): number {
-  return result.writeHead.mock.calls[0]?.[0] ?? -1
-}
-
-afterEach(() => {
-  vi.restoreAllMocks()
+afterEach(async () => {
+  while (cleanup.length > 0) await cleanup.pop()!()
 })
 
-describe('token monitor asset root resolution', () => {
-  it('resolves the same repo-root asset directory from source and bundled faces', () => {
-    const sourceUrl = import.meta.url
-    const bundledUrl = new URL('../lib/index.js', sourceUrl).href
-    const fromSource = resolveTokenMonitorAssetRoot(sourceUrl)
-    const fromBundled = resolveTokenMonitorAssetRoot(bundledUrl)
-    expect(fromBundled).toBe(fromSource)
-    // 仓库根素材目录必须真实存在（whale-girl 至少包含 idle.png）。
-    expect(existsSync(join(fromSource, 'whale-girl', 'idle.png'))).toBe(true)
+async function fixture(): Promise<{ root: string; png: Buffer }> {
+  const root = await mkdtemp(join(tmpdir(), 'dsh-token-monitor-assets-'))
+  cleanup.push(() => rm(root, { recursive: true, force: true }))
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+  await writeFile(join(root, 'idle-08.png'), png)
+  await writeFile(join(root, 'not-an-image.txt'), 'no')
+  return { root, png }
+}
+
+async function serve(root: string): Promise<string> {
+  const route = TOKEN_MONITOR_ASSET_ROUTES[0]
+  const server: Server = createServer(createTokenMonitorAssetHandler(route.path, root))
+  await new Promise<void>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen(0, '127.0.0.1', resolve)
   })
-})
+  cleanup.push(() => new Promise<void>((resolve, reject) => {
+    server.close(error => error ? reject(error) : resolve())
+  }))
+  return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}${route.path}`
+}
 
 describe('token monitor asset routes', () => {
-  it('registers whale-girl and settings-ui/cute prefixes', () => {
-    const routes = captureRoutes(registerTokenMonitorAssetRoutes)
-    expect(routes.map(route => route.path)).toEqual([
-      '/assets/dsh-token-monitor/whale-girl',
-      '/assets/dsh-token-monitor/settings-ui/cute',
-    ])
+  it('registers the whale-girl and cute settings prefixes', () => {
+    const register = vi.fn(() => vi.fn())
+    registerTokenMonitorAssetRoutes({ webServer: { register } } as never, 'C:/assets')
+
+    expect(register).toHaveBeenCalledTimes(2)
+    expect(register.mock.calls.map(([route]) => route)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'prefix', path: '/assets/dsh-token-monitor/whale-girl' }),
+      expect.objectContaining({ kind: 'prefix', path: '/assets/dsh-token-monitor/settings-ui/cute' }),
+    ]))
   })
 
-  it('keeps the backward-compatible whale-only entry', () => {
-    const routes = captureRoutes(registerWhaleAssetRoute)
-    expect(routes).toHaveLength(1)
-    expect(routes[0]?.path).toBe('/assets/dsh-token-monitor/whale-girl')
+  it('serves PNG bytes and supports HEAD without a response body', async () => {
+    const { root, png } = await fixture()
+    const endpoint = await serve(root)
+
+    const getResponse = await fetch(`${endpoint}/idle-08.png`)
+    expect(getResponse.status).toBe(200)
+    expect(getResponse.headers.get('content-type')).toBe('image/png')
+    expect(Buffer.from(await getResponse.arrayBuffer())).toEqual(png)
+
+    const headResponse = await fetch(`${endpoint}/idle-08.png`, { method: 'HEAD' })
+    expect(headResponse.status).toBe(200)
+    expect(headResponse.headers.get('content-length')).toBe(String(png.byteLength))
+    expect(await headResponse.text()).toBe('')
   })
 
-  it('serves an existing PNG with immutable caching', async () => {
-    const [route] = captureRoutes(registerTokenMonitorAssetRoutes)
-    const result = await invoke(route!, '/assets/dsh-token-monitor/whale-girl/idle.png')
-    expect(statusOf(result)).toBe(200)
-    expect(result.writeHead.mock.calls[0]?.[1]).toMatchObject({
-      'Content-Type': 'image/png',
-      'X-Content-Type-Options': 'nosniff',
-    })
-    const body: Uint8Array = result.end.mock.calls[0]?.[0]
-    expect(body?.byteLength ?? 0).toBeGreaterThan(0)
+  it.each([
+    '/missing.png',
+    '/not-an-image.txt',
+    '/../idle-08.png',
+    '/%2e%2e%2fidle-08.png',
+    '/subdir\\idle-08.png',
+  ])('rejects missing or unsafe asset path %s', async (suffix) => {
+    const { root } = await fixture()
+    const endpoint = await serve(root)
+    expect((await fetch(`${endpoint}${suffix}`)).status).toBe(404)
   })
 
-  it('answers HEAD without a body', async () => {
-    const [route] = captureRoutes(registerTokenMonitorAssetRoutes)
-    const result = await invoke(route!, '/assets/dsh-token-monitor/whale-girl/idle.png', 'HEAD')
-    expect(statusOf(result)).toBe(200)
-    expect(result.end.mock.calls[0]?.[0]).toBeUndefined()
-  })
-
-  it('rejects path traversal outside the asset root', async () => {
-    const [route] = captureRoutes(registerTokenMonitorAssetRoutes)
-    const traversal = '/assets/dsh-token-monitor/whale-girl/../../package.json'
-    const result = await invoke(route!, traversal)
-    expect(statusOf(result)).toBe(404)
-  })
-
-  it('rejects non-PNG and missing files with 404 without crashing', async () => {
-    const [route] = captureRoutes(registerTokenMonitorAssetRoutes)
-    const missing = await invoke(route!, '/assets/dsh-token-monitor/whale-girl/does-not-exist.png')
-    expect(statusOf(missing)).toBe(404)
-    const notPng = await invoke(route!, '/assets/dsh-token-monitor/whale-girl/idle.txt')
-    expect(statusOf(notPng)).toBe(404)
-  })
-
-  it('rejects non-GET/HEAD methods with 405', async () => {
-    const [route] = captureRoutes(registerTokenMonitorAssetRoutes)
-    const result = await invoke(route!, '/assets/dsh-token-monitor/whale-girl/idle.png', 'POST')
-    expect(statusOf(result)).toBe(405)
-    expect(result.writeHead.mock.calls[0]?.[1]).toMatchObject({ Allow: 'GET, HEAD' })
+  it('rejects unsupported methods', async () => {
+    const { root } = await fixture()
+    const endpoint = await serve(root)
+    const response = await fetch(`${endpoint}/idle-08.png`, { method: 'POST' })
+    expect(response.status).toBe(405)
+    expect(response.headers.get('allow')).toBe('GET, HEAD')
   })
 })

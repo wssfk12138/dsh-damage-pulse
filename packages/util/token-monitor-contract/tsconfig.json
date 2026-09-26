@@ -1,5 +1,5 @@
 {
-  "extends": "../../../tsconfig.bundle.json",
+  "extends": "../../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "lib/types"

@@ -5,9 +5,9 @@ import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * Minimal stateful Host settings double. It only changes when a PATCH arrives,
- * which is exactly the property under test: a localStorage-only write is
- * invisible to the Host and therefore cannot survive the authoritative refresh.
+ * Minimal stateful Host settings double. The context-menu whale switch is an
+ * explicit local display preference; authoritative Host settings are exercised
+ * by the settings-panel tests.
  */
 const host = vi.hoisted(() => {
   const state = {
@@ -106,16 +106,15 @@ function isChecked(toggle: HTMLElement): boolean {
 }
 
 describe('BalanceWidget whale-girl toggle', () => {
-  it('writes the toggle through to the Host settings endpoint', async () => {
+  it('stores the display toggle locally without changing Host settings', async () => {
     const view = mountWidget()
     const toggle = await openContextMenu(view)
     expect(isChecked(toggle)).toBe(true)
 
     await act(async () => { fireEvent.click(toggle) })
 
-    await waitFor(() => {
-      expect(host.state.patches.map(entry => entry.patch)).toEqual([{ showWhaleGirl: false }])
-    })
+    await waitFor(() => { expect(window.localStorage.getItem('dsh-token-monitor-show-whale-girl')).toBe('false') })
+    expect(host.state.patches).toEqual([])
   })
 
   it('keeps the toggle unchecked across an authoritative settings refresh', async () => {
@@ -132,7 +131,7 @@ describe('BalanceWidget whale-girl toggle', () => {
     expect(isChecked(reopened)).toBe(false)
   })
 
-  it('re-reads the Host value and shows a notice when the write fails', async () => {
+  it('keeps the local choice when Host settings writes are unavailable', async () => {
     host.state.failPatches = 1
     const view = mountWidget()
     const toggle = await openContextMenu(view)
@@ -140,13 +139,9 @@ describe('BalanceWidget whale-girl toggle', () => {
 
     await act(async () => { fireEvent.click(toggle) })
 
-    // The failure is not silent: the checkbox stays on the Host value and a
-    // visible notice replaces the previous empty catch.
-    await waitFor(() => {
-      expect(view.baseElement.querySelector('[data-token-monitor-settings-notice]')).not.toBeNull()
-    })
+    await waitFor(() => { expect(window.localStorage.getItem('dsh-token-monitor-show-whale-girl')).toBe('false') })
     const reopened = await openContextMenu(view)
-    expect(isChecked(reopened)).toBe(true)
+    expect(isChecked(reopened)).toBe(false)
     expect(host.state.showWhaleGirl).toBe(true)
   })
 })

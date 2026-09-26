@@ -1,122 +1,65 @@
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { join } from 'node:path'
 
-const manifest = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'))
-const patch = readFileSync(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-const host = readFileSync(new URL('../lib/index.js', import.meta.url), 'utf8')
-const client = readFileSync(new URL('../lib/client.js', import.meta.url), 'utf8')
-const settingsContract = readFileSync(new URL('../packages/util/token-monitor-contract/src/index.ts', import.meta.url), 'utf8')
-const settingsAssetRoot = new URL('../assets/dsh-token-monitor/settings-ui/cute/', import.meta.url)
-const settingsAssets = readdirSync(settingsAssetRoot).filter(name => name.endsWith('.png'))
-const notificationDefaults = [
-  'budgetExceededNotificationEnabled',
-  'peakReminderEnabled',
-  'peakReminderEnterPeak',
-  'peakReminderEnterValley',
-  'notifyOncePerTransition',
-  'whaleBubbleEnabled',
-  'wechatNotificationsEnabled',
-  'cacheHitAnomalyNotificationEnabled',
-]
-const childProcessImports = host.match(/from ["']node:child_process["']/g) ?? []
+const repo = fileURLToPath(new URL('..', import.meta.url))
+const packageJson = JSON.parse(readFileSync(join(repo, 'package.json'), 'utf8'))
+const runtime = join(repo, 'runtime')
+const manifestPath = join(runtime, 'manifest.json')
+const checks = new Map()
+const check = (label, value) => checks.set(label, Boolean(value))
+const readText = path => readFileSync(path, 'utf8')
+const exists = path => existsSync(path)
+const readJson = path => JSON.parse(readText(path))
 
-// 标准包会话金额能力：官方会话头席位 + 兼容宿主尾部席位 + 旧客户端 fail-closed 兼容桥。
-// 这些标记同时作为产物新鲜度门禁：必须存在于当前 client 源码，且已进入构建产物；
-// 若 bundle 是从旧源码构建的（缺实现或未重建），对应检查会失败。
-const clientSrcRoot = fileURLToPath(new URL('../packages/client/ui-token-monitor/src/', import.meta.url))
-function collectProjectSource(dir) {
-  let text = ''
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const path = join(dir, entry.name)
-    if (entry.isDirectory()) text += collectProjectSource(path)
-    else if (/\.(ts|tsx)$/.test(entry.name)) text += readFileSync(path, "utf8")
+check('package metadata and version', packageJson.name === 'dsh-damage-pulse' && /^\d+\.\d+\.\d+$/.test(packageJson.version))
+check('package files include runtime and assets', packageJson.files?.includes('runtime/**/*') && packageJson.files?.includes('assets/**/*'))
+check('runtime manifest exists', exists(manifestPath))
+let manifest
+try { manifest = readJson(manifestPath) } catch { manifest = undefined }
+check('manifest version matches package', manifest?.version === packageJson.version)
+check('manifest has core and five modules', Array.isArray(manifest?.core) && Array.isArray(manifest?.modules) && ['pet', 'overview', 'notify', 'billing', 'wechat'].every(id => manifest.modules.some(module => module.id === id)))
+
+const owners = new Map()
+for (const pair of [['core', manifest?.core], ...(manifest?.modules ?? []).map(module => [module.id, module.files])]) {
+  const owner = pair[0], files = pair[1]
+  if (!Array.isArray(files)) continue
+  for (const file of files) {
+    const key = file.root + '/' + file.path
+    const previous = owners.get(key)
+    owners.set(key, previous ? previous + ',' + owner : owner)
+    const target = join(runtime, file.root, file.path)
+    const bytes = exists(target) ? readFileSync(target) : undefined
+    check('manifest file exists: ' + key, bytes !== undefined)
+    if (bytes) check('manifest size/hash: ' + key, bytes.length === file.size && createHash('sha256').update(bytes).digest('hex') === file.sha256)
   }
-  return text
 }
-const clientSourceText = collectProjectSource(clientSrcRoot)
-const sessionRowMarkers = [
-  'conversation.session.header.actions',
-  'sidebar.workspaces.sessionRow.trailing',
-  'data-session-row-trailing-slot',
-  '会话消费金额',
-  'aria-selected',
-]
+check('manifest file ownership is unique', [...owners.values()].every(value => !value.includes(',')))
+check('runtime host modules exist', ['manager', 'core', 'pet', 'overview', 'notify', 'billing', 'wechat'].every(id => exists(join(runtime, 'host', id + '.mjs'))))
+check('runtime client exists', exists(join(runtime, 'client', 'client.js')))
 
-const checks = {
-  'dsh.bundle patch': manifest.dsh?.bundle?.patch === './cordis.patch.yml',
-  'dsh.client declaration': manifest.dsh?.client?.platform === 'web',
-  'package-name patch row': patch.includes('name: dsh-damage-pulse'),
-  'Host plugin artifact': host.includes('dsh-damage-pulse') && host.includes('charge-events'),
-  'Client ModuleLoader artifact': client.includes('__ModuleLoader__.load') && client.includes('dsh-damage-pulse'),
-  'continuous damage animation': client.includes('tkm-impact-float') && client.includes('FLOAT_EMIT_INTERVAL_MS'),
-  'whale animation module': client.includes('WhaleGirlStage') && client.includes('idle-v4-r2'),
-  'whale visible by default': client.includes('dsh-token-monitor-show-whale-girl'),
-  'revive transition': client.includes('revive-recharge') && client.includes('previousSnapshot <= 0'),
-  'secure package asset routes': host.includes('/assets/dsh-token-monitor/whale-girl')
-    && host.includes('/assets/dsh-token-monitor/settings-ui/cute')
-    && host.includes('X-Content-Type-Options')
-    && host.includes('kind: "prefix"'),
-  'settings, budget, and notification routes': host.includes('/api/token-monitor/settings')
-    && host.includes('/api/token-monitor/daily-budget')
-    && host.includes('/api/token-monitor/notification-events'),
-  'wechat connection routes': host.includes('/api/token-monitor/wechat')
-    && ['/status', '/login', '/confirm', '/reconnect', '/disconnect', '/test']
-      .every(path => host.includes(path)),
-  'wechat CLI environment only': host.includes('WECHAT_NOTIFY_CLAWBOT_INDEX')
-    && !host.includes('cli-in-wechat-v1')
-    && !host.includes('C:\\Users\\'),
-  'wechat agent tool registration': ['wechat_notify', 'wechat_login', 'wechat_login_confirm']
-    .every((name) => host.includes(`"${name}"`) || host.includes(`'${name}'`)),
-  'single child process execution source': childProcessImports.length === 1,
-  'all notification defaults disabled': notificationDefaults.every(key =>
-    settingsContract.includes(`${key}: false`)
-  ) && settingsContract.includes('NOTIFICATION_DEFAULT_OFF_KEYS'),
-  'Client route dependency injections':
-    manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-connection') === true
-    && manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-ui-model-selection') === true
-    && client.includes('ctx.get("modelDirectories")'),
-  'client inject starts with connection and excludes legacy runtime':
-    manifest.dsh?.client?.inject?.indexOf('@deepseek-ai/dsh-client-connection') === 0
-    && !manifest.dsh?.client?.inject?.includes('@deepseek-ai/dsh-client-runtime')
-    && !client.includes('@deepseek-ai/dsh-client-runtime'),
-  'session-cost seats (official header + optional trailing) and legacy bridge in client bundle':
-    sessionRowMarkers.every(marker => client.includes(marker)),
-  'client bundle synced from current client source':
-   sessionRowMarkers.every(marker => clientSourceText.includes(marker)),
-  'host bundle carries the 0.1.5 SessionHandleReadResult compatibility':
-    host.includes('"events" in result') || host.includes("'events' in result"),
-  'host bundle synced from current host migration source':
-    readFileSync(new URL('../plugins/dsh-token-monitor/src/migration.ts', import.meta.url), 'utf8').includes("'events' in result"),
-  'peer ranges cover legacy DSH, Desktop 2.0.4, and DSH 0.1.5':
-    Object.entries(manifest.peerDependencies ?? {})
-      .filter(([name]) => name.startsWith('@deepseek-ai/dsh-'))
-      .every(([, range]) => range.includes('^0.1.0-rc.5')
-        && range.includes('^0.1.1-rc.2')
-        && range.includes('^0.1.2-alpha.1')
-        && range.includes('^0.1.5-alpha.1')),
-  'Client WeChat settings': client.includes('wechatNotificationsEnabled')
-    && client.includes('/api/token-monitor/wechat')
-    && client.includes('/status')
-    && client.includes('/test'),
-  'complete settings asset set': settingsAssets.length === 29
-    && settingsAssets.includes('cute-icon-notification.png')
-    && settingsAssets.includes('cute-icon-send-test.png')
-    && settingsAssets.includes('cute-decoration-ribbon.png'),
-  'runtime whale assets': [
-    'idle-v4-r2/idle-01.png',
-    'idle-v4-r2/acting-08.png',
-    'feedback-expression-v4-r4-model/frames/critical-close.png',
-    'feedback-expression-v4-r5-critical-model/frames/critical-overflow.png',
-    'revive-recharge-v1/frames/revive-reopen.png',
-    'death-stranded-v6-trim.png',
-  ].every((path) => existsSync(new URL(`../assets/dsh-token-monitor/whale-girl/` + path, import.meta.url))),
-  'package includes assets': manifest.files?.includes('assets/**/*') === true,
-}
+const host = ['manager', 'core', 'pet', 'overview', 'notify', 'billing', 'wechat'].map(id => readText(join(runtime, 'host', id + '.mjs'))).join('\n')
+const client = readText(join(runtime, 'client', 'client.js'))
+const sourceClient = (() => {
+  const root = join(repo, 'packages/client/ui-token-monitor/src')
+  const files = []
+  const walk = dir => { for (const entry of readdirSync(dir, { withFileTypes: true })) { const path = join(dir, entry.name); if (entry.isDirectory()) walk(path); else if (/\.(ts|tsx)$/.test(entry.name)) files.push(path) } }
+  walk(root)
+  return files.map(readText).join('\n')
+})()
+const sourceHost = readText(join(repo, 'plugins/dsh-token-monitor/src/migration.ts'))
+const wechatSource = ['connection.ts', 'index.ts', 'sender.ts', 'tools.ts'].map(name => readText(join(repo, 'plugins/wechat-notify/src', name))).join('\n')
+check('host routes cover settings, budget, usage, billing, and notifications', ['/api/token-monitor/settings', '/api/token-monitor/daily-budget', '/api/token-monitor/usage-summary', '/api/token-monitor/billing', '/api/token-monitor/notification-events', '/api/token-monitor/charge-events'].every(path => host.includes(path)))
+check('secure asset routes', host.includes('/assets/dsh-token-monitor/\${directory}') && host.includes('settings-ui/cute') && host.includes('whale-girl') && host.includes('kind: "prefix"'))
+check('host billing and usage implementations', host.includes('summarizeUsage') && host.includes('billing') && host.includes('sourceEventSeq'))
+check('WeChat route paths and tool names', ['/api/token-monitor/wechat', '/status', '/login', '/confirm', '/reconnect', '/disconnect', '/test'].every(marker => host.includes(marker)) && ['wechat_notify', 'wechat_login', 'wechat_login_confirm'].every(marker => wechatSource.includes(marker)))
+check('WeChat source uses CLI environment', wechatSource.includes('WECHAT_NOTIFY_CLAWBOT_INDEX') && wechatSource.includes('wechat_notify') && !wechatSource.includes('cli-in-wechat-v1'))
+check('client loader and complete interaction markers', client.includes('__ModuleLoader__') && client.includes('WhaleGirlStage') && client.includes('revive-recharge') && client.includes('/api/token-monitor/charge-events') && client.includes('conversation.session.header.actions') && client.includes('sidebar.workspaces.sessionRow.trailing'))
+check('client bundle reflects source session and module markers', ['WhaleGirlStage', 'wechatNotificationsEnabled', 'aria-selected', 'sidebar.workspaces.sessionRow.trailing'].every(marker => sourceClient.includes(marker) && client.includes(marker)))
+check('migration keeps events compatibility', sourceHost.includes("'events' in result") || sourceHost.includes('"events" in result'))
+check('notification defaults are explicit and public-safe', readText(join(repo, 'packages/util/token-monitor-contract/src/index.ts')).includes('DEFAULT_TOKEN_MONITOR_SETTINGS') && readText(join(repo, 'packages/util/token-monitor-contract/src/index.ts')).includes('budgetExceededNotificationEnabled: false'))
+check('no private absolute paths in packaged runtime', ![host, client, JSON.stringify(manifest)].some(value => /(?:[A-Z]:\\Users\\|C:\\Users\\|E:\\Codex\\)/i.test(value)))
 
-for (const entry of Object.entries(checks)) {
-  const label = entry[0]
-  const ok = entry[1]
-  console.log((ok ? '[OK] ' : '[FAILED] ') + label)
-}
-if (Object.values(checks).some(ok => !ok)) process.exitCode = 1
+for (const [label, ok] of checks) console.log('[' + (ok ? 'OK' : 'FAILED') + '] ' + label)
+if ([...checks.values()].some(value => !value)) process.exitCode = 1

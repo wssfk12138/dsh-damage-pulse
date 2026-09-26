@@ -21,6 +21,11 @@ function findCompactUnit(absolute: number) {
   return largerUnit !== undefined && roundedValue * unit.divisor >= largerUnit.threshold ? largerUnit : unit
 }
 
+/**
+ * Format a finite number with Chinese compact units, falling back to zero for invalid input.
+ * @param value - Untrusted value to validate or format.
+ * @returns The locale-formatted compact number.
+ */
 export function formatChineseCompactNumber(value: number): string {
   if (!Number.isFinite(value)) return '0'
   const sign = value < 0 ? '-' : ''
@@ -30,6 +35,11 @@ export function formatChineseCompactNumber(value: number): string {
   return `${sign}${trimFraction(absolute / unit.divisor)}${unit.suffix}`
 }
 
+/**
+ * Format a currency amount with two decimals below the compact-unit threshold.
+ * @param value - Untrusted value to validate or format.
+ * @returns The formatted currency amount without a currency symbol.
+ */
 export function formatChineseCompactCurrency(value: number): string {
   if (!Number.isFinite(value)) return '0.00'
   if (Math.abs(value) < 10_000) {

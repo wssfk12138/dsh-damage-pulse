@@ -10,10 +10,12 @@ import type { UsageRecord } from '../plugins/dsh-token-monitor/src/types.ts'
 
 const EVENT_TIME = Date.UTC(2026, 7, 21, 0, 0, 0)
 
-test('collector emits storage, charge and session records only for eligible usage', () => {
-  let listener: ((session: Session, event: SessionEvent) => void) | undefined
+test('collector persists unpriced usage without charging it, then charges priced usage', async () => {
+  let sessionEventListener: ((session: Session, event: SessionEvent) => void) | undefined
   const context = {
-    on: (_name: string, callback: (session: Session, event: SessionEvent) => void) => { listener = callback },
+    on: (name: string, callback: (...args: any[]) => void) => {
+      if (name === 'session/event') sessionEventListener = callback as (session: Session, event: SessionEvent) => void
+    },
   } as unknown as Context
   const stored: UsageRecord[] = []
   const storage = {
@@ -27,8 +29,10 @@ test('collector emits storage, charge and session records only for eligible usag
     id: 'session-m0',
     append: (...args: unknown[]) => { appended.push(args) },
   } as unknown as Session
+  let eventSeq = 0
   const eventFor = (provider: string, model: string) => ({
     type: 'assistant/message',
+    seq: eventSeq++,
     time: EVENT_TIME,
     data: {
       turn: 1,
@@ -39,17 +43,20 @@ test('collector emits storage, charge and session records only for eligible usag
   }) as unknown as SessionEvent
 
   attachCollector(context, storage, PRICE_TABLE)
-  assert.ok(listener)
+  assert.ok(sessionEventListener)
   const initialChargeSeq = currentChargeSeq()
 
-  listener(session, eventFor('openai-compatible', 'deepseek-v4-flash'))
-  listener(session, eventFor(OFFICIAL_PROVIDER_ID, 'future-deepseek-model'))
-  assert.equal(stored.length, 0)
-  assert.equal(appended.length, 0)
+  sessionEventListener!(session, eventFor('openai-compatible', 'deepseek-v4-flash'))
+  sessionEventListener!(session, eventFor(OFFICIAL_PROVIDER_ID, 'future-deepseek-model'))
+  assert.equal(stored.length, 2)
+  assert.equal(stored.every(record => record.billingStatus === 'unpriced'), true)
+  await new Promise<void>(resolve => queueMicrotask(resolve))
+  assert.equal(appended.length, 2)
   assert.equal(currentChargeSeq(), initialChargeSeq)
 
-  listener(session, eventFor(OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash'))
-  assert.equal(stored.length, 1)
-  assert.equal(appended.length, 1)
+  sessionEventListener!(session, eventFor(OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash'))
+  assert.equal(stored.length, 3)
+  await new Promise<void>(resolve => queueMicrotask(resolve))
+  assert.equal(appended.length, 3)
   assert.equal(currentChargeSeq(), initialChargeSeq + 1)
 })

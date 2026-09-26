@@ -13,12 +13,13 @@ function record(provider: string, model: string, sessionId: string): UsageRecord
   return {
     sessionId, turn: 1, step: 1, timestamp: EVENT_TIME, provider, model,
     inputTokens: 1_000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 100,
+    sourceEventSeq: sessionId === 'wrong-provider' ? 7 : undefined,
     reasoningTokens: 0, costInput: 0.0015, costCache: 0, costCacheRead: 0,
     costCacheWrite: 0, costOutput: 0.00045, cost: 0.00195, peak: false,
   }
 }
 
-test('filters ineligible history without rewriting it and rejects ineligible additions', () => {
+test('retains raw unpriced history without rewriting it and rejects duplicate additions', () => {
   const dataDir = mkdtempSync(join(tmpdir(), 'dsh-token-monitor-m0-'))
   try {
     const eligible = record(OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash', 'eligible')
@@ -32,13 +33,13 @@ test('filters ineligible history without rewriting it and rejects ineligible add
       (item) => resolvePricingEligibility(item.provider, item.model, item.timestamp, PRICE_TABLE) !== undefined,
       dataDir,
     )
-    assert.deepEqual(storage.history().map((item) => item.sessionId), ['eligible'])
+    assert.deepEqual(storage.history().map((item) => item.sessionId), ['eligible', 'wrong-provider', 'unknown-model'])
     assert.equal(storage.add(wrongProvider), undefined)
     assert.equal(readFileSync(usagePath, 'utf8'), original)
 
     const added = record(OFFICIAL_PROVIDER_ID, 'deepseek-v4-pro', 'added')
     assert.ok(storage.add(added))
-    assert.deepEqual(storage.history().map((item) => item.sessionId), ['eligible', 'added'])
+    assert.deepEqual(storage.history().map((item) => item.sessionId), ['eligible', 'wrong-provider', 'unknown-model', 'added'])
     assert.equal(readFileSync(usagePath, 'utf8'), `${original}${JSON.stringify(added)}\n`)
   } finally {
     rmSync(dataDir, { recursive: true, force: true })

@@ -1,3 +1,5 @@
+import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
+import { moduleInstalled, type createModuleState } from './moduleApi.ts'
 /**
  * 单次用量行 renderer：对话流内紧凑展示一次模型调用的 token 与金额。
  * 无 locale（文案硬编码中文），无 CSS module（内联样式，M4 验证用）。
@@ -5,8 +7,9 @@
 import { memo } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TokenUsageRecord } from './types.ts'
+import type {} from './usage-node.ts'
 
-type UsageNodeViewProps = PropsRuntime<'conversation.chat.node', 'token-usage'>
+type UsageNodeViewProps = PropsRuntime<'conversation.chat.node', 'token-usage'> & Partial<InjectFace<{ hooks: { modules: ReturnType<typeof createModuleState> } }>>
 
 const ROW: React.CSSProperties = {
   display: 'inline-flex',
@@ -39,7 +42,8 @@ function fmtCost(n: number): string {
   return `¥${n.toFixed(4)}`
 }
 
-export const UsageNodeView = memo(function UsageNodeView({ node }: UsageNodeViewProps) {
+export const UsageNodeView = memo(function UsageNodeView({ node, useModules }: UsageNodeViewProps) {
+  const billing = useModules?.(state => moduleInstalled(state, 'billing')) ?? true
   const r: TokenUsageRecord = node.data
   const total = r.inputTokens + r.cacheReadTokens + r.cacheWriteTokens + r.outputTokens
   const cache = r.cacheReadTokens > 0 ? ` · 缓存 ${fmtTokens(r.cacheReadTokens)}` : ''
@@ -49,8 +53,8 @@ export const UsageNodeView = memo(function UsageNodeView({ node }: UsageNodeView
       <span>↑ {fmtTokens(r.inputTokens + r.cacheWriteTokens)}{cache}</span>
       <span>↓ {fmtTokens(r.outputTokens)}</span>
       <span>∑ {fmtTokens(total)} tok</span>
-      <span>{r.peak ? '峰时' : '谷时'}</span>
-      <span style={COST}>{fmtCost(r.cost)}</span>
+      {billing && <span>{r.peak ? '峰时' : '谷时'}</span>}
+      {billing && <span style={COST}>{fmtCost(r.cost)}</span>}
     </div>
   )
 })

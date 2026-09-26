@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Service } from '@deepseek-ai/cordis'
 import type { Context } from '@deepseek-ai/cordis'
+import { scrubbedParentEnv } from '@deepseek-ai/dsh-subprocess'
 
 export type WechatNotifyResult =
   | { ok: true }
@@ -26,14 +27,6 @@ export interface ClawbotWechatSenderOptions {
 }
 
 const ACTIVATION_FAILURE = /prepare|context[\s_-]?token|登录|扫码|发过消息|login|expired|激活/i
-const SENSITIVE_ENVIRONMENT_NAME = /KEY|PASSWORD|SECRET|TOKEN/i
-
-/** Preserve ordinary process settings while withholding credentials from the child CLI. */
-export function scrubbedParentEnv(source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  return Object.fromEntries(Object.entries(source).filter(([name]) => (
-    !SENSITIVE_ENVIRONMENT_NAME.test(name) && !/^DSH_/i.test(name)
-  )))
-}
 
 function runCommand(invocation: WechatCommandInvocation): Promise<void> {
   return new Promise((resolve, reject) => {

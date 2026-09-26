@@ -8,6 +8,20 @@ import type {
 
 const defaultDedupeCapacity = 2_000
 
+/** Match reminders to the visible task without letting background providers take over.
+ * Legacy unscoped reminders belong only to the original official provider.
+ */
+export function notificationMatchesScope(
+  event: TokenMonitorNotificationEvent,
+  scope: { provider: string; model: string; sessionId?: string } | undefined,
+): boolean {
+  if (!scope) return false
+  if (event.kind === 'charge') return event.payload.provider === scope.provider
+    && event.payload.model === scope.model && event.payload.sessionId === scope.sessionId
+  if ((event.provider ?? 'deepseek-official') !== scope.provider) return false
+  return event.model === undefined || event.model === scope.model
+}
+
 /** Ordered visual item consumed by the main window. */
 export type NotificationVisualItem = {
   kind: 'event'

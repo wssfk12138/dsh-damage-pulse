@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createGatedWechatSender } from '../src/index.ts'
+import { createGatedWechatSender } from '../src/wechat-gate.ts'
 
 describe('shared WeChat notification master gate', () => {
   it('blocks budget, peak-period, and cache anomaly delivery while disabled', async () => {
@@ -19,7 +19,7 @@ describe('shared WeChat notification master gate', () => {
     expect(send.mock.calls.map(call => call[0])).toEqual(['budget', 'peak-period', 'cache-anomaly'])
   })
 
-  it('stays fail-soft when the optional sender is unavailable', async () => {
+  it("stays fail-soft when the optional sender is unavailable", async () => {
     const gated = createGatedWechatSender(() => true, () => undefined)
     await expect(gated.send('budget')).resolves.toEqual({ ok: true })
   })

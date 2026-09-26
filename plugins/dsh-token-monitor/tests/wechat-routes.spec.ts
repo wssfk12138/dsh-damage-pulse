@@ -154,11 +154,15 @@ describe('wechat connection Host routes', () => {
   })
 
   it('registers six additive seams without touching the public entry', () => {
-    const register = vi.fn()
-    const ctx = { webServer: { register }, logger: { warn: vi.fn() } }
+    const dispose = vi.fn()
+    const register = vi.fn(() => dispose)
+    const effects: Array<() => void> = []
+    const ctx = { webServer: { register }, logger: { warn: vi.fn() }, effect: (setup: () => () => void) => { effects.push(setup()) } }
     registerWechatRoutes(ctx as Parameters<typeof registerWechatRoutes>[0], service())
     expect(register.mock.calls.map(call => call[0].path)).toEqual([
       WECHAT_STATUS_PATH, WECHAT_LOGIN_PATH, WECHAT_LOGIN_CONFIRM_PATH, WECHAT_RECONNECT_PATH, WECHAT_DISCONNECT_PATH, WECHAT_TEST_PATH,
     ])
+    effects.forEach(dispose => dispose())
+    expect(dispose).toHaveBeenCalledTimes(6)
   })
 })

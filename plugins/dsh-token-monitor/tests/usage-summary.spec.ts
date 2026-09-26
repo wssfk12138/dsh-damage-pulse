@@ -53,6 +53,8 @@ describe('usage summary', () => {
       cacheHitTokens: 240,
       cacheHitRate: 240 / 840,
       activeDays: 3,
+      costPer100mTokensCny: 2.5 / 940 * 100000000,
+      activeDaySpendCny: 2.5 / 3,
     })
   })
 
@@ -103,10 +105,44 @@ describe('usage summary', () => {
       cacheHitTokens: 0,
       cacheHitRate: 0,
       activeDays: 0,
+      costPer100mTokensCny: null,
+      activeDaySpendCny: null,
     })
   })
 
   it('rejects an unsupported range at the aggregation boundary', () => {
     expect(summarizeUsage(HISTORY, '90d' as UsageSummaryRange, NOW)).toBeUndefined()
+  })
+
+  it('counts every provider usage but uses only priced tokens for unit cost', () => {
+    const a = record('2026-08-18', { cost: 2, inputTokens: 1000000, outputTokens: 0, cacheReadTokens: 0 })
+    const b = record('2026-08-24', { cost: 8, inputTokens: 99000000, outputTokens: 0, cacheReadTokens: 0 })
+    const zero = record('2026-08-24', { cost: 0, inputTokens: 0, outputTokens: 0, cacheReadTokens: 0 })
+    const unpriced = { ...b, timestamp: Date.parse('2026-08-20T04:00:00Z'), cost: 0, billingStatus: 'unpriced' as const }
+    const disabled = { ...unpriced, billingStatus: 'disabled' as const }
+    expect(summarizeUsage([a, b, zero, unpriced, disabled], '7d', NOW)).toMatchObject({
+      spendCny: 10, totalTokens: 298000000, activeDays: 3, requestCount: 5,
+      costPer100mTokensCny: 10, activeDaySpendCny: 10 / 3,
+    })
+    expect(summarizeUsage([a, b, zero], 'today', NOW)).toMatchObject({
+      activeDaySpendCny: 8, costPer100mTokensCny: 8 / 99000000 * 100000000,
+    })
+    expect(summarizeUsage([zero], 'today', NOW)).toMatchObject({ costPer100mTokensCny: null, activeDaySpendCny: 0 })
+  })
+
+  it('filters provider identity and yesterday at Beijing midnight boundaries', () => {
+    const base = record('2026-08-24', { cost: 1, inputTokens: 10, outputTokens: 2, cacheReadTokens: 3 })
+    const rows = [
+      { ...base, provider: 'a', timestamp: Date.parse('2026-08-22T16:00:00Z') },
+      { ...base, provider: 'a', timestamp: Date.parse('2026-08-23T15:59:59.999Z') },
+      { ...base, provider: 'a', timestamp: Date.parse('2026-08-23T16:00:00Z') },
+      { ...base, provider: 'b', timestamp: Date.parse('2026-08-23T12:00:00Z') },
+    ]
+    expect(summarizeUsage(rows, 'yesterday', NOW, 'a')).toMatchObject({
+      from: '2026-08-23', to: '2026-08-23', requestCount: 2, spendCny: 2,
+    })
+    expect(summarizeUsage([{ ...base, billingStatus: 'unpriced' }], 'today', NOW)).toMatchObject({
+      requestCount: 1, totalTokens: 15, spendCny: null, costPer100mTokensCny: null, activeDaySpendCny: null,
+    })
   })
 })

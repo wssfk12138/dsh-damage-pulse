@@ -1,3 +1,5 @@
+import { PRODUCT_NAME } from './branding.ts'
+
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 const notificationKinds = ['charge', 'budget-threshold', 'peak-enter', 'peak-exit', 'cache-hit-anomaly'] as const
@@ -37,6 +39,7 @@ export interface PeakTransitionNotificationPayload {
   periodKey: string
 }
 
+/** Payload describing a sustained cache-hit-rate anomaly. */
 export interface CacheHitAnomalyNotificationPayload {
   episodeId: number
   observedRate: number
@@ -47,6 +50,8 @@ export interface CacheHitAnomalyNotificationPayload {
 }
 
 interface NotificationEventBase<K extends TokenMonitorNotificationKind, P> {
+  provider?: string
+  model?: string
   schemaVersion: 1
   seq: number
   id: string
@@ -71,6 +76,7 @@ export type PeakEnterNotificationEvent = NotificationEventBase<'peak-enter', Pea
 
 /** One transition out of the peak period. */
 export type PeakExitNotificationEvent = NotificationEventBase<'peak-exit', PeakTransitionNotificationPayload>
+/** Notification event emitted for a sustained cache-hit-rate anomaly. */
 export type CacheHitAnomalyNotificationEvent = NotificationEventBase<'cache-hit-anomaly', CacheHitAnomalyNotificationPayload>
 
 /** Strictly validated notification event received from the Host. */
@@ -121,7 +127,7 @@ export type NotificationEventsPollResult = NotificationEventsPollSuccess | Notif
 /** HTTP failure from the notification endpoint. */
 export class NotificationEventsApiError extends Error {
   constructor(readonly status: number) {
-    super(`Token Monitor notification request failed (HTTP ${String(status)})`)
+    super(`${PRODUCT_NAME} notification request failed (HTTP ${String(status)})`)
     this.name = 'NotificationEventsApiError'
   }
 }
@@ -129,7 +135,7 @@ export class NotificationEventsApiError extends Error {
 /** Invalid JSON or response fields from the notification endpoint. */
 export class NotificationEventsProtocolError extends Error {
   constructor(readonly field: string) {
-    super(`Token Monitor notification response is invalid: ${field}`)
+    super(`${PRODUCT_NAME} notification response is invalid: ${field}`)
     this.name = 'NotificationEventsProtocolError'
   }
 }
@@ -159,6 +165,8 @@ function finiteNumber(value: unknown): value is number {
 }
 
 function parseBase(value: Record<string, unknown>, kind: TokenMonitorNotificationKind): {
+  provider?: string
+  model?: string
   seq: number
   id: string
   dedupeKey: string
@@ -166,6 +174,8 @@ function parseBase(value: Record<string, unknown>, kind: TokenMonitorNotificatio
   priority: TokenMonitorNotificationPriority
 } {
   if (value.schemaVersion !== 1) throw new NotificationEventsProtocolError('events[].schemaVersion')
+  if (value.provider !== undefined && !boundedString(value.provider, 256)) throw new NotificationEventsProtocolError('events[].provider')
+  if (value.model !== undefined && !boundedString(value.model, 256)) throw new NotificationEventsProtocolError('events[].model')
   if (!nonNegativeSafeInteger(value.seq) || value.seq === 0) {
     throw new NotificationEventsProtocolError('events[].seq')
   }
@@ -179,6 +189,8 @@ function parseBase(value: Record<string, unknown>, kind: TokenMonitorNotificatio
     throw new NotificationEventsProtocolError('events[].priority')
   }
   return {
+    ...(value.provider === undefined ? {} : { provider: value.provider as string }),
+    ...(value.model === undefined ? {} : { model: value.model as string }),
     seq: value.seq,
     id: value.id,
     dedupeKey: value.dedupeKey,
@@ -262,7 +274,14 @@ function parseCacheHitAnomalyPayload(value: unknown): CacheHitAnomalyNotificatio
   if (!nonNegativeSafeInteger(value.sampleCount) || value.sampleCount < 2) throw new NotificationEventsProtocolError('events[].payload.sampleCount')
   if (!nonNegativeSafeInteger(value.consecutiveCalls) || value.consecutiveCalls < 2) throw new NotificationEventsProtocolError('events[].payload.consecutiveCalls')
   if (!nonNegativeSafeInteger(value.observedAt)) throw new NotificationEventsProtocolError('events[].payload.observedAt')
-  return { episodeId: value.episodeId, observedRate: value.observedRate, threshold: value.threshold, sampleCount: value.sampleCount, consecutiveCalls: value.consecutiveCalls, observedAt: value.observedAt }
+  return {
+    episodeId: value.episodeId,
+    observedRate: value.observedRate,
+    threshold: value.threshold,
+    sampleCount: value.sampleCount,
+    consecutiveCalls: value.consecutiveCalls,
+    observedAt: value.observedAt,
+  }
 }
 
 function parseEvent(value: unknown): TokenMonitorNotificationEvent {

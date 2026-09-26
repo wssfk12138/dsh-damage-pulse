@@ -1,22 +1,50 @@
 /**
- * Client 半的类型表：复用 Host wire 类型，并补充 Conversation Node data 声明。
+ * Client 半的类型表：tokenCost 投影值、token-usage/record 事件数据与
+ * Conversation Node data 的声明合并。与 Host 插件（dsh-token-monitor）的
+ * 定义保持一致（client 聚合独立编译，故在此重复声明）。
  * @module @deepseek-ai/dsh-client-ui-token-monitor/client
  */
 
-import type {
-  TokenCostProjection as HostTokenCostProjection,
-  TokenUsageRecordData,
-  UsageRecord,
-} from '../../../../../plugins/dsh-token-monitor/src/types.ts'
-
 /** 单次模型调用的用量与金额记录（wire 值，与 Host UsageRecord 对齐）。 */
-export type TokenUsageRecord = UsageRecord
+export interface TokenUsageRecord {
+  sessionId: string
+  turn: number
+  step: number
+  sourceEventSeq?: number
+  timestamp: number
+  provider: string
+  model: string
+  inputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  outputTokens: number
+  reasoningTokens: number
+  costInput: number
+  costCache: number
+  costCacheRead: number
+  costCacheWrite: number
+  costOutput: number
+  cost: number
+  peak: boolean
+}
 
 /** tokenCost 投影的 wire 值：会话累计用量与金额。 */
-export type TokenCostProjection = HostTokenCostProjection
+export interface TokenCostProjection {
+  calls: number
+  inputTokens: number
+  cacheReadTokens: number
+  cacheWriteTokens: number
+  outputTokens: number
+  totalTokens: number
+  cost: number
+  lastActivity: number
+}
 
-/** DeepSeek 账户余额（与 Host BalanceInfo 对齐）。 */
+/** Provider balance snapshot; generation metadata prevents cross-credential comparisons. */
 export interface BalanceInfo {
+  provider?: string
+  scriptRevision?: number
+  credentialGeneration?: string
   currency: string
   totalBalance: number
   grantedBalance: number
@@ -35,31 +63,28 @@ export interface TodaySpendInfo {
   updatedAt: number
 }
 
-export type UsageSummaryRange = 'all' | '30d' | '7d' | 'today'
+/** Time range accepted by usage-summary aggregation. */
+export type UsageSummaryRange = 'all' | '30d' | '7d' | 'yesterday' | 'today' | 'custom'
 
+/** Aggregated token usage, cost, and cache metrics for a selected range. */
 export interface UsageSummary {
   range: UsageSummaryRange
   from: string | null
   to: string
-  spendCny: number
+  spendCny: number | null
   requestCount: number
   totalTokens: number
   cacheHitTokens: number
   cacheHitRate: number
   activeDays: number
-}
-
-declare module '@deepseek-ai/dsh-session/types' {
-  interface SessionEventMap {
-    /** 一次模型调用的 token 用量与金额（仅日志事件，供用量行回放）。 */
-    'token-usage/record': TokenUsageRecordData
-  }
+  costPer100mTokensCny: number | null
+  activeDaySpendCny: number | null
 }
 
 declare module '@deepseek-ai/dsh-session-projection/types' {
   interface SessionProjectionMap {
     /** 会话累计 token 用量与金额。 */
-    tokenCost: HostTokenCostProjection
+    tokenCost: TokenCostProjection
   }
 }
 

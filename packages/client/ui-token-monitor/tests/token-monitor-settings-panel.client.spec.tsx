@@ -71,6 +71,7 @@ function renderPanel(options: {
   render(
     <TokenMonitorSettingsPanel
       snapshot={options.currentSnapshot ?? snapshot}
+      title="通知设置"
       onSave={onSave}
       onClose={onClose}
       wechatApi={wechatApi}
@@ -80,23 +81,16 @@ function renderPanel(options: {
 }
 
 describe('TokenMonitorSettingsPanel', () => {
-  it('uses the compact overview layout and outfit-blue theme', () => {
+  it('uses the current settings layout and outfit-blue theme', () => {
     renderPanel()
 
-    const panel = screen.getByRole('form', { name: 'Token Monitor 设置' })
+    const panel = screen.getByRole('form', { name: 'dsh-damage-pulse 设置' })
     expect(panel.getAttribute('data-token-monitor-settings-theme')).toBe('whale-outfit-blue')
-    expect(screen.getByRole('heading', { name: '概览' })).not.toBeNull()
     expect(screen.getByRole('heading', { name: '提醒规则' })).not.toBeNull()
     expect(screen.getByRole('heading', { name: '通知渠道' })).not.toBeNull()
-    expect(screen.getByText('消费')).not.toBeNull()
-    expect(screen.getByText('请求数')).not.toBeNull()
-    expect(screen.getByText('Token 总数')).not.toBeNull()
-    expect(screen.getByText('缓存命中 Token')).not.toBeNull()
-    expect(screen.getByText('缓存命中率')).not.toBeNull()
-    expect(screen.getByText('活跃天数')).not.toBeNull()
-    expect(screen.getByRole('radiogroup', { name: '概览时间范围' })).not.toBeNull()
-    expect(screen.getByRole('radio', { name: '今日' })).not.toBeNull()
-    expect(screen.queryByText('CNY 38.67')).toBeNull()
+    expect(screen.getByRole('heading', { name: '通知设置' })).not.toBeNull()
+    expect(screen.queryByText('概览')).toBeNull()
+    expect(screen.queryByRole('radiogroup', { name: '概览时间范围' })).toBeNull()
     expect(screen.queryByRole('switch', { name: /显示鲸鱼娘/ })).toBeNull()
     expect(screen.queryByText('账户余额')).toBeNull()
     expect(screen.queryByText('剩余预算')).toBeNull()
@@ -106,24 +100,9 @@ describe('TokenMonitorSettingsPanel', () => {
     expect(screen.queryByText('鲸鱼娘气泡与微信通知共用一处管理。')).toBeNull()
     expect(screen.queryByText(/上限 ¥/)).toBeNull()
 
-    const metrics = panel.querySelectorAll<HTMLElement>('.token-monitor-settings__metric')
-    expect(metrics).toHaveLength(6)
-    expect(Array.from(metrics).every(metric => metric.style.backgroundImage === '')).toBe(true)
+    expect(panel.querySelectorAll<HTMLElement>('.token-monitor-settings__metric')).toHaveLength(0)
     const ribbon = panel.querySelector<HTMLElement>('.token-monitor-settings__ribbon')
     expect(ribbon?.getAttribute('title')).toBeNull()
-  })
-
-  it('switches overview range through the single-line segmented selector', () => {
-    renderPanel()
-
-    const today = screen.getByRole('radio', { name: '今日' })
-    const thirtyDays = screen.getByRole('radio', { name: '30天' })
-    expect(today.getAttribute('aria-checked')).toBe('true')
-    expect(thirtyDays.getAttribute('aria-checked')).toBe('false')
-
-    fireEvent.click(thirtyDays)
-    expect(today.getAttribute('aria-checked')).toBe('false')
-    expect(thirtyDays.getAttribute('aria-checked')).toBe('true')
   })
 
   it('renders the settings snapshot and preserves disabled child choices', async () => {
@@ -174,6 +153,7 @@ describe('TokenMonitorSettingsPanel', () => {
       <div onPointerDown={outerPointerDown} onClick={outerClick}>
         <TokenMonitorSettingsPanel
           snapshot={snapshot}
+          title="通知设置"
           onSave={vi.fn().mockResolvedValue(snapshot)}
           onClose={onClose}
           wechatApi={wechatApi}
@@ -186,12 +166,12 @@ describe('TokenMonitorSettingsPanel', () => {
     fireEvent.click(switchControl)
     expect(outerPointerDown).not.toHaveBeenCalled()
     expect(outerClick).not.toHaveBeenCalled()
-    expect(switchControl.getAttribute('aria-checked')).toBe('true')
+    expect(switchControl.getAttribute('aria-checked')).toBe('false')
 
-    const close = screen.getByRole('button', { name: '关闭' })
+    const close = screen.getByRole('button', { name: '关闭监控设置' })
     fireEvent.pointerDown(close)
     fireEvent.click(close)
-    expect(onClose).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
     expect(outerPointerDown).not.toHaveBeenCalled()
     expect(outerClick).not.toHaveBeenCalled()
   })
@@ -208,6 +188,7 @@ describe('TokenMonitorSettingsPanel', () => {
     render(
       <TokenMonitorSettingsPanel
         snapshot={snapshot}
+        title="通知设置"
         onSave={onSave}
         onClose={onClose}
         wechatApi={api(managed)}
@@ -215,8 +196,8 @@ describe('TokenMonitorSettingsPanel', () => {
     )
     await screen.findByText('已登录 · DSH Host 托管运行中')
 
-    fireEvent.keyDown(screen.getByRole('form', { name: 'Token Monitor 设置' }), { key: 'Escape' })
-    expect(onClose).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(screen.getByRole('form', { name: 'dsh-damage-pulse 设置' }), { key: 'Escape' })
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1))
     expect(onSave).not.toHaveBeenCalled()
 
     fireEvent.click(screen.getByRole('button', { name: '断开' }))
@@ -235,15 +216,14 @@ describe('TokenMonitorSettingsPanel', () => {
     renderPanel({ onSave })
 
     fireEvent.click(screen.getByRole('switch', { name: /^微信通知/ }))
-    fireEvent.click(screen.getByRole('button', { name: '保存设置' }))
 
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({
         expectedRevision: 7,
-        patch: { wechatNotificationsEnabled: true },
+        patch: { wechatNotificationsEnabled: false },
       })
     })
-    expect(await screen.findByText('设置已保存。')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: '保存设置' })).toBeNull()
   })
 
   it('does not expose whale-girl visibility in detailed settings', () => {
@@ -254,10 +234,8 @@ describe('TokenMonitorSettingsPanel', () => {
   it('keeps a failed save visible without reporting success', async () => {
     renderPanel({ onSave: vi.fn().mockRejectedValue(new Error('revision conflict')) })
     fireEvent.click(screen.getByRole('switch', { name: /^微信通知/ }))
-    fireEvent.click(screen.getByRole('button', { name: '保存设置' }))
-    expect(((await screen.findByRole('button', { name: '保存设置' })) as HTMLButtonElement).disabled).toBe(false)
     expect(await screen.findByText('revision conflict')).not.toBeNull()
-    expect(screen.queryByText('设置已保存。')).toBeNull()
+    expect(screen.queryByRole('button', { name: '保存设置' })).toBeNull()
   })
 
   it('marks an external bridge as externally managed and disables destructive actions', async () => {
@@ -303,7 +281,7 @@ describe('TokenMonitorSettingsPanel', () => {
     await screen.findByText('尚未登录')
 
     fireEvent.click(screen.getByRole('button', { name: '登录微信' }))
-    const qr = await screen.findByLabelText('微信登录二维码内容')
+    const qr = await screen.findByLabelText('微信登录二维码')
     expect(qr.tagName).toBe('IMG')
     expect((qr as HTMLImageElement).src).toMatch(/^data:image\/svg\+xml/)
     expect((qr as HTMLImageElement).src).not.toContain('api.qrserver.com')
@@ -316,7 +294,7 @@ describe('TokenMonitorSettingsPanel', () => {
       expect(wechatApi.confirmLogin).toHaveBeenCalledWith('session-1', expect.any(AbortSignal))
     })
     expect(await screen.findByText('微信登录已确认。')).not.toBeNull()
-    expect(screen.queryByLabelText('微信登录二维码内容')).toBeNull()
+    expect(screen.queryByLabelText('微信登录二维码')).toBeNull()
     expect(screen.getByText('请先给 ClawBot 发一条消息激活通知通道')).not.toBeNull()
   })
 
@@ -411,11 +389,11 @@ describe('TokenMonitorSettingsPanel', () => {
   it('keeps long footer messages wrappable and narrow-screen wechat rows stacked', () => {
     renderPanel()
 
-    const panel = screen.getByRole('form', { name: 'Token Monitor 设置' })
+    const panel = screen.getByRole('form', { name: 'dsh-damage-pulse 设置' })
     const style: string = panel.querySelector<HTMLStyleElement>('style')?.textContent ?? ''
-    expect(style).toContain('.token-monitor-settings__footer { position: sticky; bottom: 0; z-index: 3; display: flex; flex-wrap: wrap;')
-    expect(style).toContain('.token-monitor-settings__footer-message { flex: 1 1 180px; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }')
-    expect(style).toContain('.token-monitor-settings__footer > button { flex: 0 0 auto; }')
+    expect(style).toContain('.token-monitor-settings__footer { position: sticky; bottom: 0; z-index: 3; display: flex; align-items: center;')
+    expect(style).toContain('.token-monitor-settings__footer-message { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }')
+    expect(style).not.toContain('.token-monitor-settings__footer > button')
 
     const mediaLine = style.split('\n').find(line => line.includes('@media (max-width: 719px)'))
     expect(mediaLine).toBeDefined()
@@ -427,8 +405,7 @@ describe('TokenMonitorSettingsPanel', () => {
     const message = footer?.querySelector<HTMLElement>('.token-monitor-settings__footer-message')
     expect(message?.getAttribute('aria-live')).toBe('polite')
     expect(message?.textContent ?? '').not.toMatch(/undefined/)
-    expect(footer?.querySelector<HTMLButtonElement>('button[type="button"]')).not.toBeNull()
-    expect(footer?.querySelector<HTMLButtonElement>('button[type="submit"]')).not.toBeNull()
+    expect(footer?.querySelector<HTMLButtonElement>('button')).toBeNull()
   })
 
   it('uses the wrap-friendly actions container inside the disconnect confirmation', async () => {
@@ -448,7 +425,7 @@ describe('TokenMonitorSettingsPanel', () => {
     expect(actions?.querySelector('button')?.textContent).toBe('取消')
     expect(screen.getByRole('button', { name: '确认断开' })).not.toBeNull()
 
-    const panel = screen.getByRole('form', { name: 'Token Monitor 设置' })
+    const panel = screen.getByRole('form', { name: 'dsh-damage-pulse 设置' })
     const style: string = panel.querySelector<HTMLStyleElement>('style')?.textContent ?? ''
     expect(style).toContain('.token-monitor-settings__disconnect-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }')
     expect(style).toContain('.token-monitor-settings__disconnect-actions > button { flex: 1 1 112px; min-width: 0; }')

@@ -1,18 +1,18 @@
 /**
- * 会话金额（正式席位版本）。主落点是官方席位
- * conversation.session.header.actions（会话标题旁的 actions 列表，0.1.5-alpha 与
- * rc.7 都声明）；宿主额外声明 sidebar.workspaces.sessionRow.trailing 时（本机
- * 侧边栏补丁版）同一组件会再挂到会话行尾部，标题与相对时间之间。
+ * 会话行金额（正式席位版本）：挂在宿主声明的
+ * sidebar.workspaces.sessionRow.trailing 通用席位上（标题与相对时间之间）。
  *
- * 金额读自 useSessions 列表投影 tokenCost；缺失、零值或非有限值不显示。两处
- * 席位都是 session scope 的 list 席位，标准 kit 提供 sessionId 与 useSessions。
+ * 金额读自 useSessions 列表投影 tokenCost；缺失、零值或非有限值不显示。
  * 视觉与旧版兼容桥保持一致（旧 apply-sidebar-integration.ps1 的 .cost 落点）。
- * 本包不依赖 ui-workspace：props 使用局部结构类型，席位键经类型擦除后注册。
+ * 本包不依赖 ui-workspace：props 使用局部结构类型（宿主 owner 提供 sessionId，
+ * 全局 kit 提供 useSessions），席位键经类型擦除后注册。
  */
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId, SessionListStateLike } from './host-contracts.ts'
+import { LEDGER_COST_TITLE, ledgerSessionCost, resolveSessionCost, useSessionLedger } from './sessionLedger.ts'
 import {
   formatSessionCost,
+  asSessionCostProjection,
   readSessionCost,
   SESSION_COST_MARKER,
   SESSION_COST_TITLE,
@@ -41,11 +41,18 @@ const BADGE: React.CSSProperties = {
  * @returns 金额节点，或 null。
  */
 export function SessionCostBadge({ sessionId, useSessions }: SessionCostBadgeProps) {
-  const cost = useSessions(state => readSessionCost(state.byId[sessionId]?.projectionValues))
-  if (cost === undefined) return null
+  const projectionCost = useSessions(state => readSessionCost(asSessionCostProjection(state.byId[sessionId]?.projectionValues)))
+  const ledger = useSessionLedger()
+  const resolved = resolveSessionCost(projectionCost, ledgerSessionCost(ledger, sessionId))
+  if (resolved === undefined) return null
   return (
-    <span style={BADGE} {...{ [SESSION_COST_MARKER]: '' }} title={SESSION_COST_TITLE}>
-      {formatSessionCost(cost)}
+    <span
+      style={BADGE}
+      {...{ [SESSION_COST_MARKER]: '' }}
+      title={resolved.fromLedger ? LEDGER_COST_TITLE : SESSION_COST_TITLE}
+      {...(resolved.fromLedger ? { 'data-dsh-token-monitor-cost-source': 'ledger' } : {})}
+    >
+      {formatSessionCost(resolved.cost)}
     </span>
   )
 }

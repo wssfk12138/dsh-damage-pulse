@@ -1,0 +1,555 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`loads production plugin, changes prices through real agent tools, pushes rules and preserves costs across reload > model-visible billing tools 1`] = `
+[
+  {
+    "description": "Read Host-global model billing rules and their revision. Only currently available models are listed. Use exact provider/model IDs from this result before updating prices. Rates are CNY per million tokens; no currency conversion. Does not change settings or historical costs.",
+    "name": "token_monitor_billing_get",
+    "parameters": {
+      "properties": {
+        "model": {
+          "description": "Optional exact model ID; provide provider too.",
+          "type": "string",
+        },
+        "provider": {
+          "description": "Optional exact provider ID.",
+          "type": "string",
+        },
+      },
+      "type": "object",
+    },
+  },
+  {
+    "description": "Save only the requested fields for one available provider/model. Call token_monitor_billing_get first and supply its expectedRevision. Changes are Host-global and apply to requests started after this update; in-flight and historical costs keep their original rules. Preserve unspecified fields and other models. On revision conflict read again; never blindly retry. Prices are CNY per million tokens, multiplier must be positive. Change prices only when requested by the user; do not invent rates. providerEnabled affects every model under that provider.",
+    "name": "token_monitor_billing_update",
+    "parameters": {
+      "properties": {
+        "expectedRevision": {
+          "type": "integer",
+        },
+        "model": {
+          "type": "string",
+        },
+        "patch": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+            },
+            "fixed": {
+              "additionalProperties": false,
+              "properties": {
+                "cacheHit": {
+                  "description": "Cached input CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+                "cacheWrite": {
+                  "description": "Cache write CNY per million tokens. input inherits uncached input; null is unpriced; 0 is free. Omission preserves the current choice.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                    {
+                      "enum": [
+                        "input",
+                      ],
+                      "type": "string",
+                    },
+                  ],
+                },
+                "input": {
+                  "description": "Uncached input CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+                "output": {
+                  "description": "Output CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+              },
+              "type": "object",
+            },
+            "mode": {
+              "enum": [
+                "fixed",
+                "peak",
+              ],
+              "type": "string",
+            },
+            "multiplier": {
+              "type": "number",
+            },
+            "offPeak": {
+              "additionalProperties": false,
+              "properties": {
+                "cacheHit": {
+                  "description": "Cached input CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+                "cacheWrite": {
+                  "description": "Cache write CNY per million tokens. input inherits uncached input; null is unpriced; 0 is free. Omission preserves the current choice.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                    {
+                      "enum": [
+                        "input",
+                      ],
+                      "type": "string",
+                    },
+                  ],
+                },
+                "input": {
+                  "description": "Uncached input CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+                "output": {
+                  "description": "Output CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+              },
+              "type": "object",
+            },
+            "offPeakTiers": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "cacheHit": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "cacheWrite": {
+                    "description": "Cache write rate; omitted or input inherits this tier input price.",
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                      {
+                        "enum": [
+                          "input",
+                        ],
+                        "type": "string",
+                      },
+                    ],
+                  },
+                  "input": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "maxInputTokens": {
+                    "description": "Inclusive total-input ceiling; final tier must be null.",
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "output": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                },
+                "required": [
+                  "maxInputTokens",
+                  "input",
+                  "cacheHit",
+                  "output",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+            "peak": {
+              "additionalProperties": false,
+              "properties": {
+                "cacheHit": {
+                  "description": "Cached input CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+                "cacheWrite": {
+                  "description": "Cache write CNY per million tokens. input inherits uncached input; null is unpriced; 0 is free. Omission preserves the current choice.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                    {
+                      "enum": [
+                        "input",
+                      ],
+                      "type": "string",
+                    },
+                  ],
+                },
+                "input": {
+                  "description": "Uncached input CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+                "output": {
+                  "description": "Output CNY per million tokens; null means unpriced.",
+                  "oneOf": [
+                    {
+                      "type": "number",
+                    },
+                    {
+                      "type": "null",
+                    },
+                  ],
+                },
+              },
+              "type": "object",
+            },
+            "peakTiers": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "cacheHit": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "cacheWrite": {
+                    "description": "Cache write rate; omitted or input inherits this tier input price.",
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                      {
+                        "enum": [
+                          "input",
+                        ],
+                        "type": "string",
+                      },
+                    ],
+                  },
+                  "input": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "maxInputTokens": {
+                    "description": "Inclusive total-input ceiling; final tier must be null.",
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "output": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                },
+                "required": [
+                  "maxInputTokens",
+                  "input",
+                  "cacheHit",
+                  "output",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+            "periods": {
+              "description": "Replace peak periods in Beijing time. Split cross-midnight periods. Sunday=0; start inclusive, end exclusive.",
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "days": {
+                    "items": {
+                      "type": "integer",
+                    },
+                    "type": "array",
+                  },
+                  "end": {
+                    "description": "Minute of day, 1..1440.",
+                    "type": "integer",
+                  },
+                  "start": {
+                    "description": "Minute of day, 0..1439.",
+                    "type": "integer",
+                  },
+                },
+                "required": [
+                  "days",
+                  "start",
+                  "end",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+            "tiers": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "cacheHit": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "cacheWrite": {
+                    "description": "Cache write rate; omitted or input inherits this tier input price.",
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                      {
+                        "enum": [
+                          "input",
+                        ],
+                        "type": "string",
+                      },
+                    ],
+                  },
+                  "input": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "maxInputTokens": {
+                    "description": "Inclusive total-input ceiling; final tier must be null.",
+                    "oneOf": [
+                      {
+                        "type": "integer",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                  "output": {
+                    "oneOf": [
+                      {
+                        "type": "number",
+                      },
+                      {
+                        "type": "null",
+                      },
+                    ],
+                  },
+                },
+                "required": [
+                  "maxInputTokens",
+                  "input",
+                  "cacheHit",
+                  "output",
+                ],
+                "type": "object",
+              },
+              "type": "array",
+            },
+          },
+          "type": "object",
+        },
+        "provider": {
+          "type": "string",
+        },
+        "providerEnabled": {
+          "description": "Explicit provider-wide billing switch; a newly created provider defaults to disabled.",
+          "type": "boolean",
+        },
+      },
+      "required": [
+        "provider",
+        "model",
+        "expectedRevision",
+        "patch",
+      ],
+      "type": "object",
+    },
+  },
+]
+`;
+
+exports[`loads production plugin, changes prices through real agent tools, pushes rules and preserves costs across reload > model-visible saved billing rule 1`] = `
+{
+  "currency": "CNY",
+  "groups": [
+    {
+      "enabled": true,
+      "models": [
+        {
+          "model": "test-model",
+          "name": "Test model",
+          "rule": {
+            "enabled": true,
+            "fixed": {
+              "cacheHit": 1,
+              "cacheWrite": 7,
+              "input": 10,
+              "output": 2,
+            },
+            "mode": "fixed",
+            "model": "test-model",
+            "multiplier": 3,
+            "offPeak": {
+              "cacheHit": null,
+              "input": null,
+              "output": null,
+            },
+            "peak": {
+              "cacheHit": null,
+              "input": null,
+              "output": null,
+            },
+            "periods": [
+              {
+                "days": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                ],
+                "end": 720,
+                "start": 540,
+              },
+              {
+                "days": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                ],
+                "end": 1080,
+                "start": 840,
+              },
+            ],
+            "tiers": [],
+          },
+        },
+      ],
+      "name": "billing-test",
+      "provider": "billing-test",
+    },
+  ],
+  "priceUnit": "per million tokens",
+  "revision": 3,
+  "timezone": "Asia/Shanghai",
+}
+`;

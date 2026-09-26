@@ -1,5 +1,5 @@
 /**
- * tokenCost projection：fold assistant/message.usage，累计每个会话的 token 用量与金额。
+ * tokenCost projection：fold collector 写入的冻结 token-usage/record，累计每个会话的 token 用量与金额。
  * 经 session-projection 缝自动推送（registry 快照 / 变更流 / session/projection 帧），
  * Web Client 据此渲染「会话累计」统计条。
  * 定义同时携带两代 DSH 宿主的字段：0.1.0-rc.6/rc.7/rc.8 读取 schema/view，
@@ -9,8 +9,8 @@
 
 import { z, type ZodType } from 'zod'
 import type { ProjectionDefinition } from '@deepseek-ai/dsh-session-projection'
-import { priceUsage, type PricingTable } from './pricing.ts'
-import type { TokenCostProjection, TokenCostState } from './types.ts'
+import type { PricingTable } from './pricing.ts'
+import { isValidUsageRecord, type TokenCostProjection, type TokenCostState } from './types.ts'
 
 /** Persisted fold state (the DSH 0.1.1 wire contract validates this shape). */
 const stateSchema = z.object({
@@ -52,10 +52,8 @@ type TokenCostProjectionDefinition = Omit<
 
 /** 按给定价格表构造 tokenCost projection 单元。 */
 export function createTokenCostProjectionDefinition(
-  priceTable: PricingTable | (() => PricingTable),
+  _priceTable: PricingTable,
 ): TokenCostProjectionDefinition {
-  // 价格表可传活引用：settings 的表在 inject 回调就绪，注册后再改动也要能被 fold 读到。
-  const readPriceTable = typeof priceTable === 'function' ? priceTable : () => priceTable
   /** 共享的 state → wire 投影：旧宿主经 view 读取，新宿主经 wire.view 读取。 */
   const wireView = (state: TokenCostState): TokenCostProjection => ({
     calls: state.calls,
@@ -80,28 +78,12 @@ export function createTokenCostProjectionDefinition(
       lastActivity: 0,
     }),
     apply: (state, event) => {
-      if (event.type !== 'assistant/message') return state
-      const usage = event.data.usage
-      if (usage === undefined) return state
-      const source = event.data.message.source
-      if (source.kind !== 'model') return state
-
-      const inputTokens = usage.inputTokens
-      const cacheReadTokens = usage.cacheReadTokens ?? 0
-      const cacheWriteTokens = usage.cacheWriteTokens ?? 0
-      const outputTokens = usage.outputTokens
-      if (![inputTokens, cacheReadTokens, cacheWriteTokens, outputTokens].every(value => Number.isSafeInteger(value) && value >= 0)) return state
-      const breakdown = priceUsage(
-        inputTokens,
-        cacheReadTokens,
-        cacheWriteTokens,
-        outputTokens,
-        source.provider,
-        source.model,
-        event.time,
-        readPriceTable(),
-      )
-      if (breakdown === undefined) return state
+      // 旧代际日志读回时宿主把本插件的事件改名为 plugin:token-usage/record；
+      // 两种拼写承载同一份记录，只认一种会让历史会话折叠为零。
+      if (event.type !== 'token-usage/record' && event.type !== 'plugin:token-usage/record') return state
+      const record = event.data.record
+      if (!isValidUsageRecord(record)) return state
+      const { inputTokens, cacheReadTokens, cacheWriteTokens, outputTokens } = record
 
       return {
         ...state,
@@ -110,8 +92,8 @@ export function createTokenCostProjectionDefinition(
         cacheReadTokens: state.cacheReadTokens + cacheReadTokens,
         cacheWriteTokens: state.cacheWriteTokens + cacheWriteTokens,
         outputTokens: state.outputTokens + outputTokens,
-        cost: state.cost + breakdown.cost,
-        lastActivity: event.time,
+        cost: state.cost + record.cost,
+        lastActivity: Math.max(state.lastActivity, record.timestamp),
       }
     },
     wire: {
@@ -121,8 +103,13 @@ export function createTokenCostProjectionDefinition(
     // 旧 DSH 宿主字段：schema 校验 wire 值、view 输出 wire 值，与新宿主共用实现。
     schema: viewSchema,
     view: wireView,
-    // v6 重算 Flash 调价、新名称、Pro 转路由以及 settings 默认表绕过历史分段的历史金额；
-    // 版本不符时宿主会丢弃缓存行并从事件重算，不会改写 usage 账本。
-    stateVersion: 6,
+    // Preserve existing checkpoints as the legacy baseline; new folds use frozen records.
+    // v5 checkpoints can contain a zero-valued tokenCost row written before
+    // historical records were folded correctly. Bump the state version so
+    // the host rejects those rows and cold-rebuilds from the durable log.
+    // v6 rows repeat that failure for sessions logged before the current session
+    // format: the host returns those events namespaced as plugin:token-usage/record,
+    // so a v6 fold dropped every usage record of such a session.
+    stateVersion: 7,
   }
 }

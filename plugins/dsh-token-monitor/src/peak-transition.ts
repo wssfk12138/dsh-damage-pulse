@@ -118,6 +118,7 @@ export class PeakTransitionScheduler {
   private timer: unknown
   private period: PeakPeriod | undefined
   private lastEmittedKey: string | undefined
+  private readonly pending = new Set<Promise<void>>()
 
   constructor(
     private readonly onTransition: (transition: PeakTransition) => void | Promise<void>,
@@ -137,13 +138,13 @@ export class PeakTransitionScheduler {
   }
 
   /** Stop and release the owned timer. Repeated stops are no-ops. */
-  stop(): void {
-    if (!this.running) return
+  async stop(): Promise<void> {
     this.running = false
     if (this.timer !== undefined) this.clock.clearTimeout(this.timer)
     this.timer = undefined
     this.period = undefined
     this.lastEmittedKey = undefined
+    await Promise.allSettled(this.pending)
   }
 
   /** Check current state immediately; useful for timer callbacks and tests. */
@@ -161,7 +162,9 @@ export class PeakTransitionScheduler {
         this.lastEmittedKey = key
         const transition = { from: previousPeriod, to: nextPeriod, observedAt, key }
         try {
-          Promise.resolve(this.onTransition(transition)).catch(error => this.report(error))
+          const delivery = Promise.resolve(this.onTransition(transition)).catch(error => this.report(error))
+          this.pending.add(delivery)
+          void delivery.then(() => this.pending.delete(delivery))
         } catch (error) {
           this.report(error)
         }

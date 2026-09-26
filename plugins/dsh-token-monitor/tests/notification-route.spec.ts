@@ -81,8 +81,10 @@ describe('notification event route', () => {
   })
 
   it('exposes an explicit registration seam without registering on import', () => {
-    const register = vi.fn()
-    const ctx = { webServer: { register } }
+    const dispose = vi.fn()
+    const register = vi.fn(() => dispose)
+    const effects: Array<() => void> = []
+    const ctx = { webServer: { register }, effect: (setup: () => () => void) => { effects.push(setup()) } }
     expect(register).not.toHaveBeenCalled()
     registerNotificationEventsRoute(
       ctx as Parameters<typeof registerNotificationEventsRoute>[0],
@@ -93,5 +95,7 @@ describe('notification event route', () => {
       kind: 'exact',
       path: TOKEN_MONITOR_NOTIFICATION_EVENTS_PATH,
     }))
+    effects.forEach(dispose => dispose())
+    expect(dispose).toHaveBeenCalledOnce()
   })
 })

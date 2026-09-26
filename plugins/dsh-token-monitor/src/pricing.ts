@@ -91,28 +91,12 @@ const PEAK_PRICING_START = Date.UTC(2026, 7, 16, 16, 0, 0)
 /** Flash 调价生效时刻：2026-09-10 12:00 北京时间 = 04:00 UTC。 */
 export const FLASH_PRICING_START = Date.UTC(2026, 8, 10, 4, 0, 0)
 
-/**
- * 官方内置表的精确序列化快照。settings 的 `priceTable` 默认值经 schemastery
- * 解析后会变成深拷贝副本：内容与内置表一致，对象身份不再相同。
- */
-const OFFICIAL_TABLE_SNAPSHOT = JSON.stringify(PRICE_TABLE)
-
-/** 按内容判断是否为官方内置表（settings 深拷贝得到的默认值同样算官方表）。 */
-export function isOfficialPriceTable(table: PricingTable): boolean {
-  return JSON.stringify(table) === OFFICIAL_TABLE_SNAPSHOT
-}
-
-/**
- * 默认价格按历史生效时间选择；显式自定义表保留整体覆盖行为（不做历史分段）。
- * 判定必须按内容而非对象身份：settings 的默认表恒为深拷贝副本，
- * 用 `table !== PRICE_TABLE` 判断会永远为真，8-17 至 9-10 的历史时段会被
- * 整体按现行 Flash 价计费（4.0.7/4.0.8 的会话金额由此少算）。
- */
+/** 默认价格按历史生效时间选择；显式自定义表保留原覆盖行为。 */
 export function selectPriceTable(ts: number, table: PricingTable = PRICE_TABLE): PricingTable {
   if (ts < PEAK_PRICING_START) return LEGACY_PRICE_TABLE
-  if (!isOfficialPriceTable(table)) return table
+  if (table !== PRICE_TABLE) return table
   if (ts < FLASH_PRICING_START) return PRE_FLASH_PRICE_TABLE
-  return PRICE_TABLE
+  return table
 }
 
 /** 单次调用的费用明细。 */

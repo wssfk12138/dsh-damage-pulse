@@ -4,21 +4,7 @@ import { cleanup, render, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-/**
- * The card is registered in the frame shell.overlay seat, but that seat's layer
- * (.overlayLayer) is a stacking context at z-index 20, so a card left inside it
- * can never paint above the right sidebar's floating panel, which the host
- * portals to document.body at z-index 60. These tests pin the escape hatch: the
- * card is portalled onto document.body itself and states a stacking level that
- * beats the floating panels while staying under host menus.
- */
-
-// Host buckets this card sits between: the shell overlay layer (20) and the
-// floating sidebar panels (.floatHost, 60) below, the dockkit tab menu (70) and
-// every host overlay, menu and modal (>= 100) above.
-const OVERLAY_LAYER_Z = 20
-const SIDEBAR_FLOAT_Z = 60
-const HOST_MENU_Z = 70
+/** The current inner-test baseline keeps the card in shell.overlay. */
 
 vi.mock('../src/client/settingsApi.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/client/settingsApi.ts')>()
@@ -74,19 +60,17 @@ async function mountWidget(): Promise<ReturnType<typeof render>> {
 }
 
 describe('BalanceWidget layer escape', () => {
-  it('portals the card out of the frame overlay layer and onto the shared body', async () => {
+  it('keeps the card inside the shell overlay contribution', async () => {
     const view = await mountWidget()
 
-    expect(card(view).parentElement).toBe(document.body)
-    expect(view.container.childElementCount).toBe(0)
+    expect(view.container.contains(card(view))).toBe(true)
+    expect(view.container.childElementCount).toBe(1)
   })
 
-  it('states a stacking level above the sidebar floating panels and below host menus', async () => {
+  it('uses the dedicated overlay stacking level', async () => {
     const z = Number(card(await mountWidget()).style.zIndex)
 
-    expect(z).toBeGreaterThan(OVERLAY_LAYER_Z)
-    expect(z).toBeGreaterThan(SIDEBAR_FLOAT_Z)
-    expect(z).toBeLessThan(HOST_MENU_Z)
+    expect(z).toBe(1000)
   })
 
   it('keeps its own pointer-events and the whale layer anchored inside the card', async () => {

@@ -6,6 +6,7 @@ import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import { createRouteGuard } from './http-trust.ts'
 
 export const UPDATE_STATUS_PATH = '/api/token-monitor/update'
 export const UPDATE_INSTALL_PATH = '/api/token-monitor/update/install'
@@ -58,7 +59,7 @@ function newer(left: string, right: string): boolean {
   const a = left.split('.').map(Number)
   const b = right.split('.').map(Number)
   for (let index = 0; index < 3; index += 1) {
-    if (a[index] !== b[index]) return a[index] > b[index]
+    if (a[index] !== b[index]) return a[index]! > b[index]!
   }
   return false
 }
@@ -167,7 +168,7 @@ export function inferRunningProfile(argv: readonly string[]): string | undefined
   const args = argv.slice(2)
   if (args[0] === 'web') return 'web'
   for (let index = 0; index < args.length; index += 1) {
-    const argument = args[index]
+    const argument = args[index]!
     if (argument === '--profile') {
       const profile = args[index + 1]
       return profile !== undefined && PROFILE_NAME.test(profile) ? profile : undefined
@@ -187,7 +188,7 @@ function loaderArgs(execArgv: readonly string[], cliEntry: string): string[] {
   if (!cliEntry.toLowerCase().endsWith('.ts')) return []
   const result: string[] = []
   for (let index = 0; index < execArgv.length; index += 1) {
-    const argument = execArgv[index]
+    const argument = execArgv[index]!
     if (argument === '--import' || argument === '--loader') {
       const value = execArgv[index + 1]
       if (value !== undefined && value.length <= 256) { result.push(argument, value); index += 1 }
@@ -284,7 +285,9 @@ async function bodyWithinLimit(request: IncomingMessage): Promise<boolean> {
 }
 
 export function registerUpdateRoutes(ctx: Context, options: RegisterUpdateOptions = {}): void {
+  const guard = createRouteGuard(ctx)
   ctx.webServer.register({ kind: 'exact', path: UPDATE_STATUS_PATH, handler: async (request, response) => {
+    if (!guard(request, response)) return
     if (request.method !== 'GET' && request.method !== 'HEAD') { response.writeHead(405, { Allow: 'GET, HEAD' }); response.end(); return }
     try {
       const payload = await statusPayload()
@@ -295,6 +298,7 @@ export function registerUpdateRoutes(ctx: Context, options: RegisterUpdateOption
     }
   } })
   ctx.webServer.register({ kind: 'exact', path: UPDATE_INSTALL_PATH, handler: async (request, response) => {
+    if (!guard(request, response)) return
     if (request.method !== 'POST') { response.writeHead(405, { Allow: 'POST' }); response.end(); return }
     if (!requestOriginAllowed(request)) {
       json(response, 403, { error: { code: 'UPDATE_INSTALL_FORBIDDEN', message: '更新请求来源不受信任' } })

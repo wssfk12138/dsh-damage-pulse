@@ -5,9 +5,14 @@
  */
 
 export const TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION = 3 as const
+export { validateBillingRules, validateBillingApplied, normalizeMultiplier, emptyBillingRule } from './billing.ts'
+export type { BillingRules, BillingModelRule, BillingPrice, BillingPeriod, BillingTier, BillingSnapshot, BillingSource, BillingApplied } from './billing.ts'
+/** Maximum accepted byte length of a settings request body. */
 export const TOKEN_MONITOR_SETTINGS_MAX_BODY_BYTES = 16 * 1024
+/** Maximum daily budget accepted by Token Monitor settings validation. */
 export const TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY = 1_000_000
 
+/** Metric displayed in the compact Token Monitor widget. */
 export type TokenMonitorDisplayMode = 'balance' | 'spend'
 
 /** Stable user-editable settings. Runtime connection state is not persisted here. */
@@ -31,19 +36,23 @@ export interface TokenMonitorSettings {
   cacheHitAnomalyConsecutiveCalls: number
 }
 
+/** Partial update accepted for persisted Token Monitor settings. */
 export type TokenMonitorSettingsPatch = Partial<TokenMonitorSettings>
 
+/** Versioned settings state returned by the Host endpoint. */
 export interface TokenMonitorSettingsSnapshot {
   schemaVersion: typeof TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION
   revision: number
   settings: TokenMonitorSettings
 }
 
+/** Optimistic-concurrency envelope for a settings update. */
 export interface TokenMonitorSettingsPatchRequest {
   expectedRevision?: number
   patch: TokenMonitorSettingsPatch
 }
 
+/** Stable error codes returned by the settings endpoint. */
 export type TokenMonitorSettingsErrorCode =
   | 'METHOD_NOT_ALLOWED'
   | 'INVALID_JSON'
@@ -53,6 +62,7 @@ export type TokenMonitorSettingsErrorCode =
   | 'CONFLICT'
   | 'WRITE_FAILED'
 
+/** Structured error response returned by the settings endpoint. */
 export interface TokenMonitorSettingsErrorResponse {
   error: {
     code: TokenMonitorSettingsErrorCode
@@ -61,27 +71,30 @@ export interface TokenMonitorSettingsErrorResponse {
   }
 }
 
+/** Success or field-indexed validation failure returned by wire parsers. */
 export type ParseResult<T> =
   | { ok: true; value: T }
   | { ok: false; fields: Record<string, string> }
 
+/** Default values applied when no persisted Token Monitor settings exist. */
 export const DEFAULT_TOKEN_MONITOR_SETTINGS: Readonly<TokenMonitorSettings> = Object.freeze({
   displayMode: 'balance',
   showWhaleGirl: true,
   dailyBudgetEnabled: true,
   dailyBudgetCny: 10,
   budgetExceededNotificationEnabled: false,
-  peakReminderEnabled: false,
-  peakReminderEnterPeak: false,
-  peakReminderEnterValley: false,
+  peakReminderEnabled: true,
+  peakReminderEnterPeak: true,
+  peakReminderEnterValley: true,
   notifyOncePerTransition: false,
-  whaleBubbleEnabled: false,
-  wechatNotificationsEnabled: false,
+  whaleBubbleEnabled: true,
+  wechatNotificationsEnabled: true,
   cacheHitAnomalyNotificationEnabled: false,
   cacheHitAnomalyThreshold: 30,
   cacheHitAnomalyConsecutiveCalls: 3,
 })
 
+/** Persisted public keys accepted in Token Monitor settings. */
 export const TOKEN_MONITOR_SETTING_KEYS = Object.freeze([
   'displayMode',
   'showWhaleGirl',
@@ -98,9 +111,6 @@ export const TOKEN_MONITOR_SETTING_KEYS = Object.freeze([
   'cacheHitAnomalyThreshold',
   'cacheHitAnomalyConsecutiveCalls',
 ] as const satisfies readonly (keyof TokenMonitorSettings)[])
-
-// 非通知的功能性开关：默认开启，不参与「通知默认关闭」策略。
-export const DEFAULT_TRUE_BOOLEAN_KEYS = Object.freeze(['showWhaleGirl', 'dailyBudgetEnabled'] as const)
 
 const BOOLEAN_KEYS = new Set<keyof TokenMonitorSettings>([
   'showWhaleGirl',
@@ -150,7 +160,11 @@ function validateSettingValue(key: keyof TokenMonitorSettings, value: unknown): 
   return undefined
 }
 
-function parseSettingsObject(value: unknown, partial: boolean, prefix: string): ParseResult<TokenMonitorSettings | TokenMonitorSettingsPatch> {
+function parseSettingsObject(
+  value: unknown,
+  partial: boolean,
+  prefix: string,
+): ParseResult<TokenMonitorSettings | TokenMonitorSettingsPatch> {
   if (!isPlainObject(value)) return { ok: false, fields: { [prefix]: '必须是普通对象' } }
   const fields: Record<string, string> = {}
   const output: Record<string, unknown> = {}
@@ -180,13 +194,21 @@ function parseSettingsObject(value: unknown, partial: boolean, prefix: string): 
     : { ok: true, value: output as TokenMonitorSettings | TokenMonitorSettingsPatch }
 }
 
-/** Validate and detach a complete public settings object. */
+/**
+ * Validate and detach a complete public settings object.
+ * @param value - Untrusted value to validate or format.
+ * @returns A detached settings object or field-indexed validation errors.
+ */
 export function parseTokenMonitorSettings(value: unknown): ParseResult<TokenMonitorSettings> {
   const result = parseSettingsObject(value, false, 'settings')
   return result.ok ? { ok: true, value: result.value as TokenMonitorSettings } : result
 }
 
-/** Validate and detach the PATCH wire envelope, rejecting unknown and dangerous keys. */
+/**
+ * Validate and detach the PATCH wire envelope, rejecting unknown and dangerous keys.
+ * @param value - Untrusted value to validate or format.
+ * @returns A detached patch request or field-indexed validation errors.
+ */
 export function parseTokenMonitorSettingsPatchRequest(value: unknown): ParseResult<TokenMonitorSettingsPatchRequest> {
   if (!isPlainObject(value)) return { ok: false, fields: { body: '必须是普通对象' } }
   const fields: Record<string, string> = {}
@@ -213,7 +235,11 @@ export function parseTokenMonitorSettingsPatchRequest(value: unknown): ParseResu
   }
 }
 
-/** Validate a successful GET/PATCH response before Client code trusts it. */
+/**
+ * Validate a successful GET/PATCH response before Client code trusts it.
+ * @param value - Untrusted value to validate or format.
+ * @returns A detached settings snapshot or field-indexed validation errors.
+ */
 export function parseTokenMonitorSettingsSnapshot(value: unknown): ParseResult<TokenMonitorSettingsSnapshot> {
   if (!isPlainObject(value)) return { ok: false, fields: { response: '必须是普通对象' } }
   const fields: Record<string, string> = {}
@@ -237,7 +263,11 @@ export function parseTokenMonitorSettingsSnapshot(value: unknown): ParseResult<T
   }
 }
 
-/** Pick only public fields from a resolved Host settings section. */
+/**
+ * Pick only public fields from a resolved Host settings section.
+ * @param value - Untrusted value to validate or format.
+ * @returns A validated copy containing only public settings fields.
+ */
 export function pickPublicTokenMonitorSettings(value: Record<string, unknown>): TokenMonitorSettings {
   const picked: Record<string, unknown> = {}
   for (const key of TOKEN_MONITOR_SETTING_KEYS) picked[key] = value[key]
@@ -246,6 +276,7 @@ export function pickPublicTokenMonitorSettings(value: Record<string, unknown>): 
   return parsed.value
 }
 
+/** Error raised when persisted settings use a newer schema version. */
 export class UnsupportedTokenMonitorSettingsVersionError extends Error {
   constructor(readonly version: number) {
     super(`token monitor settings schema version ${String(version)} is newer than supported version ${String(TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION)}`)
@@ -253,34 +284,83 @@ export class UnsupportedTokenMonitorSettingsVersionError extends Error {
   }
 }
 
-const NOTIFICATION_DEFAULT_OFF_KEYS = [
-  'budgetExceededNotificationEnabled',
-  'peakReminderEnabled',
-  'peakReminderEnterPeak',
-  'peakReminderEnterValley',
-  'notifyOncePerTransition',
-  'whaleBubbleEnabled',
-  'wechatNotificationsEnabled',
-  'cacheHitAnomalyNotificationEnabled',
-] as const satisfies readonly (keyof TokenMonitorSettings)[]
-
-type TokenMonitorSettingsMigration = Partial<TokenMonitorSettings> & { schemaVersion?: typeof TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION }
-
-/** Persist conservative notification defaults for legacy and incomplete current settings. */
-export function planTokenMonitorSettingsMigration(user: unknown): TokenMonitorSettingsMigration | undefined {
+/**
+ * Decide whether an existing raw user section needs the legacy v0 to v1 migration.
+ * @param user - Raw persisted user settings section.
+ * @returns The required legacy migration patch, or undefined when no migration is needed.
+ */
+export function planTokenMonitorSettingsMigration(
+  user: unknown,
+): { schemaVersion: 3; budgetExceededNotificationEnabled: false; cacheHitAnomalyNotificationEnabled: false } | undefined {
   if (user === undefined) return undefined
   if (!isPlainObject(user)) throw new TypeError('token monitor settings user section must be a plain object')
   const version = user.schemaVersion
-  if (version !== undefined && (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 0)) {
+  if (version === undefined || version === 0 || version === 1 || version === 2) {
+    return {
+      schemaVersion: TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION,
+      budgetExceededNotificationEnabled: false,
+      cacheHitAnomalyNotificationEnabled: false,
+    }
+  }
+  if (typeof version !== 'number' || !Number.isSafeInteger(version) || version < 0) {
     throw new TypeError('token monitor settings schemaVersion must be a non-negative safe integer')
   }
-  if (typeof version === 'number' && version > TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION) {
-    throw new UnsupportedTokenMonitorSettingsVersionError(version)
-  }
-  const patch: TokenMonitorSettingsMigration = {}
-  if (version !== TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION) patch.schemaVersion = TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION
-  for (const key of NOTIFICATION_DEFAULT_OFF_KEYS) {
-    if (!Object.hasOwn(user, key)) patch[key] = false
-  }
-  return Object.keys(patch).length === 0 ? undefined : patch
+  if (version > TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION) throw new UnsupportedTokenMonitorSettingsVersionError(version)
+  return undefined
 }
+
+/** Terminal status recorded for one provider attempt. */
+export type DetailStatus = 'success' | 'error' | 'cancelled'
+/** Display-only session metadata; parent is set only for an explicit subagent. */
+export interface DetailSession { id: string; title: string; project: string; child: boolean; parent?: string | undefined }
+/** One provider attempt. Missing telemetry remains unknown for old records. */
+export interface DetailRow {
+  feeExplanation?: {
+    rule?: import('./billing.ts').BillingModelRule
+    applied?: import('./billing.ts').BillingApplied
+    reason?: string
+    costInput: number
+    costCacheRead?: number
+    costCacheWrite?: number
+    costOutput: number
+  }
+  billingStatus?: 'priced' | 'unpriced' | 'disabled' | undefined
+  billingRuleVersion?: number | undefined
+  modelMultiplier?: number | undefined
+  reasoningTokens?: number | undefined
+  /** Resolved request setting captured when this attempt started; absent for legacy telemetry. */
+  reasoningEffort?: string | undefined
+  id: string
+  sessionId: string
+  sourceEventSeq?: number | undefined
+  timestamp: number
+  provider: string
+  model: string
+  status: DetailStatus
+  startedAt?: number | undefined
+  endedAt?: number | undefined
+  firstMs?: number | undefined
+  totalMs?: number | undefined
+  inputTokens?: number | undefined
+  outputTokens?: number | undefined
+  cacheReadTokens?: number | undefined
+  cacheWriteTokens?: number | undefined
+  cost?: number | undefined
+  peak?: boolean | undefined
+  errorType?: string | undefined
+  httpStatus?: number | undefined
+}
+/** Paginated usage-detail response together with its filter metadata. */
+export interface DetailPage {
+  snapshot: string
+  capturedAt: number
+  rows: DetailRow[]
+  total: number
+  page: number
+  pages: number
+  size: number
+  sessions: DetailSession[]
+  models: string[]
+  providers?: string[]
+}
+export * from './modules.ts'

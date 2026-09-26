@@ -3,8 +3,9 @@ import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
-import { OFFICIAL_PROVIDER_ID, PRICE_TABLE, priceUsage } from '../plugins/dsh-token-monitor/src/pricing.ts'
+import { OFFICIAL_PROVIDER_ID, PRICE_TABLE } from '../plugins/dsh-token-monitor/src/pricing.ts'
 import { createTokenCostProjectionDefinition } from '../plugins/dsh-token-monitor/src/projection.ts'
+import type { UsageRecord } from '../plugins/dsh-token-monitor/src/types.ts'
 
 const EVENT_TIME = Date.UTC(2026, 7, 21, 0, 0, 0)
 
@@ -15,7 +16,7 @@ test("exposes both DSH projection contracts (0.1.0 schema/view and 0.1.1 stateSc
   assert.ok(definition.stateSchema)
   assert.ok(definition.wire)
   assert.ok(definition.wire.viewSchema)
-  assert.equal(definition.stateVersion, 6)
+  assert.equal(definition.stateVersion, 7)
   // 0.1.0-rc.6/rc.7/rc.8 host: schema + view, aliasing the same constraints and implementation.
   assert.equal(definition.schema, definition.wire.viewSchema)
   assert.equal(definition.view, definition.wire.view)
@@ -35,44 +36,21 @@ test("exposes both DSH projection contracts (0.1.0 schema/view and 0.1.1 stateSc
   })
 })
 
-test('folds model usage into a client-visible tokenCost value', () => {
+test('folds a frozen token usage record into a client-visible tokenCost value', () => {
   const definition = createTokenCostProjectionDefinition(PRICE_TABLE)
   assert.ok(definition.wire)
 
-  const event = {
-    type: 'assistant/message',
-    seq: 0,
-    time: EVENT_TIME,
-    sourceEventSeqs: [],
-    data: {
-      turn: 1,
-      step: 1,
-      message: {
-        id: 'message-1',
-        role: 'assistant',
-        content: [],
-        source: {
-          kind: 'model',
-          provider: OFFICIAL_PROVIDER_ID,
-          model: 'deepseek-v4-flash',
-        },
-      },
-      usage: {
-        inputTokens: 1_000,
-        cacheReadTokens: 500,
-        cacheWriteTokens: 100,
-        outputTokens: 200,
-      },
-    },
-  } as unknown as SessionEvent
+  const record: UsageRecord = {
+    sessionId: 'projection-session', turn: 1, step: 1, sourceEventSeq: 0, timestamp: EVENT_TIME,
+    provider: OFFICIAL_PROVIDER_ID, model: 'deepseek-v4-flash', inputTokens: 1_000,
+    cacheReadTokens: 500, cacheWriteTokens: 100, outputTokens: 200, reasoningTokens: 0,
+    costInput: 0.0015, costCacheRead: 0.0005, costCacheWrite: 0.0001, costCache: 0.0006,
+    costOutput: 0.00045, cost: 0.00255, peak: false, billingStatus: 'priced',
+  }
+  const event = { type: 'token-usage/record', seq: 0, time: EVENT_TIME, data: { record } } as unknown as SessionEvent
 
   const nextState = definition.apply(definition.init(), event)
   const value = definition.wire.viewSchema.parse(definition.wire.view(nextState))
-  const expectedBreakdown = priceUsage(
-    1_000, 500, 100, 200, OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash', EVENT_TIME, PRICE_TABLE,
-  )
-  assert.ok(expectedBreakdown)
-
   assert.deepEqual(value, {
     calls: 1,
     inputTokens: 1_000,
@@ -80,34 +58,47 @@ test('folds model usage into a client-visible tokenCost value', () => {
     cacheWriteTokens: 100,
     outputTokens: 200,
     totalTokens: 1_800,
-    cost: expectedBreakdown.cost,
+    cost: record.cost,
     lastActivity: EVENT_TIME,
   })
 })
 
-test('excludes non-official providers and unknown models from the projection', () => {
+test('folds valid frozen records even when their billing decision is unpriced', () => {
   const definition = createTokenCostProjectionDefinition(PRICE_TABLE)
   const eventFor = (provider: string, model: string) => ({
-    type: 'assistant/message',
+    type: 'token-usage/record',
     seq: 0,
     time: EVENT_TIME,
     sourceEventSeqs: [],
     data: {
       turn: 1,
       step: 1,
-      message: {
-        id: 'ineligible-message',
-        role: 'assistant',
-        content: [],
-        source: { kind: 'model', provider, model },
+      record: {
+        sessionId: 'ineligible', turn: 1, step: 1, sourceEventSeq: 0, timestamp: EVENT_TIME,
+        provider, model, inputTokens: 1_000, cacheReadTokens: 0, cacheWriteTokens: 0,
+        outputTokens: 200, reasoningTokens: 0, costInput: 0, costCache: 0, costCacheRead: 0,
+        costCacheWrite: 0, costOutput: 0, cost: 0, peak: false, billingStatus: 'unpriced',
       },
-      usage: { inputTokens: 1_000, outputTokens: 200 },
     },
   }) as unknown as SessionEvent
 
   const initial = definition.init()
-  assert.deepEqual(definition.apply(initial, eventFor('openai-compatible', 'deepseek-v4-flash')), initial)
-  assert.deepEqual(definition.apply(initial, eventFor(OFFICIAL_PROVIDER_ID, 'future-deepseek-model')), initial)
+  const unpriced = definition.apply(initial, eventFor('openai-compatible', 'deepseek-v4-flash'))
+  assert.equal(unpriced.calls, 1)
+  assert.equal(unpriced.inputTokens, 1_000)
+  assert.equal(unpriced.cost, 0)
+  const unknown = definition.apply(initial, eventFor(OFFICIAL_PROVIDER_ID, 'future-deepseek-model'))
+  assert.equal(unknown.calls, 1)
+  assert.equal(unknown.outputTokens, 200)
+})
+
+test('ignores malformed frozen records without changing projection state', () => {
+  const definition = createTokenCostProjectionDefinition(PRICE_TABLE)
+  const initial = definition.init()
+  const event = {
+    type: 'token-usage/record', seq: 0, time: EVENT_TIME, data: { record: { provider: OFFICIAL_PROVIDER_ID } },
+  } as unknown as SessionEvent
+  assert.deepEqual(definition.apply(initial, event), initial)
 })
 
 test('serves tokenCost through the real DSH 0.1.1 projection registry', () => {
@@ -133,20 +124,20 @@ test('serves tokenCost through the real DSH 0.1.1 projection registry', () => {
 test('regression #10: old 0.1.0 host path def.schema.parse(def.view(state)) survives folds', () => {
   const definition = createTokenCostProjectionDefinition(PRICE_TABLE)
   const event = {
-    type: 'assistant/message',
+    type: 'token-usage/record',
     seq: 0,
     time: EVENT_TIME,
     sourceEventSeqs: [],
     data: {
       turn: 1,
       step: 1,
-      message: {
-        id: 'old-host-message',
-        role: 'assistant',
-        content: [],
-        source: { kind: 'model', provider: OFFICIAL_PROVIDER_ID, model: 'deepseek-v4-flash' },
+      record: {
+        sessionId: 'old-host', turn: 1, step: 1, sourceEventSeq: 0, timestamp: EVENT_TIME,
+        provider: OFFICIAL_PROVIDER_ID, model: 'deepseek-v4-flash', inputTokens: 1_000,
+        cacheReadTokens: 500, cacheWriteTokens: 100, outputTokens: 200, reasoningTokens: 0,
+        costInput: 0.0015, costCacheRead: 0.0005, costCacheWrite: 0.0001, costCache: 0.0006,
+        costOutput: 0.00045, cost: 0.00255, peak: false, billingStatus: 'priced',
       },
-      usage: { inputTokens: 1_000, cacheReadTokens: 500, cacheWriteTokens: 100, outputTokens: 200 },
     },
   } as unknown as SessionEvent
 

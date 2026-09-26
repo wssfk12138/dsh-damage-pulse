@@ -1,6 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { dailyBudgetInfo } from './budget.ts'
+import { createRouteGuard } from './http-trust.ts'
 import { OFFICIAL_PROVIDER_ID, type PricingTable } from './pricing.ts'
 import type { UsageStorage } from './storage.ts'
 
@@ -24,25 +25,26 @@ export function registerBudgetRoutes(
   ctx: Context,
   storage: Pick<UsageStorage, 'todaySpend'>,
   getBudget: () => number,
-  table: PricingTable | (() => PricingTable),
+  table: PricingTable,
 ): void {
-  // 价格表可传活引用：路由按请求读取，避免装配顺序决定用哪张表。
-  const readPriceTable = typeof table === 'function' ? table : () => table
-  ctx.webServer.register({
+  const guard = createRouteGuard(ctx)
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/token-monitor/daily-budget',
-    handler: (_req, res) => {
+    handler: (req, res) => {
+      if (!guard(req, res)) return
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify(dailyBudgetInfo(storage.todaySpend(), getBudget())))
     },
-  })
+  }), 'token-monitor: daily budget route')
 
-  ctx.webServer.register({
+  ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
     path: '/api/token-monitor/pricing-eligibility',
-    handler: (_req, res) => {
+    handler: (req, res) => {
+      if (!guard(req, res)) return
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
-      res.end(JSON.stringify(pricingEligibilityInfo(readPriceTable())))
+      res.end(JSON.stringify(pricingEligibilityInfo(table)))
     },
-  })
+  }), 'token-monitor: pricing eligibility route')
 }

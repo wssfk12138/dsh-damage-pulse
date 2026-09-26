@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import { createRouteGuard } from './http-trust.ts'
 
 export const WECHAT_CONNECTION_BASE_PATH = '/api/token-monitor/wechat'
 export const WECHAT_STATUS_PATH = `${WECHAT_CONNECTION_BASE_PATH}/status`
@@ -263,6 +264,7 @@ export function createWechatConnectionRouteHandler(
 }
 
 export function registerWechatRoutes(ctx: Context, service: WechatConnectionRouteService): void {
+  const guard = createRouteGuard(ctx)
   const report = (_error: unknown) => {
     ctx.logger.warn('dsh-token-monitor wechat connection route failed')
   }
@@ -275,10 +277,14 @@ export function registerWechatRoutes(ctx: Context, service: WechatConnectionRout
     { path: WECHAT_TEST_PATH, action: 'test-message' },
   ]
   for (const route of routes) {
-    ctx.webServer.register({
+    const handler = createWechatConnectionRouteHandler(service, route.action, report)
+    ctx.effect(() => ctx.webServer.register({
       kind: 'exact',
       path: route.path,
-      handler: createWechatConnectionRouteHandler(service, route.action, report),
-    })
+      handler: (request, response) => {
+        if (!guard(request, response)) return
+        return handler(request, response)
+      },
+    }), `token-monitor: wechat ${route.action} route`)
   }
 }

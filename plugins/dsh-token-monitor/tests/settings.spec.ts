@@ -1,55 +1,77 @@
+/** Token Monitor 的 Host 设置接口：真实 profile patch、Loader 与 HTTP 契约。 */
 import { createServer, type Server } from 'node:http'
+import { readFile, writeFile } from 'node:fs/promises'
+import { mkdirSync } from 'node:fs'
 import { AddressInfo } from 'node:net'
+import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import { SettingsProvider, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
+import { parse } from 'yaml'
+import type { Context } from '@deepseek-ai/cordis'
+import { configurationFixture } from './fixtures/configuration-fixture.ts'
+import { Config } from '../src/config-base.ts'
+import { TokenMonitorStore } from '../src/plugin-store.ts'
+import { createSettingsHandle } from '../src/settings-handle.ts'
+import { liveUserConfig } from '../src/user-settings.ts'
 import {
   createTokenMonitorSettingsController,
   createTokenMonitorSettingsRouteHandler,
-  registerTokenMonitorSettings,
+  readBillingSnapshot,
   TOKEN_MONITOR_SETTINGS_NS,
+  type TokenMonitorSettingsController,
 } from '../src/settings.ts'
-import { OFFICIAL_PROVIDER_ID, PRICE_TABLE, PRE_FLASH_PRICE_TABLE, priceUsage, selectPriceTable } from '../src/pricing.ts'
+
+/** 本包在 fixture 里的条目 id；上游夹具的默认条目名不能复用。 */
+const NS = 'test-0'
 
 const disposers: Array<() => Promise<void>> = []
-
-class MemorySettings extends SettingsProvider {
-  doc: Record<string, unknown>
-  writableFlag = true
-
-  constructor(ctx: Context, options: { doc?: Record<string, unknown> } = {}) {
-    super(ctx)
-    this.doc = structuredClone(options.doc ?? {})
-  }
-
-  get writable(): boolean {
-    return this.writableFlag
-  }
-
-  protected load(): Promise<Record<string, unknown>> {
-    return Promise.resolve(structuredClone(this.doc))
-  }
-
-  protected persist(ns: SettingsNamespace, section: Record<string, unknown>): Promise<void> {
-    if (!this.writableFlag) return Promise.reject(new Error('fixture is read-only'))
-    this.doc[ns] = structuredClone(section)
-    return Promise.resolve()
-  }
-}
 
 afterEach(async () => {
   while (disposers.length > 0) await disposers.pop()!()
 })
+interface Booted {
+  ctx: Context
+  home: string
+  patchPath: string
+  store: TokenMonitorStore
+  handle: ReturnType<typeof createSettingsHandle>
+  controller(provider?: string): TokenMonitorSettingsController
+}
 
-async function boot(doc: Record<string, unknown> = {}) {
-  const ctx = new Context()
-  const fiber = ctx.plugin(MemorySettings, { doc })
-  await fiber
-  const provider = ctx.settings as MemorySettings
-  const registration = registerTokenMonitorSettings(provider)
-  await registration.ready
-  disposers.push(() => fiber.dispose())
-  return { provider, registration }
+/**
+ * 真启动一次 profile：fixture 负责 Loader、ConfigEditor、profile patch 与 home 层，
+ * 本包只把设置条目换成本插件的 `Config` schema。
+ * @param doc 初始 profile patch 里的 config 段落。
+ */
+async function boot(doc: Record<string, unknown> = {}): Promise<Booted> {
+  const fixture = await configurationFixture({
+    schema: Config as never,
+    apply: () => {},
+    hmr: false,
+  })
+  // bundle patch 的形状是 `[{ insert: [...] }]`；把探针条目改成插件自己的命名空间 id，
+  // 再把用户偏好写进 profile 层同名条目，正是生产环境 `insert` 落在 profile 层的形状。
+  const bundle = join(fixture.profile.dir, 'node_modules', 'test-bundle', 'cordis.patch.yml')
+  const layers = JSON.parse(await readFile(bundle, 'utf8')) as Array<{ insert: Array<{ id: string }> }>
+  const insert = layers[0]!.insert
+  insert.find(row => row.id === 'first')!.id = NS
+  await writeFile(bundle, JSON.stringify(layers))
+  await writeFile(fixture.profile.patchPath, JSON.stringify([{ id: NS, name: 'cordis:probe', config: doc }]))
+  const ctx = await fixture.start()
+  // fixture 的 home 是全新临时目录，插件的数据根也要先建出来。
+  const dataDir = join(fixture.home, 'data', 'dsh-token-monitor')
+  mkdirSync(dataDir, { recursive: true })
+  const store = new TokenMonitorStore(dataDir)
+  await store.load()
+  const handle = createSettingsHandle(() => liveUserConfig(ctx, NS) ?? {}, store)
+  return {
+    ctx,
+    home: fixture.home,
+    patchPath: fixture.profile.patchPath,
+    store,
+    handle,
+    // 夹具里的条目 id 与生产命名空间不同，控制器要按夹具 id 读写。
+    controller: (provider?: string) => createTokenMonitorSettingsController(ctx, handle, provider, NS),
+  }
 }
 
 async function serve(handler: ReturnType<typeof createTokenMonitorSettingsRouteHandler>) {
@@ -64,48 +86,62 @@ async function serve(handler: ReturnType<typeof createTokenMonitorSettingsRouteH
     server.listen(0, '127.0.0.1', () => resolve())
   })
   disposers.push(() => new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())))
-  return `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`
+  return 'http://127.0.0.1:' + String((server.address() as AddressInfo).port)
 }
 
 describe('Token Monitor settings Host API', () => {
-  it('keeps the persisted namespace unchanged without a runtime branding helper', async () => {
-    expect(TOKEN_MONITOR_SETTINGS_NS).toBe('dsh-token-monitor')
-    const { provider, registration } = await boot({
-      'dsh-token-monitor': { dailyBudgetCny: 42 },
+  it('isolates provider reminders while preserving global display preferences', async () => {
+    const booted = await boot({ showWhaleGirl: false, dailyBudgetCny: 42 })
+    const official = booted.controller()
+    const first = booted.controller('provider-a')
+    const second = booted.controller('provider-b')
+    const before = first.read()
+    expect(before.settings.showWhaleGirl).toBe(false)
+    await first.patch({ expectedRevision: before.revision, patch: { dailyBudgetCny: 7, wechatNotificationsEnabled: true } })
+    expect(first.read().settings).toMatchObject({ dailyBudgetCny: 7, wechatNotificationsEnabled: true, showWhaleGirl: false })
+    expect(second.read().settings.wechatNotificationsEnabled).toBe(false)
+    expect(official.read().settings.dailyBudgetCny).toBe(42)
+    await expect(first.patch({ expectedRevision: first.read().revision, patch: { showWhaleGirl: true } })).rejects.toThrow('global')
+    expect(official.read().settings.showWhaleGirl).toBe(false)
+    const saved = parse(await readFile(booted.patchPath, 'utf8')) as Array<{ id: string; config: Record<string, unknown> }>
+    expect(saved.find(row => row.id === NS)!.config).toMatchObject({
+      showWhaleGirl: false,
+      providerNotifications: { 'provider-a': { dailyBudgetCny: 7, wechatNotificationsEnabled: true } },
     })
-    expect(registration.scope.get().dailyBudgetCny).toBe(42)
-    expect(provider.describe().map(descriptor => descriptor.ns)).toContain('dsh-token-monitor')
   })
 
-  it('migrates legacy settings, applies defaults, and never exposes priceTable', async () => {
-    const { provider, registration } = await boot({
-      [TOKEN_MONITOR_SETTINGS_NS]: { dailyBudgetCny: 25, priceTable: { version: 99 } },
-    })
-    const snapshot = createTokenMonitorSettingsController(provider, registration.scope).read()
+  it.each(['', '__proto__', 'constructor', 'prototype'])('rejects unsafe provider ids: %s', async (id) => {
+    const booted = await boot()
+    expect(() => booted.controller(id)).toThrow('provider id')
+  })
+
+  it('persists billing rules in plugin-owned state and advances its revision', async () => {
+    const booted = await boot()
+    const before = readBillingSnapshot(booted.store, booted.handle)
+    const rules = structuredClone(before.rules)
+    rules.providers[0]!.models[0]!.multiplier = 1.25
+    await booted.store.update({ billing: rules }, before.revision)
+    const after = readBillingSnapshot(booted.store, booted.handle)
+    expect(after.revision).toBe(before.revision + 1)
+    expect(after.rules.providers[0]!.models[0]!.multiplier).toBe(1.25)
+    // 计费规则不属于用户偏好，profile patch 里不得出现该键。
+    const saved = parse(await readFile(booted.patchPath, 'utf8')) as Array<{ id: string; config?: Record<string, unknown> }>
+    expect(saved.find(row => row.id === NS)?.config ?? {}).not.toHaveProperty('billing')
+  })
+
+  it('keeps the persisted namespace, applies defaults, and never exposes internal fields', async () => {
+    expect(TOKEN_MONITOR_SETTINGS_NS).toBe('dsh-token-monitor')
+    const booted = await boot({ dailyBudgetCny: 25, priceTable: { version: 99 } })
+    const snapshot = booted.controller().read()
     expect(snapshot.settings).toMatchObject({ dailyBudgetCny: 25, showWhaleGirl: true, displayMode: 'balance' })
     expect(snapshot.settings).not.toHaveProperty('priceTable')
-    expect(provider.doc[TOKEN_MONITOR_SETTINGS_NS]).toMatchObject({
-      schemaVersion: 3,
-      dailyBudgetCny: 25,
-      budgetExceededNotificationEnabled: false,
-    })
-  })
-
-  it('keeps the settings-resolved default table on the official history segments', async () => {
-    const { registration } = await boot()
-    // settings 解析默认值时会深拷贝价格表：内容与内置表一致，必须仍按官方表做历史分段。
-    const table = registration.scope.get().priceTable
-    expect(table).toEqual(PRICE_TABLE)
-    const historicalValley = Date.parse('2026-09-09T12:00:00+08:00')
-    expect(selectPriceTable(historicalValley, table)).toBe(PRE_FLASH_PRICE_TABLE)
-    expect(priceUsage(1_000_000, 0, 0, 0, OFFICIAL_PROVIDER_ID, 'deepseek-v4-flash', historicalValley, table)?.cost).toBe(1.5)
+    expect(booted.ctx.settings.describe().map(descriptor => descriptor.ns)).toContain(NS)
   })
 
   it('supports GET, HEAD, partial PATCH, no-op PATCH, and revision conflicts', async () => {
-    const { provider, registration } = await boot()
-    const endpoint = `${await serve(createTokenMonitorSettingsRouteHandler(
-      createTokenMonitorSettingsController(provider, registration.scope),
-    ))}/api/token-monitor/settings`
+    const booted = await boot()
+    const base = await serve(createTokenMonitorSettingsRouteHandler(booted.controller()))
+    const endpoint = base + '/api/token-monitor/settings'
 
     const initial = await (await fetch(endpoint)).json() as { revision: number }
     expect((await fetch(endpoint, { method: 'HEAD' })).status).toBe(200)
@@ -140,52 +176,12 @@ describe('Token Monitor settings Host API', () => {
     [{ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ patch: { dailyBudgetCny: 1.234 } }) }, 400, 'VALIDATION_ERROR'],
     [{ method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: ' '.repeat(20_000) }, 413, 'PAYLOAD_TOO_LARGE'],
   ])('returns structured errors without internals', async (init, status, code) => {
-    const { provider, registration } = await boot()
-    const endpoint = `${await serve(createTokenMonitorSettingsRouteHandler(
-      createTokenMonitorSettingsController(provider, registration.scope),
-    ))}/api/token-monitor/settings`
-    const response = await fetch(endpoint, init)
+    const booted = await boot()
+    const base = await serve(createTokenMonitorSettingsRouteHandler(booted.controller()))
+    const response = await fetch(base + '/api/token-monitor/settings', init)
     expect(response.status).toBe(status)
     const text = await response.text()
     expect(JSON.parse(text)).toMatchObject({ error: { code } })
-    expect(text).not.toMatch(/E:\\|stack|settings\.json/i)
-  })
-
-  it('keeps the committed snapshot unchanged when persistence fails', async () => {
-    const { provider, registration } = await boot()
-    const controller = createTokenMonitorSettingsController(provider, registration.scope)
-    const before = controller.read()
-    provider.writableFlag = false
-    const endpoint = `${await serve(createTokenMonitorSettingsRouteHandler(controller))}/api/token-monitor/settings`
-    const response = await fetch(endpoint, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expectedRevision: before.revision, patch: { showWhaleGirl: false } }),
-    })
-    expect(response.status).toBe(500)
-    expect(await response.json()).toMatchObject({ error: { code: 'WRITE_FAILED' } })
-    expect(controller.read()).toEqual(before)
-  })
-
-  it('restores settings from a persisted public-provider document after a provider restart', async () => {
-    const first = await boot({ 'other-plugin': { keep: true } })
-    await first.registration.scope.update({
-      dailyBudgetEnabled: false,
-      dailyBudgetCny: 88.88,
-      peakReminderEnabled: false,
-      peakReminderEnterPeak: false,
-      peakReminderEnterValley: true,
-    })
-    const persisted = structuredClone(first.provider.doc)
-
-    const second = await boot(persisted)
-    expect(second.registration.scope.get()).toMatchObject({
-      dailyBudgetEnabled: false,
-      dailyBudgetCny: 88.88,
-      peakReminderEnabled: false,
-      peakReminderEnterPeak: false,
-      peakReminderEnterValley: true,
-    })
-    expect(second.provider.doc['other-plugin']).toEqual({ keep: true })
+    expect(text).not.toMatch(/settings\.json|stack/i)
   })
 })

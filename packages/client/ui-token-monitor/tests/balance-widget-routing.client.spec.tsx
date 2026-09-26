@@ -24,8 +24,12 @@ describe('BalanceWidget route gate', () => {
     const view = render(<BalanceWidget {...props} />)
 
     expect(loadRouteEligibility).toHaveBeenCalledTimes(1)
+    // An unresolved route is fail-closed: the current-scope loader has not
+    // proved that this session is eligible, so no balance/settings endpoint
+    // is touched yet. This prevents transient 403/404 responses from a stale
+    // provider while the Host resolves the route.
     await act(async () => {})
-    expect(fetcher).toHaveBeenCalled()
+    expect(fetcher).not.toHaveBeenCalled()
 
     await act(async () => { resolveEligibility(false); await eligibility })
     // The card is portalled onto document.body, so the render container stays

@@ -46,6 +46,8 @@ export interface PeakTransitionNotificationPayload {
 export type { CacheHitAnomalyNotificationPayload }
 
 interface NotificationEventBase<K extends TokenMonitorNotificationKind, P> {
+  provider?: string
+  model?: string
   schemaVersion: typeof TOKEN_MONITOR_NOTIFICATION_SCHEMA_VERSION
   seq: number
   id: string
@@ -131,9 +133,11 @@ function draft<K extends TokenMonitorNotificationKind, P>(
   priority: TokenMonitorNotificationPriority,
   payload: P,
   identity: readonly unknown[],
+  scope?: { provider: string; model?: string },
 ): Omit<NotificationEventBase<K, P>, 'seq'> {
-  const dedupeKey = stableNotificationKey(kind, identity)
+  const dedupeKey = stableNotificationKey(kind, scope ? [scope.provider, scope.model ?? null, ...identity] : identity)
   return {
+    ...scope,
     schemaVersion: TOKEN_MONITOR_NOTIFICATION_SCHEMA_VERSION,
     id: dedupeKey,
     dedupeKey,
@@ -194,6 +198,7 @@ export function createChargeNotification(
 export function createBudgetThresholdNotification(
   crossing: BudgetThresholdCrossing,
   timestamp: number,
+  provider?: string,
 ): TokenMonitorNotificationDraft {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(crossing.date)) throw new TypeError('crossing.date must be YYYY-MM-DD')
   assertNonNegativeSafeInteger(timestamp, 'timestamp')
@@ -214,10 +219,10 @@ export function createBudgetThresholdNotification(
   const budgetCents = Math.round(crossing.budget * 100)
   if (!Number.isSafeInteger(budgetCents)) throw new RangeError('crossing.budget is outside the supported range')
   const payload: BudgetThresholdNotificationPayload = { ...crossing }
-  return draft('budget-threshold', timestamp, 'high', payload, [crossing.date, budgetCents])
+  return draft('budget-threshold', timestamp, 'high', payload, [crossing.date, budgetCents], provider ? { provider } : undefined)
 }
 
-export function createPeakTransitionNotification(transition: PeakTransition): TokenMonitorNotificationDraft {
+export function createPeakTransitionNotification(transition: PeakTransition, provider?: string): TokenMonitorNotificationDraft {
   assertNonNegativeSafeInteger(transition.observedAt, 'transition.observedAt')
   assertNonEmptyString(transition.key, 'transition.key')
   if (transition.from === transition.to) throw new RangeError('transition must change period')
@@ -227,11 +232,12 @@ export function createPeakTransitionNotification(transition: PeakTransition): To
     to: transition.to,
     periodKey: transition.key,
   }
-  return draft(kind, transition.observedAt, 'normal', payload, [transition.key])
+  return draft(kind, transition.observedAt, 'normal', payload, [transition.key], provider ? { provider } : undefined)
 }
 
 export function createCacheHitAnomalyNotification(
   payload: CacheHitAnomalyNotificationPayload,
+  scope?: { provider: string; model: string },
 ): TokenMonitorNotificationDraft {
   assertNonNegativeSafeInteger(payload.episodeId, 'cache anomaly episodeId')
   assertFiniteNumber(payload.observedRate, 'cache anomaly observedRate')
@@ -245,12 +251,14 @@ export function createCacheHitAnomalyNotification(
   if (payload.episodeId < 1 || payload.sampleCount < 2 || payload.consecutiveCalls < 2) throw new RangeError('cache anomaly counters are invalid')
   return draft('cache-hit-anomaly', payload.observedAt, 'normal', payload, [
     payload.episodeId,
-  ])
+  ], scope)
 }
 
 function validateEvent(event: unknown): asserts event is TokenMonitorNotificationEvent {
   if (typeof event !== 'object' || event === null) throw new TypeError('notification event must be an object')
   const candidate = event as Record<string, unknown>
+  if (candidate.provider !== undefined) assertNonEmptyString(candidate.provider, 'notification provider')
+  if (candidate.model !== undefined) assertNonEmptyString(candidate.model, 'notification model')
   if (candidate.schemaVersion !== TOKEN_MONITOR_NOTIFICATION_SCHEMA_VERSION) {
     throw new TypeError('notification event schemaVersion is unsupported')
   }

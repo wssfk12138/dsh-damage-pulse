@@ -86,6 +86,8 @@ describe('daily budget', () => {
     let budget = 10
     let dailyBudgetHandler: ((request: unknown, response: any) => void) | undefined
     const context = {
+      effect: (setup: () => unknown) => setup(),
+      connection: { requestRejection: () => undefined },
       webServer: {
         register(route: { path: string; handler: (request: unknown, response: any) => void }) {
           if (route.path === '/api/token-monitor/daily-budget') dailyBudgetHandler = route.handler

@@ -38,7 +38,7 @@ describe('route eligibility', () => {
   it('rechecks same-session model changes and recovers without overlapping work', async () => {
     vi.useFakeTimers()
     let settle!: (value: boolean) => void
-    const pending = new Promise<boolean>(resolve => { settle = resolve })
+    const pending = new Promise<boolean>((resolve) => { settle = resolve })
     const load = vi.fn().mockResolvedValueOnce(false).mockReturnValueOnce(pending).mockResolvedValue(true)
     const useSessions = (select: (state: { current: string }) => unknown) => select({ current: 's' })
     const hook = renderHook(() => useRouteEligibility(useSessions as never, load, false))
@@ -65,6 +65,24 @@ describe('route eligibility', () => {
     expect(hook.result.current).toBeUndefined()
     await act(async () => { await vi.advanceTimersByTimeAsync(5_000) })
     expect(hook.result.current).toBe(false)
+    hook.unmount()
+  })
+
+  it('resolves the active alpha.2 session from mainView retention', async () => {
+    const load = vi.fn().mockResolvedValue(true)
+    const useSessions = (
+      select: (state: { byId: Record<string, { id: string; retainedBy: { mainView?: number } }> }) => unknown,
+    ) => select({
+      byId: {
+        background: { id: 'background', retainedBy: {} },
+        active: { id: 'active', retainedBy: { mainView: 1 } },
+      },
+    })
+    const hook = renderHook(() => useRouteEligibility(useSessions as never, load, false))
+
+    await act(async () => {})
+    expect(load).toHaveBeenCalledWith('active', expect.any(AbortSignal))
+    expect(hook.result.current).toBe(true)
     hook.unmount()
   })
 

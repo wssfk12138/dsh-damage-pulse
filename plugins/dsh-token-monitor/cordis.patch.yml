@@ -1,13 +1,5 @@
-# dsh-damage-pulse 挂载层：把插件插入到 dsh 的组合树。
-# 目录名和 patch id 保留 dsh-token-monitor，以兼容现有安装与配置。
-#
-# 集成方法：把本仓库的 plugins/dsh-token-monitor 放到你的 DSH 仓库 plugins/ 目录下，
-# 然后把下面的 name 替换成你的 DSH 仓库的绝对路径。
-# 注意：Windows 下 loader 用 Node ESM 解析插件入口，绝对路径必须是 file:// URL
-# （`E:\...` 会被当成 `e:` 协议而报 ERR_UNSUPPORTED_ESM_URL_SCHEME）。
-#
-# 示例（把 PATH/TO/YOUR 替换为真实路径）：
-#   name: 'file:///C:/dev/deepseek-harness/plugins/dsh-token-monitor/src/index.ts'
+# dsh-token-monitor local mount overlay.
 - insert:
     - id: dsh-token-monitor
-      name: 'file:///PATH/TO/YOUR/deepseek-harness/plugins/dsh-token-monitor/src/index.ts'
+      name: 'file:///E:/deepseek-harness/plugins/dsh-token-monitor/src/index.ts'
+      displayName: dsh-damage-pulse

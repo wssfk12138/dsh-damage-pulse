@@ -10,7 +10,7 @@ export interface PeakReminderSender {
 }
 
 export interface PeakReminderContext {
-  effect(callback: () => () => void, label?: string): unknown
+  effect(callback: () => () => void | Promise<void>, label?: string): unknown
 }
 
 export interface PeakReminderOptions {

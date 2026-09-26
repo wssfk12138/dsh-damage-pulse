@@ -76,6 +76,25 @@ describe('nextPeakBoundary', () => {
 })
 
 describe('PeakTransitionScheduler', () => {
+  it('removes the timer immediately and waits for an already started delivery', async () => {
+    const clock = new ManualClock(at('2026-08-24T08:59:59'))
+    let finish!: () => void
+    const notify = vi.fn(() => new Promise<void>(resolve => { finish = resolve }))
+    const scheduler = new PeakTransitionScheduler(notify, { clock })
+    scheduler.start()
+    clock.jumpTo(at('2026-08-24T09:00:00'))
+    scheduler.check()
+    let stopped = false
+    const stopping = scheduler.stop().then(() => { stopped = true })
+    await Promise.resolve()
+    expect(stopped).toBe(false)
+    clock.jumpTo(at('2026-08-24T12:00:00'))
+    clock.fireDue()
+    expect(notify).toHaveBeenCalledOnce()
+    finish()
+    await stopping
+    expect(stopped).toBe(true)
+  })
   it.each([
     ['2026-08-24T10:00:00.000'],
     ['2026-08-24T13:00:00.000'],

@@ -29,6 +29,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId, SessionSummaryLike } from './host-contracts.ts'
 import {
   formatSessionCost,
+  asSessionCostProjection,
   readSessionCost,
   SESSION_COST_LEGACY_TITLE,
   SESSION_COST_MARKER,
@@ -85,7 +86,7 @@ function buildCostIndex(byId: Record<SessionId, SessionSummaryLike>): SessionCos
   const titleCounts = new Map<string, number>()
   const ambiguousTitles = new Set<string>()
   for (const summary of Object.values(byId)) {
-    const cost = readSessionCost(summary.projectionValues)
+    const cost = readSessionCost(asSessionCostProjection(summary.projectionValues))
     if (cost !== undefined) bySessionId.set(summary.id, cost)
     titleCounts.set(summary.displayTitle, (titleCounts.get(summary.displayTitle) ?? 0) + 1)
   }

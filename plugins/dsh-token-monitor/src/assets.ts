@@ -1,92 +1,95 @@
-import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { dirname, join, relative, resolve, sep } from 'node:path'
+import { resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Context } from '@deepseek-ai/cordis'
-import type {} from '@deepseek-ai/dsh-host-webserver'
 
-const REPO_ROOT_MARKERS = ['packages', 'assets'] as const
+type AssetRouteContext = Pick<import('@deepseek-ai/cordis').Context, 'webServer'>
 
-/**
- * 从模块所在目录向上查找仓库根（同时包含 packages/ 与 assets/ 的目录）。
- * 兼容两种运行面：源码直跑（src/assets.ts，tsx/vitest）与打包产物（lib/index.js），
- * 二者都从插件目录向上 2 层到达仓库根，保证素材定位一致。
- */
-export function resolveTokenMonitorAssetRoot(moduleUrl: string = import.meta.url): string {
-  let dir = dirname(fileURLToPath(moduleUrl))
-  for (let depth = 0; depth < 8; depth += 1) {
-    if (REPO_ROOT_MARKERS.every(marker => existsSync(join(dir, marker)))) {
-      return join(dir, 'assets', 'dsh-token-monitor')
-    }
-    const parent = dirname(dir)
-    if (parent === dir) break
-    dir = parent
-  }
-  // 兜底：社区把素材放在插件包内 plugins/dsh-token-monitor/assets/ 的场景。
-  return resolve(dirname(fileURLToPath(moduleUrl)), '..', 'assets', 'dsh-token-monitor')
-}
+export const TOKEN_MONITOR_ASSET_ROOT = fileURLToPath(
+  // The public rebuild keeps package-owned assets at the repository root.
+  // Resolve from the source tree so source-plane tests and a non-packed
+  // checkout use the same asset set that build-modules.mjs packages.
+  new URL('../../../assets/dsh-token-monitor/', import.meta.url),
+)
 
-const ASSET_ROOT = resolveTokenMonitorAssetRoot()
-const ROUTES = [
-  { route: '/assets/dsh-token-monitor/whale-girl', directory: 'whale-girl' },
-  { route: '/assets/dsh-token-monitor/settings-ui/cute', directory: 'settings-ui/cute' },
+export const TOKEN_MONITOR_ASSET_ROUTES = [
+  { path: '/assets/dsh-token-monitor/whale-girl', directory: 'whale-girl' },
+  { path: '/assets/dsh-token-monitor/settings-ui/cute', directory: 'settings-ui/cute' },
 ] as const
 
-function assetHandler(route: string, directory: string) {
-  const root = resolve(ASSET_ROOT, directory)
-  return async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+function isMissingFile(error: unknown): boolean {
+  return (error as NodeJS.ErrnoException).code === 'ENOENT'
+}
+
+function resolvePngPath(assetDirectory: string, routePath: string, requestUrl: string | undefined): string | undefined {
+  let pathname: string
+  try {
+    pathname = decodeURIComponent(new URL(requestUrl ?? '/', 'http://localhost').pathname)
+  } catch {
+    return undefined
+  }
+
+  const relativePath = pathname.slice(routePath.length + 1)
+  const segments = relativePath.split('/')
+  if (
+    !pathname.startsWith(`${routePath}/`)
+    || !relativePath.toLowerCase().endsWith('.png')
+    || segments.some(segment => segment === '' || segment === '.' || segment === '..' || segment.includes('\\') || segment.includes('\0'))
+  ) {
+    return undefined
+  }
+
+  const root = resolve(assetDirectory)
+  const candidate = resolve(root, ...segments)
+  return candidate.startsWith(`${root}${sep}`) ? candidate : undefined
+}
+
+export function createTokenMonitorAssetHandler(
+  routePath: string,
+  assetDirectory: string,
+): (request: IncomingMessage, response: ServerResponse) => Promise<void> {
+  return async (request, response) => {
     if (request.method !== 'GET' && request.method !== 'HEAD') {
-      response.writeHead(405, { Allow: 'GET, HEAD', 'Cache-Control': 'no-store' })
+      response.writeHead(405, { Allow: 'GET, HEAD' })
       response.end()
       return
     }
-    let pathname: string
+
+    const assetPath = resolvePngPath(assetDirectory, routePath, request.url)
+    if (assetPath === undefined) {
+      response.writeHead(404)
+      response.end()
+      return
+    }
+
+    let body: Buffer
     try {
-      pathname = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname)
-    } catch {
-      response.writeHead(400, { 'Cache-Control': 'no-store' })
+      body = await readFile(assetPath)
+    } catch (error) {
+      response.writeHead(isMissingFile(error) ? 404 : 500)
       response.end()
       return
     }
-    const requested = pathname.startsWith(`${route}/`) ? pathname.slice(route.length + 1) : ''
-    if (!requested.endsWith('.png') || requested.split('/').some(part => !/^[A-Za-z0-9._-]+$/.test(part))) {
-      response.writeHead(404, { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
-      response.end()
-      return
-    }
-    const target = resolve(root, ...requested.split('/'))
-    const local = relative(root, target)
-    if (local.startsWith(`..${sep}`) || local === '..' || local === '') {
-      response.writeHead(404, { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
-      response.end()
-      return
-    }
-    try {
-      const body = await readFile(target)
-      response.writeHead(200, {
-        'Content-Type': 'image/png',
-        'Content-Length': body.byteLength,
-        'Cache-Control': 'public, max-age=31536000, immutable',
-        'X-Content-Type-Options': 'nosniff',
-      })
-      response.end(request.method === 'HEAD' ? undefined : body)
-    } catch {
-      response.writeHead(404, { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
-      response.end()
-    }
+
+    response.writeHead(200, {
+      'Content-Type': 'image/png',
+      'Content-Length': String(body.byteLength),
+      'Cache-Control': 'public, max-age=3600',
+    })
+    response.end(request.method === 'HEAD' ? undefined : body)
   }
 }
 
-/** Register the two package-owned PNG trees required by the Client. */
-export function registerTokenMonitorAssetRoutes(ctx: Context): void {
-  for (const entry of ROUTES) {
-    ctx.webServer.register({ kind: 'prefix', path: entry.route, handler: assetHandler(entry.route, entry.directory) })
+export function registerTokenMonitorAssetRoutes(
+  ctx: AssetRouteContext,
+  assetRoot = TOKEN_MONITOR_ASSET_ROOT,
+): () => void {
+  const disposers = TOKEN_MONITOR_ASSET_ROUTES.map(route => ctx.webServer.register({
+    kind: 'prefix',
+    path: route.path,
+    handler: createTokenMonitorAssetHandler(route.path, resolve(assetRoot, route.directory)),
+  }))
+  return () => {
+    for (const dispose of disposers.reverse()) dispose()
   }
-}
-
-/** Backward-compatible entry point that retains the original single-route behavior. */
-export function registerWhaleAssetRoute(ctx: Context): void {
-  const entry = ROUTES[0]
-  ctx.webServer.register({ kind: 'prefix', path: entry.route, handler: assetHandler(entry.route, entry.directory) })
 }

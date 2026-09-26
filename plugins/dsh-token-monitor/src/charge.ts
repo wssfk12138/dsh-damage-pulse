@@ -31,6 +31,9 @@ export interface ChargeEvent {
   timestamp: number
   /** Client 应播放的扣血动画类型。 */
   damageKind: DamageKind
+  /** Immutable billing route; absent only on legacy callers. */
+  provider?: string
+  model?: string
   /** Originating session event identity, used to make replay handling idempotent. */
   sourceEvent?: { sessionId: string; seq: number }
   breakdown?: ChargeBreakdown
@@ -51,7 +54,13 @@ const events: ChargeEvent[] = []
 const seenSourceEvents = new Set<string>()
 const seenSourceEventOrder: string[] = []
 let seqCounter = 0
-const streamId = randomUUID()
+let streamId = randomUUID()
+
+/** Same-version restoration cannot replay a removed module's in-memory events. */
+export function resetCharges(): void {
+  events.length = 0; seenSourceEvents.clear(); seenSourceEventOrder.length = 0
+  seqCounter = 0; streamId = randomUUID()
+}
 
 function sourceEventKey(sourceEvent: { sessionId: string; seq: number }): string {
   return JSON.stringify([sourceEvent.sessionId, sourceEvent.seq])
@@ -63,7 +72,7 @@ export function recordCharge(
   timestamp: number,
   damageKind: DamageKind,
   breakdown?: ChargeBreakdown,
-  sourceEvent?: { sessionId: string; sourceEventSeq?: number },
+  sourceEvent?: { sessionId: string; sourceEventSeq?: number; provider?: string; model?: string },
 ): void {
   const identity = sourceEvent?.sourceEventSeq === undefined
     ? undefined
@@ -78,7 +87,7 @@ export function recordCharge(
       if (expired !== undefined) seenSourceEvents.delete(expired)
     }
   }
-  events.push({ seq: ++seqCounter, cost, timestamp, damageKind, ...(identity === undefined ? {} : { sourceEvent: identity }), ...(breakdown === undefined ? {} : { breakdown }) })
+  events.push({ seq: ++seqCounter, cost, timestamp, damageKind, ...(sourceEvent?.provider === undefined ? {} : { provider: sourceEvent.provider }), ...(sourceEvent?.model === undefined ? {} : { model: sourceEvent.model }), ...(identity === undefined ? {} : { sourceEvent: identity }), ...(breakdown === undefined ? {} : { breakdown }) })
   if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS)
 }
 

@@ -15,10 +15,6 @@ type LegacyInspectionPersistence = {
   open?: (id: never, access: 'read') => Promise<{
     header: SessionInspection['meta']
     inheritedEventCount: unknown
-    /**
-     * 0.1.0-0.1.4 直接返回事件数组；0.1.5-alpha 起返回
-     * SessionHandleReadResult（{ eventState, events }）。
-     */
     read: () => Promise<readonly unknown[] | { events: readonly unknown[] }>
     close: () => Promise<void>
   }>
@@ -113,15 +109,16 @@ export async function migrateMissingTokenCost(ctx: Context): Promise<void> {
       const cachedSnapshot = ctx.sessionProjectionCache.cachedSnapshot as unknown as Function
       let inspection: SessionInspection | undefined
       let cached: { values?: { tokenCost?: unknown } } | undefined
-      if (cachedSnapshot.length >= 2) {
-        inspection = await inspectSession(ctx, header.id)
-        cached = cachedSnapshot.call(
-          ctx.sessionProjectionCache,
-          inspection.meta,
-          inspection.inheritedEventCount,
-        )
-      } else {
+      try {
+        // Current hosts use argument two as an optional projection-key list.
+        // Passing the old inherited event count (often 0) makes that list
+        // non-iterable and prevents every historical session from rebuilding.
         cached = cachedSnapshot.call(ctx.sessionProjectionCache, header)
+      } catch (error) {
+        if (!isMissingArgumentContractError(error)) throw error
+        // Older hosts require the inherited count as argument two.
+        inspection = await inspectSession(ctx, header.id)
+        cached = cachedSnapshot.call(ctx.sessionProjectionCache, inspection.meta, inspection.inheritedEventCount)
       }
       if (cached?.values?.tokenCost !== undefined) continue
       await rebuildTokenCostSnapshot(ctx, header.id, inspection)

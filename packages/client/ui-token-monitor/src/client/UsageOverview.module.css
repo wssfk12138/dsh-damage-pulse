@@ -1,0 +1,22 @@
+.overview { padding: 12px 14px; background: var(--dsw-alias-detail-overview); border-bottom: 1px solid var(--dsw-alias-detail-border); }
+.header, .scope, .actions, .ranges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.header { justify-content: space-between; }
+.header > strong { font-size: 14px; }
+.actions { margin-left: auto; }
+.scope { justify-content: flex-end; margin: 7px 0 10px; color: var(--dsw-alias-detail-muted); font-size: 11px; }
+.ranges { gap: 4px; }
+.provider { display: flex; align-items: center; gap: 8px; margin-right: auto; min-width: 0; }
+.provider select { max-width: 220px; min-width: 0; padding: 4px 8px; border: 1px solid var(--dsw-alias-detail-border); border-radius: 8px; background: var(--dsw-alias-detail-card); color: var(--dsw-alias-detail-brand); font: inherit; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.card { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 0; min-height: 72px; padding: 10px 8px; border: 1px solid var(--dsw-alias-detail-border); border-radius: 12px; background: var(--dsw-alias-detail-card); text-align: center; overflow-wrap: anywhere; }
+.card > span { width: 100%; color: var(--dsw-alias-detail-muted); font-size: 11px; }
+.card > strong { width: 100%; margin-top: 5px; color: var(--dsw-alias-detail-brand); font-size: 21px; line-height: 1.3; font-variant-numeric: tabular-nums; }
+.card small { margin-left: 4px; font-size: 11px; font-weight: 500; }
+.card:first-child, .card:nth-child(7) { background: var(--dsw-alias-detail-spend-card); border-color: var(--dsw-alias-detail-spend-border); }
+.card:first-child > strong, .card:nth-child(7) > strong { color: var(--dsw-alias-detail-spend-label); }
+.card:nth-child(5) > strong { color: var(--dsw-alias-detail-cache-label); }
+.status { font-size: 11px; margin-bottom: 7px; text-align: center; }
+.overview[data-compact="true"] .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.overview[data-compact="true"] .scope { justify-content: center; text-align: center; }
+.overview[data-compact="true"] .card { min-height: 64px; }
+.overview[data-compact="true"] .card > strong { font-size: 19px; }

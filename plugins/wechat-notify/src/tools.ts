@@ -121,7 +121,7 @@ export function createWechatTools(env: WechatToolEnvironment): ToolDefinition[] 
 
 /**
  * 宿主提供 tools 服务时惰性注册三个微信工具；tools 缺失时回调不触发，插件照常启动。
- * 在 apply() 中于 installBundledWechat() 之后调用，保证 wechatNotify/wechatConnection 已提供。
+ * 在 apply() 中于服务实例化之后调用，保证 wechatNotify/wechatConnection 已提供。
  */
 export function registerWechatTools(ctx: Context): void {
   ctx.inject(["tools"], (toolsCtx) => {

@@ -99,10 +99,29 @@ async function bootHost(withTrailing: boolean): Promise<HostHandle> {
   const ctx = new Context()
   let slots: Registry | undefined
   const fibers: Array<{ dispose(): Promise<unknown> }> = []
+  const previousFetch = globalThis.fetch
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    schemaVersion: 1,
+    revision: 0,
+    version: '4.0.10',
+    pluginRemoved: false,
+    restartRequired: false,
+    modules: [
+      { id: 'overview', status: 'installed', autoInstallBlocked: false },
+      { id: 'billing', status: 'installed', autoInstallBlocked: false },
+    ],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })) as typeof fetch
 
   const setup = ctx.plugin((inner: Context) => {
     slots = new SlotRegistry(inner) as Registry
     inner.provide('connection', { api: { sessions: {} } })
+    // The current client contract declares the remote session and locale
+    // capabilities as required injections.  Keep this registry harness close
+    // to the real host surface so the plugin fiber actually activates.
+    const remoteSession = { modelCatalog: async () => ({ ok: true, value: {} }) }
+    inner.provide('remote', { session: remoteSession })
+    inner.provide('remote.session', remoteSession)
+    inner.provide('locale', { register: () => {} })
     inner.provide('modelDirectories', { directoryFor: () => ({ load: async () => ({ current: null, routable: [] }) }) })
     inner.provide('conversationEvents', { register: () => {} })
   })
@@ -159,6 +178,7 @@ async function bootHost(withTrailing: boolean): Promise<HostHandle> {
     upgradeTrailing,
     teardown: async () => {
       for (const fiber of [...fibers].reverse()) await fiber.dispose()
+      globalThis.fetch = previousFetch
     },
   }
 }

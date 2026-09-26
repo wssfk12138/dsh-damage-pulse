@@ -1,12 +1,19 @@
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
+/** Whether the Host supports managed WeChat notifications. */
 export type WechatAvailability = 'available' | 'unsupported'
+/** Authentication state reported by the managed WeChat runtime. */
 export type WechatAuthState = 'unconfigured' | 'pending' | 'authenticated' | 'expired' | 'unknown'
+/** Ownership and liveness state of the WeChat helper process. */
 export type WechatProcessState = 'host-managed-running' | 'host-managed-stopped' | 'external' | 'none' | 'unknown'
+/** Whether the WeChat helper can currently deliver notifications. */
 export type WechatDeliveryState = 'ready' | 'needs-activation' | 'not-ready' | 'unknown'
+/** Connection operation currently running in the settings UI. */
 export type WechatConnectionOperation = 'idle' | 'login' | 'confirm-login' | 'reconnect' | 'disconnect'
+/** Successful result returned after sending a WeChat test notification. */
 export type WechatTestMessageResult = { ok: true }
 
+/** Combined Host, authentication, process, and delivery state for WeChat notifications. */
 export interface WechatRuntimeStatus {
   schemaVersion: 1
   provider: 'clawbot-wechat'
@@ -22,16 +29,19 @@ export interface WechatRuntimeStatus {
   checkedAt: number
 }
 
+/** Login attempt started by the Host, including any QR-code payload. */
 export interface WechatLoginStart {
   login: { sessionId: string; expiresAt: number; qrPayload: string }
   status: WechatRuntimeStatus
 }
 
+/** Result returned after confirming a WeChat login attempt. */
 export interface WechatLoginConfirmation {
   result: 'waiting' | 'scanned' | 'confirmed' | 'expired'
   status: WechatRuntimeStatus
 }
 
+/** Stable error codes returned by WeChat connection operations. */
 export type WechatConnectionApiErrorCode =
   | 'UNSUPPORTED'
   | 'OPERATION_IN_PROGRESS'
@@ -51,6 +61,7 @@ export type WechatConnectionApiErrorCode =
   | 'SEND_FAILED'
   | 'HTTP_ERROR'
 
+/** HTTP error returned by the WeChat connection endpoint. */
 export class WechatConnectionApiError extends Error {
   constructor(readonly status: number, readonly code: WechatConnectionApiErrorCode, message: string) {
     super(message)
@@ -58,6 +69,7 @@ export class WechatConnectionApiError extends Error {
   }
 }
 
+/** Protocol error raised when a WeChat connection response has an invalid shape. */
 export class WechatConnectionProtocolError extends Error {
   constructor(readonly field: string) {
     super(`微信连接接口返回了不符合契约的数据：${field}`)
@@ -218,6 +230,7 @@ async function parseResponse<T>(response: Response, parser: (value: unknown) => 
   return parser(value)
 }
 
+/** Client operations supported by the WeChat connection endpoint. */
 export interface WechatConnectionApi {
   status(signal?: AbortSignal): Promise<WechatRuntimeStatus>
   login(signal?: AbortSignal): Promise<WechatLoginStart>
@@ -231,6 +244,12 @@ function signalInit(signal: AbortSignal | undefined): Pick<RequestInit, 'signal'
   return signal === undefined ? {} : { signal }
 }
 
+/**
+ * Create a client for Host-managed WeChat connection operations.
+ * @param fetcher - HTTP implementation used to read the Host endpoint.
+ * @param basePath - Base path of the update endpoint.
+ * @returns A WeChat connection API client bound to the supplied base path.
+ */
 export function createWechatConnectionApi(
   fetcher: FetchLike = fetch,
   basePath = '/api/token-monitor/wechat',
