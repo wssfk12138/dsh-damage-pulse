@@ -1,0 +1,141 @@
+/**
+ * Plugin-owned design tokens.
+ *
+ * The windows, cards and bubbles in this plugin are themed by the
+ * --dsw-alias-monitor-* and --dsw-alias-detail-* families. The harness runs
+ * them from its own ui-theme package; a standard-package install reaches
+ * hosts that do not carry those aliases, and an unresolved var() in a
+ * background declaration drops the whole declaration, which left every
+ * window transparent. Shipping the values keeps the plugin self-contained
+ * and identical to the internal appearance; no host-owned token is
+ * redefined here.
+ */
+body {
+  --dsw-alias-detail-bg: #f7f9ff;
+  --dsw-alias-detail-border: #dce5f5;
+  --dsw-alias-detail-brand: #3858a8;
+  --dsw-alias-detail-cache: #4f918c;
+  --dsw-alias-detail-cache-label: #6e9b95;
+  --dsw-alias-detail-card: #ffffff;
+  --dsw-alias-detail-color-scheme: light;
+  --dsw-alias-detail-error: #b35d78;
+  --dsw-alias-detail-hover: #edf2ff;
+  --dsw-alias-detail-label: #25345f;
+  --dsw-alias-detail-muted: #6874a8;
+  --dsw-alias-detail-output: #7560b8;
+  --dsw-alias-detail-overview: linear-gradient(120deg,#f1f5ff,#fcf3f8);
+  --dsw-alias-detail-spend-border: #efdfe9;
+  --dsw-alias-detail-spend-card: #fff7fb;
+  --dsw-alias-detail-spend-label: #b5799b;
+  --dsw-alias-detail-success: #4f918c;
+  --dsw-alias-detail-warning: #b48438;
+  --dsw-alias-monitor-accent-gradient: linear-gradient(135deg, #3858a8, #476fc4);
+  --dsw-alias-monitor-action-border: rgba(56,88,168,.3);
+  --dsw-alias-monitor-border: #c6d4f2;
+  --dsw-alias-monitor-brand: #3858a8;
+  --dsw-alias-monitor-button: #f5f7ff;
+  --dsw-alias-monitor-button-border: rgba(56, 88, 168, 0.38);
+  --dsw-alias-monitor-card: rgba(255, 255, 255, 0.88);
+  --dsw-alias-monitor-card-border: rgba(56, 88, 168, 0.20);
+  --dsw-alias-monitor-card-shadow: 0 7px 18px rgba(40, 56, 104, 0.08);
+  --dsw-alias-monitor-close: rgba(255,255,255,.82);
+  --dsw-alias-monitor-connected: #46a878;
+  --dsw-alias-monitor-danger-border: rgba(204, 72, 99, 0.42);
+  --dsw-alias-monitor-danger-button: #c94b68;
+  --dsw-alias-monitor-danger-panel-bg: rgba(204,72,99,.07);
+  --dsw-alias-monitor-danger-panel-border: rgba(204,72,99,.30);
+  --dsw-alias-monitor-error: #bd3e5a;
+  --dsw-alias-monitor-focus: #476fc4;
+  --dsw-alias-monitor-focus-ring: rgba(56,88,168,.14);
+  --dsw-alias-monitor-footer: linear-gradient(0deg,#f8faff 78%,rgba(248,250,255,.92));
+  --dsw-alias-monitor-head: linear-gradient(90deg,rgba(226,235,255,.97),rgba(246,248,255,.97));
+  --dsw-alias-monitor-head-border: rgba(56,88,168,.18);
+  --dsw-alias-monitor-heading-gradient: linear-gradient(#3858a8,#6f91dc);
+  --dsw-alias-monitor-hover: #eaf0ff;
+  --dsw-alias-monitor-input: #fff;
+  --dsw-alias-monitor-label: #283868;
+  --dsw-alias-monitor-muted: #6874a8;
+  --dsw-alias-monitor-note: rgba(238,243,255,.86);
+  --dsw-alias-monitor-note-border: #b8c8eb;
+  --dsw-alias-monitor-on-accent: #fff;
+  --dsw-alias-monitor-panel: linear-gradient(155deg, #fbfcff, #eef3ff 58%, #fff);
+  --dsw-alias-monitor-panel-shadow: 0 24px 70px rgba(40, 56, 104, 0.22), inset 0 0 0 5px rgba(238, 243, 255, 0.72);
+  --dsw-alias-monitor-qr-border: rgba(56,88,168,.38);
+  --dsw-alias-monitor-qr-paper: #fff;
+  --dsw-alias-monitor-scrollbar: #9eb2df;
+  --dsw-alias-monitor-separator: #cbd7ef;
+  --dsw-alias-monitor-soft-border: rgba(56,88,168,.10);
+  --dsw-alias-monitor-success: #3f8f6a;
+  --dsw-alias-monitor-switch-border: rgba(40, 56, 104, 0.18);
+  --dsw-alias-monitor-switch-off: rgba(104, 116, 168, 0.22);
+  --dsw-alias-monitor-thumb: #fff;
+  --dsw-alias-monitor-thumb-shadow: 0 2px 6px rgba(40, 56, 104, 0.26);
+  --dsw-alias-monitor-warning-bg: rgba(230,167,81,.11);
+  --dsw-alias-monitor-wechat: rgba(245,247,255,.82);
+  --dsw-alias-monitor-wechat-border: rgba(56,88,168,.17);
+}
+
+body[data-ds-dark-theme] {
+  --dsw-alias-detail-bg: #202430;
+  --dsw-alias-detail-border: #46536d;
+  --dsw-alias-detail-brand: #a8c5fa;
+  --dsw-alias-detail-cache: #91c5bb;
+  --dsw-alias-detail-cache-label: #91c5bb;
+  --dsw-alias-detail-card: #292e3b;
+  --dsw-alias-detail-color-scheme: dark;
+  --dsw-alias-detail-error: #f29db4;
+  --dsw-alias-detail-hover: #343f58;
+  --dsw-alias-detail-label: #e0e6f6;
+  --dsw-alias-detail-muted: #b3bfd8;
+  --dsw-alias-detail-output: #c4b2f5;
+  --dsw-alias-detail-overview: linear-gradient(120deg,#242e43,#322a3c);
+  --dsw-alias-detail-spend-border: #60465e;
+  --dsw-alias-detail-spend-card: #352d3d;
+  --dsw-alias-detail-spend-label: #e8afd0;
+  --dsw-alias-detail-success: #91d1af;
+  --dsw-alias-detail-warning: #e5bb77;
+  --dsw-alias-monitor-accent-gradient: linear-gradient(135deg,#597dbe,#779add);
+  --dsw-alias-monitor-action-border: #5b6f95;
+  --dsw-alias-monitor-border: #46536d;
+  --dsw-alias-monitor-brand: #a8c5fa;
+  --dsw-alias-monitor-button: #343f58;
+  --dsw-alias-monitor-button-border: #5b6f95;
+  --dsw-alias-monitor-card: #292e3b;
+  --dsw-alias-monitor-card-border: #46536d;
+  --dsw-alias-monitor-card-shadow: 0 7px 18px rgba(0,0,0,.18);
+  --dsw-alias-monitor-close: #343f58;
+  --dsw-alias-monitor-connected: #91d1af;
+  --dsw-alias-monitor-danger-border: #a46c80;
+  --dsw-alias-monitor-danger-button: #a63855;
+  --dsw-alias-monitor-danger-panel-bg: rgba(204,72,99,.16);
+  --dsw-alias-monitor-danger-panel-border: #a46c80;
+  --dsw-alias-monitor-error: #f29db4;
+  --dsw-alias-monitor-focus: #92b1e8;
+  --dsw-alias-monitor-focus-ring: rgba(146,177,232,.24);
+  --dsw-alias-monitor-footer: linear-gradient(0deg,#272e3e 78%,#272e3e);
+  --dsw-alias-monitor-head: linear-gradient(90deg,#303d59,#2a3143);
+  --dsw-alias-monitor-head-border: #46536d;
+  --dsw-alias-monitor-heading-gradient: linear-gradient(#a8c5fa,#779add);
+  --dsw-alias-monitor-hover: #425273;
+  --dsw-alias-monitor-input: #202533;
+  --dsw-alias-monitor-label: #e0e6f6;
+  --dsw-alias-monitor-muted: #b3bfd8;
+  --dsw-alias-monitor-note: #30394d;
+  --dsw-alias-monitor-note-border: #46536d;
+  --dsw-alias-monitor-on-accent: #fff;
+  --dsw-alias-monitor-panel: linear-gradient(155deg, #252936, #202430 58%, #262a36);
+  --dsw-alias-monitor-panel-shadow: 0 24px 70px rgba(0,0,0,.42), inset 0 0 0 5px rgba(67,80,110,.18);
+  --dsw-alias-monitor-qr-border: #5b6f95;
+  --dsw-alias-monitor-qr-paper: #fff;
+  --dsw-alias-monitor-scrollbar: #7183a7;
+  --dsw-alias-monitor-separator: #46536d;
+  --dsw-alias-monitor-soft-border: rgba(146,177,232,.18);
+  --dsw-alias-monitor-success: #91d1af;
+  --dsw-alias-monitor-switch-border: #687795;
+  --dsw-alias-monitor-switch-off: #495268;
+  --dsw-alias-monitor-thumb: #e8eefb;
+  --dsw-alias-monitor-thumb-shadow: 0 2px 6px rgba(0,0,0,.3);
+  --dsw-alias-monitor-warning-bg: rgba(230,167,81,.16);
+  --dsw-alias-monitor-wechat: #232938;
+  --dsw-alias-monitor-wechat-border: #46536d;
+}

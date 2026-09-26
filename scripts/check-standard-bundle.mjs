@@ -62,6 +62,17 @@ check('client bundle reflects source session and module markers', ['WhaleGirlSta
 // reaches the browser and leaves every hashed class without its rules.
 check('client bundle carries its own compiled styles', client.includes('dataset.pluginCss') && /\.\w{4,10}_\w+\{/.test(client))
 check('no extracted stylesheet left for the client', !exists(join(repo, 'lib', 'style.css')))
+// Families the plugin must own: a generic host does not define them, and an
+// unresolved var() in a visual declaration drops the whole declaration (that is
+// how every window went transparent). Fails when a family member is used without
+// being shipped by the bundle.
+const ownedMissing = []
+const ownedSeen = new Set()
+for (const match of client.matchAll(/var\(\s*(--dsw-alias-(?:monitor|detail)-[a-z0-9-]+)/g)) {
+  ownedSeen.add(match[1])
+  if (!client.includes(match[1] + ':')) ownedMissing.push(match[1])
+}
+check('plugin-owned style tokens ship with the bundle', ownedSeen.size >= 60 && ownedMissing.length === 0, ownedMissing.join(', '))
 check('migration keeps events compatibility', sourceHost.includes("'events' in result") || sourceHost.includes('"events" in result'))
 check('notification defaults are explicit and public-safe', readText(join(repo, 'packages/util/token-monitor-contract/src/index.ts')).includes('DEFAULT_TOKEN_MONITOR_SETTINGS') && readText(join(repo, 'packages/util/token-monitor-contract/src/index.ts')).includes('budgetExceededNotificationEnabled: false'))
 check('no private absolute paths in packaged runtime', ![host, client, JSON.stringify(manifest)].some(value => /(?:[A-Z]:\\Users\\|C:\\Users\\|E:\\Codex\\)/i.test(value)))

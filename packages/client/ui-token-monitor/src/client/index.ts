@@ -4,6 +4,8 @@
  * + frame 级「余额悬浮卡片」（shell.overlay）。
  * 用量行/累计条为投影与事件驱动；余额卡片为 HTTP 轮询，无自有 store。
  */
+// Plugin-owned design tokens: the public host does not define these aliases.
+import './theme-tokens.css'
 import type { ModelDirectoryResolver } from '@deepseek-ai/dsh-client-ui-model-selection/client'
 // Type-only：拉入 conversation slot 契约（chat.node / composer.dock）。
 import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
