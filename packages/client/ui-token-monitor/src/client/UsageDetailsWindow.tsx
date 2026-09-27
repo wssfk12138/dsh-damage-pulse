@@ -85,8 +85,8 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
   }, [columnsOpen, fitColumnsMenu])
   useEffect(() => {
     if (!columnsOpen) return
-    // 宿主菜单只在 document 捕获阶段收起；这里用更早的 window 捕获阶段兜底，
-    // 保证点卡片外的任何空白处都能关闭列设置。
+    // 宿主菜单的关闭监听挂在 document 上（不同宿主版本分别用捕获或冒泡阶段），
+    // 这里用更早的 window 捕获阶段兜底：窗口内部按下也能关闭列设置。
     const dismiss = (event: PointerEvent) => {
       const target = event.target
       if (!(target instanceof Node)) return
