@@ -1,0 +1,139 @@
+diff --git a/packages/session/session-format-v3-to-v4/src/migration.ts b/packages/session/session-format-v3-to-v4/src/migration.ts
+index 63a3460608..214f89ae46 100644
+--- a/packages/session/session-format-v3-to-v4/src/migration.ts
++++ b/packages/session/session-format-v3-to-v4/src/migration.ts
+@@ -38,6 +38,21 @@ export function createSessionFormatV3ToV4(children: readonly SessionFormatJsonVa
+   })
+ }
+ 
++/**
++ * Call id of one tool result row: the canonical V4 message carries it as a
++ * field, while a released V3 wrapper keeps it on the tool source.
++ * @param message - message payload of a tool/result row.
++ * @returns the call id when the row names one.
++ */
++function resultCallId(message: SessionFormatJsonValue | undefined): string | undefined {
++  if (!isSessionFormatJsonObject(message)) return undefined
++  const direct = message['toolCallId']
++  if (typeof direct === 'string' && direct.length > 0) return direct
++  const source = message['source']
++  const viaSource = isSessionFormatJsonObject(source) ? source['callId'] : undefined
++  return typeof viaSource === 'string' && viaSource.length > 0 ? viaSource : undefined
++}
++
+ class ReleasedV3ToV4Stage implements SessionFormatMigrationStage {
+   readonly headerInheritedEventCount?: number
+   private readonly candidates: readonly SessionFormatJsonObject[]
+@@ -51,6 +66,13 @@ class ReleasedV3ToV4Stage implements SessionFormatMigrationStage {
+   private nextSeq = 0
+   private time: number
+   private foreignDeliverySeq: number | undefined
++  /** Advertised tool calls that have not settled yet, keyed by call id. */
++  private readonly openCalls = new Map<string, { started: boolean }>()
++  /** Turn/step coordinates of the open step, copied onto synthesized repair results. */
++  private callTurn: number | undefined
++  private callStep: number | undefined
++  /** Repair target seq per call that a step boundary already closed. */
++  private readonly repairedCalls = new Map<string, number>()
+ 
+   constructor(private readonly input: SessionFormatMigrationStageInput, children: readonly SessionFormatJsonValue[]) {
+     this.candidates = children.map(childCatalogSource).sort((left, right) =>
+@@ -64,6 +86,20 @@ class ReleasedV3ToV4Stage implements SessionFormatMigrationStage {
+ 
+   transformEvent(event: SessionFormatEvent, context: SessionFormatMigrationContext): void {
+     if (event.seq !== this.mapping.length) throw new SessionFormatError('V3 source events must be dense')
++    this.observeTools(event)
++    if (event.type === 'tool/result' && isSessionFormatJsonObject(event.data)) {
++      const message = event.data['message']
++      const callId = resultCallId(message)
++      const repairSeq = typeof callId === 'string' ? this.repairedCalls.get(callId) : undefined
++      if (repairSeq !== undefined) {
++        // The step boundary already published this call's interrupted result, so
++        // the late row would arrive after its lifecycle closed. Keep the source
++        // mapping pointed at the repair instead of emitting an orphan result.
++        this.mapping.push(repairSeq)
++        return
++      }
++    }
++    if (event.type === 'step/end') this.repairOpenCalls(event, context)
+     const interrupted = this.observeRestart(event)
+     if (interrupted !== undefined) {
+       context.emitEvent({ type: 'turn/end', seq: this.nextSeq++, time: event.time,
+@@ -134,6 +170,77 @@ class ReleasedV3ToV4Stage implements SessionFormatMigrationStage {
+     return interrupted
+   }
+ 
++  /**
++   * Track the V4 tool lifecycle while the released V3 frames stream past, so a
++   * step boundary can repair what history left dangling. Call ids come from the
++   * assistant message that advertises them, exactly as the V4 relationship
++   * validator reads them back.
++   * @param event - released V3 event about to be transformed.
++   */
++  private observeTools(event: SessionFormatEvent): void {
++    if (!isSessionFormatJsonObject(event.data)) return
++    const data = event.data
++    if (typeof data['turn'] === 'number') this.callTurn = data['turn']
++    if (typeof data['step'] === 'number') this.callStep = data['step']
++    if (event.type === 'assistant/message') {
++      // A replaced/removed assistant surface never advertises a live call: the
++      // artifact validator only tracks the surface the reader sees.
++      if (event['surfaceOp'] !== undefined && event['surfaceOp'] !== 'append') return
++      const message = data['message']
++      const content = isSessionFormatJsonObject(message) ? message['content'] : undefined
++      if (!Array.isArray(content)) return
++      for (const value of content) {
++        if (!isSessionFormatJsonObject(value) || value['type'] !== 'tool-call') continue
++        const id = value['id']
++        if (typeof id === 'string' && id.length > 0) this.openCalls.set(id, { started: false })
++      }
++      return
++    }
++    if (event.type === 'tool/call') {
++      const id = data['callId']
++      const pending = typeof id === 'string' ? this.openCalls.get(id) : undefined
++      if (pending !== undefined) pending.started = true
++      return
++    }
++    if (event.type === 'tool/result') {
++      const message = data['message']
++      const id = resultCallId(message)
++      if (typeof id === 'string') this.openCalls.delete(id)
++    }
++  }
++
++  /**
++   * Close advertised-but-never-started calls with the Harness's own interrupted
++   * tool result before a step ends. A process that died while a call was
++   * advertised leaves such a frame behind, and refusing the whole artifact for
++   * it would hide an otherwise readable Session; started calls keep failing
++   * loudly because only their real result may settle them.
++   * @param event - the step boundary that is about to be emitted.
++   * @param context - target emission context.
++   */
++  private repairOpenCalls(event: SessionFormatEvent, context: SessionFormatMigrationContext): void {
++    for (const [callId, pending] of [...this.openCalls]) {
++      this.openCalls.delete(callId)
++      const content = pending.started
++        ? [{ type: 'text', text: 'The tool call was interrupted before the Harness recorded its result. Retry it if it is still needed.' }]
++        : [{ type: 'text', text: 'The tool call was interrupted before the Harness recorded it as started. Retry it if it is still needed.' }]
++      context.emitEvent({ type: 'tool/result', seq: this.nextSeq++, time: event.time, surfaceOp: 'append', data: {
++        ...pending.started ? {} : { error: { name: 'ToolNotStartedError', code: 'TOOL_NOT_STARTED' } },
++        ...this.callTurn === undefined ? {} : { turn: this.callTurn },
++        ...this.callStep === undefined ? {} : { step: this.callStep },
++        message: {
++          id: `interrupted-tool-result-${callId}-0`,
++          role: 'tool',
++          source: { kind: 'tool', callId },
++          toolCallId: callId,
++          isError: true,
++          content,
++        },
++      } })
++      this.repairedCalls.set(callId, this.nextSeq - 1)
++    }
++  }
++
+   finish(context: SessionFormatMigrationContext): number {
+     const cut = sessionFormatCount(this.cut, 'V3 inherited event count')
+     const sourceCut = sessionFormatCount(this.sourceCut, 'V3 source inherited event count')

@@ -7,7 +7,10 @@ import { CURRENT_RELEASE_VERSION, inferRunningProfile, registerUpdateRoutes, UPD
 /** Release fixtures stay relative to the running build so a version bump cannot silently close the install path. */
 function shiftPatch(version: string, delta: number): string {
   const [major, minor, patch] = version.split('.').map(Number)
-  return `${String(major)}.${String(minor)}.${String(Math.max(0, (patch ?? 0) + delta))}`
+  const next = (patch ?? 0) + delta
+    if (next >= 0) return `${String(major)}.${String(minor)}.${String(next)}`
+    // Borrow one minor so an x.y.0 release still has a strictly lower fixture version.
+    return `${String(major)}.${String(Math.max(0, (minor ?? 0) - 1))}.99`
 }
 
 const PRIOR_RELEASE = shiftPatch(CURRENT_RELEASE_VERSION, -1)
