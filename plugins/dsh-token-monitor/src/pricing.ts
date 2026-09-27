@@ -91,6 +91,13 @@ const PEAK_PRICING_START = Date.UTC(2026, 7, 16, 16, 0, 0)
 /** Flash 调价生效时刻：2026-09-10 12:00 北京时间 = 04:00 UTC。 */
 export const FLASH_PRICING_START = Date.UTC(2026, 8, 10, 4, 0, 0)
 
+/**
+ * 节假日并入空闲时段的生效时刻：官方 2026-09-25 起执行
+ * （北京时间 2026-09-25 00:00 = 2026-09-24 16:00 UTC）。
+ * 之前的调用按原规则（工作日峰谷窗口 + 周末空闲）计算，历史重算不得回改。
+ */
+export const STATUTORY_HOLIDAY_PRICING_START = Date.UTC(2026, 8, 24, 16, 0, 0)
+
 /** 默认价格按历史生效时间选择；显式自定义表保留原覆盖行为。 */
 export function selectPriceTable(ts: number, table: PricingTable = PRICE_TABLE): PricingTable {
   if (ts < PEAK_PRICING_START) return LEGACY_PRICE_TABLE
@@ -175,8 +182,14 @@ export function beijingDate(ts: number): string {
   return year === undefined || month === undefined || day === undefined ? '' : `${year}-${month}-${day}`
 }
 
-/** 是否为北京时间当天的中国法定节假日；未收录年份或解析失败返回 false。 */
+/**
+ * 是否为北京时间当天的中国法定节假日；未收录年份、解析失败或早于生效时刻返回 false。
+ * @param ts - Epoch timestamp in milliseconds.
+ * @param holidays - Beijing-time statutory holiday dates.
+ * @returns True when the timestamp lands on a statutory holiday inside the effective window.
+ */
 export function isStatutoryHoliday(ts: number, holidays: ReadonlySet<string> = CHINA_STATUTORY_HOLIDAYS): boolean {
+  if (ts < STATUTORY_HOLIDAY_PRICING_START) return false
   const date = beijingDate(ts)
   return date !== '' && holidays.has(date)
 }

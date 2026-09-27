@@ -21,15 +21,22 @@ describe('Chinese statutory holiday valley pricing', () => {
     expect(isPeakHour(beijing(2026, 8, 24, 18), PRICE_TABLE.peakHours)).toBe(false)
   })
 
-  it('closes the weekday windows on statutory holidays', () => {
-    // 2026-10-01 国庆（周四）与 2026-05-04（周一）都在高峰窗口内，但整天算空闲时段。
+  it('closes the weekday windows on statutory holidays from the effective date', () => {
+    // 2026-10-01（周四，国庆）与 2026-09-25（周五，中秋）都在高峰窗口内，但从生效日起整天空闲。
     expect(isPeakHour(beijing(2026, 10, 1, 10), PRICE_TABLE.peakHours)).toBe(false)
     expect(isPeakHour(beijing(2026, 10, 1, 14), PRICE_TABLE.peakHours)).toBe(false)
-    expect(isPeakHour(beijing(2026, 5, 4, 10), PRICE_TABLE.peakHours)).toBe(false)
-    expect(isPeakHour(beijing(2026, 5, 4, 14), PRICE_TABLE.peakHours)).toBe(false)
+    expect(isPeakHour(beijing(2026, 9, 25, 10), PRICE_TABLE.peakHours)).toBe(false)
     expect(beijingDate(beijing(2026, 10, 1, 10))).toBe('2026-10-01')
     expect(isStatutoryHoliday(beijing(2026, 10, 1, 10))).toBe(true)
     expect(isStatutoryHoliday(beijing(2026, 8, 24, 10))).toBe(false)
+  })
+
+  it('keeps the previous rule before the 2026-09-25 effective date', () => {
+    // 2026-06-19（周五，端午）早于生效日，仍按原工作日峰谷窗口计高峰。
+    expect(isPeakHour(beijing(2026, 6, 19, 10), PRICE_TABLE.peakHours)).toBe(true)
+    expect(isPeakHour(beijing(2026, 6, 19, 14), PRICE_TABLE.peakHours)).toBe(true)
+    expect(isStatutoryHoliday(beijing(2026, 6, 19, 10))).toBe(false)
+    expect(isStatutoryHoliday(beijing(2026, 9, 25, 10))).toBe(true)
   })
 
   it('treats a make-up work weekend as the weekend rule', () => {

@@ -17,6 +17,12 @@ export const CHINA_STATUTORY_HOLIDAYS: ReadonlySet<string> = new Set([
   '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07',
 ])
 
+/**
+ * 节假日并入空闲时段的生效时刻：官方 2026-09-25 起执行（北京时间当天 00:00），
+ * 与 plugins/dsh-token-monitor/src/pricing.ts 的 STATUTORY_HOLIDAY_PRICING_START 保持一致。
+ */
+export const STATUTORY_HOLIDAY_PRICING_START = Date.UTC(2026, 8, 24, 16, 0, 0)
+
 /** 取北京时间日期（YYYY-MM-DD）；解析失败返回空串。 */
 function beijingDate(ts: number): string {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -51,7 +57,7 @@ export function isPeakPeriod(
   const weekday = parts.find(part => part.type === 'weekday')?.value
   if (weekday === 'Sat' || weekday === 'Sun') return false
   const holiday = beijingDate(ts)
-  if (holiday !== '' && holidays.has(holiday)) return false
+  if (ts >= STATUTORY_HOLIDAY_PRICING_START && holiday !== '' && holidays.has(holiday)) return false
   const hour = Number(parts.find(part => part.type === 'hour')?.value ?? -1)
   return peakHours.some(([start, end]) => hour >= start && hour < end)
 }

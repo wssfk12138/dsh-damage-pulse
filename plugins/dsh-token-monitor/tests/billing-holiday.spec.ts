@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { billUsage } from '../src/billing.ts'
 import type { BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
 
-/** 官方峰谷口径：工作日 9:00-12:00、14:00-18:00 高峰，法定节假日整天空闲。 */
+/** 官方峰谷口径：工作日 9:00-12:00、14:00-18:00 高峰，法定节假日（2026-09-25 起）整天空闲。 */
 const snapshot = (provider: string, model: string): BillingSnapshot => ({
   revision: 3,
   rules: {
@@ -38,7 +38,7 @@ describe('statutory holiday peak and valley across providers', () => {
   })
 
   it('treats the official DeepSeek provider the same way', () => {
-    const holiday = billUsage(snapshot('deepseek-official', 'deepseek-v4-flash'), usage, 'deepseek-official', 'deepseek-v4-flash', Date.parse('2026-05-04T14:00:00+08:00'))
+    const holiday = billUsage(snapshot('deepseek-official', 'deepseek-v4-flash'), usage, 'deepseek-official', 'deepseek-v4-flash', Date.parse('2026-10-01T14:00:00+08:00'))
     expect(holiday.peak).toBe(false)
     expect(holiday.costInput).toBe(5)
   })
@@ -47,5 +47,13 @@ describe('statutory holiday peak and valley across providers', () => {
     const other = billUsage(snapshot('openai', 'gpt-5.6-sol'), usage, 'openai', 'gpt-5.6-sol', Date.parse('2026-10-01T10:00:00+08:00'))
     expect(other.peak).toBe(true)
   })
-})
 
+  it('keeps the previous schedule before the 2026-09-25 effective date', () => {
+    const before = billUsage(snapshot('deepseek-official', 'deepseek-v4-flash'), usage, 'deepseek-official', 'deepseek-v4-flash', Date.parse('2026-06-19T10:00:00+08:00'))
+    expect(before.peak).toBe(true)
+    expect(before.costInput).toBe(10)
+    const onEffectiveDate = billUsage(snapshot('deepseek-official', 'deepseek-v4-flash'), usage, 'deepseek-official', 'deepseek-v4-flash', Date.parse('2026-09-25T10:00:00+08:00'))
+    expect(onEffectiveDate.peak).toBe(false)
+    expect(onEffectiveDate.costInput).toBe(5)
+  })
+})
