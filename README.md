@@ -12,9 +12,9 @@
 `dsh-damage-pulse` 是为 DSH（DeepSeek Harness）打造的 DeepSeek 用量、消费与余额监控插件。它按照官方计费规则记录每次调用，通过单次、会话和全局三个层级呈现 Token 与费用，并用鲸鱼娘的动态反馈把抽象的模型消耗变成一眼就能看懂的变化。
 
 <a id="model-sponsor"></a>
-<h2><img src="assets/fastai-icon.png" alt="FastAI 官方图标" height="40" valign="middle"> Fastai 模型赞助商<br><sub><sup>免费不意味着开发没有成本。感谢Fastai的赞助，让我能把功能留给所有用户，把广告留在应用之外。</sup></sub></h2>
+<h2><img src="assets/fastai-icon.png" alt="FastAI 官方图标" height="40" valign="middle"> <a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK">Fastai</a> 模型赞助商<br><sub><sup>免费不意味着开发没有成本。感谢<a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK">Fastai</a>的赞助，让我能把功能留给所有用户，把广告留在应用之外。</sup></sub></h2>
 
-如果你正在寻找稳定、实惠的 AI 模型中转服务，可以试试 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK)，也可以先阅读[中转站新手帮助文档](https://github.com/wssfk12138/fastaitoken-beginner-guide)了解中转站、倍率、计费和使用方式。你在 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 中的每一笔消费都会让我获得一定数量的返利，我会把它转化为 Token，继续开发更多新项目并上传至 GitHub。当前所有项目均使用了 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 提供的 GPT 模型参与开发。<strong>通过上面的链接注册会自动填入优惠码 WSSFK，可获得 3$ 试用金。</strong>&nbsp;&nbsp;<a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&amp;promo=WSSFK"><img src="assets/fastai-register.svg" alt="Fastai 点击注册" height="18"></a>
+如果你正在寻找稳定、实惠的 AI 模型中转服务，可以试试 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK)，[Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 提供 DeepSeek、GLM、kimi、GPT、Claude、grok 等模型厂商的旗舰模型，同时还提供 image2.5、**Seedance 2.0** 等最先进的图片和视频生成模型。国模分组采用大厂自部署模型，低延迟高缓存，注册即送 3$ 体验金，欢迎试用。目前 GPT 分组不能完全保证不降智，推荐使用其它分组。本项目全程使用 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 提供的 GPT、DeepSeek 等模型开发，你的每一笔充值都会使我获得返利和更多 token 来继续维护和开发新功能。 <a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&amp;promo=WSSFK"><img src="assets/fastai-register.svg" alt="Fastai 点击注册" height="18"></a>
 
 ## 功能总览
 
@@ -164,7 +164,7 @@
 - 所有业务通知开关默认关闭；旧配置从 v0、v1、v2、v3 迁移且缺少通知字段时，也会保守补为关闭。发送测试消息是独立的通道验证，不受业务微信通知总开关限制。
 
 <p align="center">
-  <img src="docs/assets/readme/notification-rules.png" alt="通知设置面板：每日预算、峰谷提醒总开关与进入峰/谷时段、缓存命中异常提醒与阈值" width="420">
+  <img src="docs/assets/readme/notification-settings.png" alt="通知设置面板：左侧提醒规则（每日预算、峰谷提醒、缓存命中异常），右侧通知渠道（鲸鱼娘气泡、微信通知与登录状态）" width="720">
 </p>
 
 <p align="center">
@@ -293,9 +293,9 @@ dsh --profile web
 MIT
 
 <a id="sponsor"></a>
-<h2>赞助商简介<br><sub><sup>免费不意味着开发没有成本。感谢Fastai的赞助，让我能把功能留给所有用户，把广告留在应用之外。</sup></sub></h2>
+<h2>赞助商简介<br><sub><sup>免费不意味着开发没有成本。感谢<a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK">Fastai</a>的赞助，让我能把功能留给所有用户，把广告留在应用之外。</sup></sub></h2>
 
-本项目由 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 赞助开发。[Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 是低价实惠的模型中转站，覆盖 `GPT / Claude` 全模型，提供主流生图、视频模型。包纯度，实用耐蹬，支持开发票，支持企业学校长期合作。<strong>通过上面的链接注册会自动填入优惠码 WSSFK，可获得 3$ 试用金。</strong>下图是我的账户使用记录，重度使用一个月，亲测好用。 <a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&amp;promo=WSSFK" target="_blank" rel="noopener noreferrer"><img src="assets/fastai-register.svg" alt="Fastai 点击注册"></a>
+如果你正在寻找稳定、实惠的 AI 模型中转服务，可以试试 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK)，[Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 提供 DeepSeek、GLM、kimi、GPT、Claude、grok 等模型厂商的旗舰模型，同时还提供 image2.5、**Seedance 2.0** 等最先进的图片和视频生成模型。国模分组采用大厂自部署模型，低延迟高缓存，注册即送 3$ 体验金，欢迎试用。目前 GPT 分组不能完全保证不降智，推荐使用其它分组。本项目全程使用 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 提供的 GPT、DeepSeek 等模型开发，你的每一笔充值都会使我获得返利和更多 token 来继续维护和开发新功能。 下图是我的 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK) 账户使用记录，重度使用一个月，亲测好用。
 
 <p><img src="assets/fastaitoken-account-usage.png" alt="Fastai 账户使用记录" width="100%"></p>
 
