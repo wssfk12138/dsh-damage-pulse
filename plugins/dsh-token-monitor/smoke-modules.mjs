@@ -36,10 +36,16 @@ const directory = dirname(fileURLToPath(import.meta.url))
 const release = process.argv[2] && resolve(process.argv[2])
 if (!release || release === join(directory, 'runtime')) throw new Error('Specify a separate built release directory')
 const root = await mkdtemp(join(directory, '.module-smoke-'))
+// Mirror a real install: the loader derives its profile-side state directory from
+// pluginRoot/../.., so the payload has to sit inside the fixture's own node_modules.
+// Keeping it under root also isolates the fixture's module state per run.
+const pluginRoot = join(root, 'profile', 'node_modules', 'dsh-damage-pulse')
+const runtime = join(pluginRoot, 'runtime')
 process.env.DSH_HOME = join(root, 'home')
 let ctx
 try {
-  await cp(release, join(root, 'runtime'), { recursive: true })
+  await mkdir(pluginRoot, { recursive: true })
+  await cp(release, runtime, { recursive: true })
   const usageDir = join(root, 'home', 'data', 'dsh-token-monitor')
   await mkdir(usageDir, { recursive: true })
   const seededTimestamp = Date.now() - 1_000
@@ -50,9 +56,9 @@ try {
     costInput: 1, costCache: 0, costCacheRead: 0, costCacheWrite: 0, costOutput: 0, cost: 1,
     peak: false, billingStatus: 'priced',
   }) + '\n')
-  const client = join(root, 'runtime/client')
-  const manifest = JSON.parse(await readFile(join(root, 'runtime/manifest.json'), 'utf8'))
-  assert.equal((await readFile(join(root, 'runtime/host/core.mjs'), 'utf8')).includes('quickjs-emscripten'), false)
+  const client = join(runtime, 'client')
+  const manifest = JSON.parse(await readFile(join(runtime, 'manifest.json'), 'utf8'))
+  assert.equal((await readFile(join(runtime, 'host/core.mjs'), 'utf8')).includes('quickjs-emscripten'), false)
   const start = async () => {
     await mkdir(join(root, 'profile'), { recursive: true })
     const profileHome = realpathSync(join(root, 'profile'))
@@ -79,7 +85,7 @@ try {
     await ctx.plugin(Sessions).await()
     await ctx.plugin(WebServer, { host: '127.0.0.1', port: 0 }).await()
     ctx.provide('connection', { requestRejection: () => undefined })
-    await ctx.plugin({ name: 'built-token-monitor', Config, inject: ['settings', 'sessions'], apply: scope => bootModules(scope, root, client) }).await()
+    await ctx.plugin({ name: 'built-token-monitor', Config, inject: ['settings', 'sessions'], apply: scope => bootModules(scope, pluginRoot, client) }).await()
     return 'http://127.0.0.1:' + ctx.webServer.port
   }
   let url = await start()
@@ -125,7 +131,7 @@ try {
   assert.equal(settingsAfterWrite.settings.showWhaleGirl, false)
   await uninstall(['billing'])
   assert.equal((await fetch(url + '/api/token-monitor/billing')).status, 404)
-  for (const file of manifest.modules.find(m => m.id === 'billing').files) await assert.rejects(readFile(join(root, 'runtime', file.root, file.path)), { code: 'ENOENT' })
+  for (const file of manifest.modules.find(m => m.id === 'billing').files) await assert.rejects(readFile(join(runtime, file.root, file.path)), { code: 'ENOENT' })
   assert.equal((await fetch(url + '/api/token-monitor/usage')).status, 200)
   await ctx.fiber.dispose()
   url = await start()
@@ -135,10 +141,10 @@ try {
   const removed = await uninstall([], true, false)
   assert.equal(removed.pluginRemoved, true)
   assert.equal(removed.cleanupPending, undefined)
-  for (const file of manifest.core) await assert.rejects(readFile(join(root, 'runtime', file.root, file.path)), { code: 'ENOENT' })
+  for (const file of manifest.core) await assert.rejects(readFile(join(runtime, file.root, file.path)), { code: 'ENOENT' })
   await ctx.fiber.dispose()
   // Retry whole-plugin erasure with the core already physically absent.
-  const statePath = join(root, 'runtime/state.json')
+  const statePath = join(root, 'profile', '.dsh-damage-pulse', 'module-state.json')
   const state = JSON.parse(await readFile(statePath, 'utf8'))
   state.wholePlugin.erased = false; state.wholePlugin.pending = true
   await writeFile(statePath, JSON.stringify(state))
