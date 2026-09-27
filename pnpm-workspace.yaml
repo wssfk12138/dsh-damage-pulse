@@ -78,4 +78,4 @@ minimumReleaseAgeExclude:
 patchedDependencies:
   '@deepseek-ai/dsh-session@0.1.7-alpha.2': patches/@deepseek-ai__dsh-session@0.1.7-alpha.2.patch
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true
