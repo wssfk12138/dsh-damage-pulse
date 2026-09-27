@@ -199,8 +199,10 @@ Desktop `2.0.4` 不再提供旧的 `@deepseek-ai/dsh-client-runtime` 模块；`4
 旧版或社区自行打包的 DSH 客户端应在其现有项目中沿用宿主自身的 lock 文件和依赖版本安装本插件。不要在一个新建的纯 npm 依赖树中把 rc.5/rc.6/rc.7 宿主包与当前 registry 的 rc.8 上游包混合钉定；这种组合会因上游 peer 版本漂移而解析失败，并不表示插件与原宿主不兼容。
 
 ```powershell
-dsh plugin --profile web add github:wssfk12138/dsh-damage-pulse
+dsh plugin --profile web add dsh-damage-pulse
 ```
+
+> 请安装 npm 发布包。`runtime/` 是包内的预编译产物，只在打包阶段由 `scripts/prepare-package-runtime.mjs` 生成且不入库（`.gitignore`），pnpm 不会为 `github:wssfk12138/dsh-damage-pulse` 这类源地址安装生成它。源地址装出来的包缺少 `runtime/`，插件加载时只会报 `failed to apply loader entry dsh-token-monitor (dsh-damage-pulse)`，还可能被宿主侧的启动失败隔离直接停用该行。需要在源码上开发时，按下面的「源码开发」自行构建后再挂载。
 
 安装后重启 Web profile：
 
