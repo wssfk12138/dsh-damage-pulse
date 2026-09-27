@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, Input, Menu, Pill } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DetailPage, DetailRow } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { DetailKey, DetailTranslate } from './detail-locales.ts'
-import { beijingDateTime, clampWindow, compactTokens, latencyTone, parseBeijing, resizeWindow, type ResizeEdge, type WindowRect } from './detail-model.ts'
+import { beijingDateTime, compactTokens, latencyTone, parseBeijing } from './detail-model.ts'
+import { FloatingResizeHandles, overlayTopMargin, useFloatingWindow } from './window-frame.tsx'
 import { columnsKey, defaultColumns, detailColumns, readColumns, type DetailColumn } from './detail-columns.ts'
 import styles from './UsageDetailsWindow.module.css'
 const FeeExplanation = lazy(() => import('./FeeExplanation.tsx').then(module => ({ default: module.FeeExplanation })))
@@ -26,43 +27,76 @@ interface Filters {
 }
 const initialFilters = (): Filters => ({ provider: '', tab: 'usage', range: 'today', model: '', project: '', session: '', errorType: '', cancelled: false, size: 20, from: beijingDateTime(Date.now()).slice(0, 10) + 'T00:00:00', to: beijingDateTime(Date.now()) })
 const geometryKey = 'token-monitor.details.geometry.v1'
-function initialRect(): WindowRect {
-  const fallback = { x: 40, y: 60, width: 1100, height: 650 }
-  try {
-    const value: unknown = JSON.parse(localStorage.getItem(geometryKey) ?? 'null')
-    if (value && typeof value === 'object' && 'x' in value && 'y' in value && 'width' in value && 'height' in value) {
-      const { x, y, width, height } = value
-      if (typeof x === 'number' && typeof y === 'number' && typeof width === 'number' && typeof height === 'number'
-        && [x, y, width, height].every(Number.isFinite)) return clampWindow({ x, y, width, height }, innerWidth, innerHeight)
-    }
-  } catch { /* A disabled storage backend should not block the window. */ }
-  return clampWindow(fallback, innerWidth, innerHeight)
-}
+const initialRect = { x: 40, y: 60, width: 1100, height: 650 }
+/** Height the portaled column list may grow to before it scrolls (see .menuSurface). */
+const columnsMenuHeight = '--tm-detail-menu-max'
+const columnsMenuCap = 460
 const errorKeys = ['rate_limit', 'authentication', 'server', 'timeout', 'network', 'unknown'] as const
 const errorLabel = (value: string | undefined, t: DetailTranslate) => t(errorKeys.includes(value as typeof errorKeys[number]) && value !== 'unknown' ? value as DetailKey : 'errorUnknown')
 
-const resizeEdges: ResizeEdge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 /** Nonmodal usage window; pointer capture is limited to its header and borders. */
 export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
   onClose: () => void
   t: DetailTranslate
   billingInstalled?: boolean
 }) {
-  const [rect, setRect] = useState(initialRect), [maximized, setMaximized] = useState(false)
-  const [viewport, setViewport] = useState({ width: innerWidth, height: innerHeight })
+  const frame = useFloatingWindow(geometryKey, initialRect)
   const [filters, setFilters] = useState(initialFilters), [page, setPage] = useState(1), [refresh, setRefresh] = useState(0)
   const [dates, setDates] = useState(() => ({ from: filters.from, to: filters.to }))
   const [appliedCustom, setAppliedCustom] = useState<{ from: number; to: number }>()
   const [sessionSearch, setSessionSearch] = useState('')
   const [filtersExpanded, setFiltersExpanded] = useState<boolean>()
   const [data, setData] = useState<DetailPage>(), [loading, setLoading] = useState(true), [error, setError] = useState<DetailKey>()
-  const snapshot = useRef(''), drag = useRef<{ x: number; y: number; rect: WindowRect; edge: ResizeEdge | undefined }>()
+  const snapshot = useRef('')
   const [columns, setColumns] = useState(readColumns), [columnsOpen, setColumnsOpen] = useState(false)
   const [feePopover, setFeePopover] = useState<{ row: DetailRow; anchor: HTMLButtonElement; pinned: boolean }>()
   const feePopoverRef = useRef<HTMLElement>(null)
   const feeHideTimer = useRef<ReturnType<typeof setTimeout>>()
   const restoringFeeFocus = useRef(false)
   const columnsAnchor = useRef<HTMLSpanElement>(null)
+  const [columnsSide, setColumnsSide] = useState<'bottom' | 'top'>('bottom')
+  /**
+   * 卡片方向与最大高度按按钮上下剩余空间算好，再交给宿主菜单摆放：
+   * 空间不够时向上弹，并把高度限制在剩余空间内，卡片不会盖住按钮。
+   */
+  const fitColumnsMenu = useCallback(() => {
+    const rect = columnsAnchor.current?.getBoundingClientRect()
+    if (!rect) return
+    const gap = 4, margin = 12
+    const below = innerHeight - rect.bottom - gap - margin
+    const above = rect.top - gap - overlayTopMargin(margin)
+    const side = below >= above ? 'bottom' : 'top'
+    const height = Math.min(columnsMenuCap, Math.max(96, side === 'bottom' ? below : above))
+    document.documentElement.style.setProperty(columnsMenuHeight, height + 'px')
+    setColumnsSide(side)
+  }, [])
+  /** 展开列设置：先量好方向与高度，第一帧就不会压住按钮。 */
+  const toggleColumns = (open: boolean) => {
+    if (!open) { setColumnsOpen(false); return }
+    fitColumnsMenu()
+    setColumnsOpen(true)
+  }
+  useEffect(() => {
+    if (!columnsOpen) { document.documentElement.style.removeProperty(columnsMenuHeight); return }
+    const refit = () => { fitColumnsMenu() }
+    window.addEventListener('resize', refit)
+    window.addEventListener('scroll', refit, true)
+    return () => { window.removeEventListener('resize', refit); window.removeEventListener('scroll', refit, true) }
+  }, [columnsOpen, fitColumnsMenu])
+  useEffect(() => {
+    if (!columnsOpen) return
+    // 宿主菜单只在 document 捕获阶段收起；这里用更早的 window 捕获阶段兜底，
+    // 保证点卡片外的任何空白处都能关闭列设置。
+    const dismiss = (event: PointerEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (columnsAnchor.current?.contains(target)) return
+      if (target instanceof Element && target.closest('[role="menu"]') !== null) return
+      setColumnsOpen(false)
+    }
+    window.addEventListener('pointerdown', dismiss, true)
+    return () => { window.removeEventListener('pointerdown', dismiss, true) }
+  }, [columnsOpen])
   const clearFeeHide = () => { if (feeHideTimer.current) clearTimeout(feeHideTimer.current) }
   const scheduleFeeHide = () => {
     clearFeeHide()
@@ -87,15 +121,6 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
   useEffect(() => { try { localStorage.setItem(columnsKey, JSON.stringify(columns)) } catch { /* Optional preference. */ } }, [columns])
   const titleRef = useRef<HTMLDivElement>(null)
   useEffect(() => { titleRef.current?.focus() }, [])
-  useEffect(() => {
-    const resize = () => {
-      setViewport({ width: innerWidth, height: innerHeight })
-      setRect(value => clampWindow(value, innerWidth, innerHeight))
-    }
-    window.addEventListener('resize', resize)
-    return () =>{  window.removeEventListener('resize', resize) }
-  }, [])
-  useEffect(() => { try { localStorage.setItem(geometryKey, JSON.stringify(rect)) } catch { /* Optional viewing preference. */ } }, [rect])
   useEffect(() => {
     const controller = new AbortController()
     const load = async () => {
@@ -140,21 +165,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
     setSessionSearch('')
     reload()
   }
-  const startDrag = (event: React.PointerEvent<HTMLElement>, edge?: ResizeEdge) => {
-    if (maximized || event.button !== 0 || (event.target as HTMLElement).closest('button')) return
-    drag.current = { x: event.clientX, y: event.clientY, rect, edge }
-    event.currentTarget.setPointerCapture(event.pointerId); event.preventDefault()
-  }
-  const move = (event: React.PointerEvent<HTMLElement>) => {
-    const start = drag.current
-    if (!start) return
-    const dx = event.clientX - start.x, dy = event.clientY - start.y
-    const next = start.edge
-      ? resizeWindow(start.rect, start.edge, dx, dy, innerWidth, innerHeight)
-      : { ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }
-    setRect(clampWindow(next, innerWidth, innerHeight))
-  }
-  const shown = maximized ? { x: 8, y: 8, width: viewport.width - 16, height: viewport.height - 16 } : rect
+  const shown = frame.shown
   useLayoutEffect(() => {
     if (!feePopover) return
     const position = () => {
@@ -215,12 +226,12 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
       if (event.key === 'Tab') setColumnsOpen(false)
     }}>
     <div ref={titleRef} tabIndex={-1} className={styles.title}
-      onPointerDown={(event) => { startDrag(event) }} onPointerMove={move}
-      onPointerUp={() => { drag.current = undefined }} onPointerCancel={() => { drag.current = undefined }}
-      onDoubleClick={() => { setMaximized(value => !value) }}>
+      onPointerDown={(event) => { frame.startDrag(event) }} onPointerMove={frame.moveDrag}
+      onPointerUp={frame.endDrag} onPointerCancel={frame.endDrag}
+      onDoubleClick={() => { frame.toggleMaximized() }}>
       <strong>{t('title')}</strong><div className={styles.actions}>
         <Button variant="ghost" aria-expanded={showFilters} onClick={() => { setFiltersExpanded(!showFilters) }}>{t(showFilters ? 'hideFilters' : 'showFilters')}</Button>
-        <Button variant="ghost" aria-label={t(maximized ? 'restore' : 'maximize')} onClick={() =>{  setMaximized(value => !value) }}>{maximized ? '❐' : '□'}</Button><Button variant="ghost" aria-label={t('close')} onClick={onClose}>×</Button></div>
+        <Button variant="ghost" aria-label={t(frame.maximized ? 'restore' : 'maximize')} onClick={() => { frame.toggleMaximized() }}>{frame.maximized ? '❐' : '□'}</Button><Button variant="ghost" aria-label={t('close')} onClick={onClose}>×</Button></div>
     </div>
     <div className={styles.contentScroll}>
       <div className={styles.top}>
@@ -241,9 +252,9 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
               const selected = sessions.find(item => sessionLabel(item) === value || item.id === value)
               change({ session: selected?.id ?? '', sessionText: selected ? '' : value })
             }} /></label><datalist id="token-detail-sessions">{sessions.map(session => <option key={session.id} value={sessionLabel(session)} />)}</datalist>
-            <div className={styles.quick}><Button variant="outline" onClick={reload} disabled={loading}>{t('refresh')}</Button><span ref={columnsAnchor}><Menu open={columnsOpen} portal dense autoFocus listClassName={styles.menuSurface}
+            <div className={styles.quick}><Button variant="outline" onClick={reload} disabled={loading}>{t('refresh')}</Button><span ref={columnsAnchor}><Menu open={columnsOpen} portal dense autoFocus side={columnsSide} listClassName={styles.menuSurface}
               getAnchorRect={() => columnsAnchor.current?.getBoundingClientRect() ?? null}
-              anchor={<Button variant="ghost" aria-expanded={columnsOpen} aria-haspopup="menu" onClick={() => { setColumnsOpen(!columnsOpen) }}>{t('columns')}</Button>}
+              anchor={<Button variant="ghost" aria-expanded={columnsOpen} aria-haspopup="menu" onClick={() => { toggleColumns(!columnsOpen) }}>{t('columns')}</Button>}
               items={detailColumns.filter(id => (id !== 'fee' || billingInstalled) && (id !== 'status' || filters.tab === 'errors')).map(id => ({ id, label: t(id), disabled: columns.includes(id) && id !== 'status' && columns.filter(key => key !== 'status').length === 1 }))}
               selectedIds={columns} footer={[{ id: 'defaults', label: t('restoreColumns') }]}
               onClose={() => { setColumnsOpen(false) }} onSelect={(id) => {
@@ -269,18 +280,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
       </div>
     </div>
     <footer className={styles.footer}><label>{t('pageSize')} <select className={styles.select} value={filters.size} onChange={(event) =>{  change({ size: Number(event.target.value) }) }}>{[20, 50, 100].map(size => <option key={size}>{size}</option>)}</select></label><span>{t('pages', { page: data?.page ?? 1, pages: data?.pages ?? 1, count: data?.total ?? 0 })}</span><Button variant="ghost" disabled={loading || !data || data.page <= 1} onClick={() =>{  setPage((data?.page ?? 1) - 1) }}>{t('prev')}</Button><Button variant="ghost" disabled={loading || !data || data.page >= data.pages} onClick={() =>{  setPage((data?.page ?? 1) + 1) }}>{t('next')}</Button></footer>
-    {!maximized && resizeEdges.map(edge => <div key={edge} role="separator" aria-label={t('resize') + ' · ' + t(edge)}
-      tabIndex={0} className={styles.resize} data-edge={edge}
-      onPointerDown={(event) => { startDrag(event, edge) }} onPointerMove={move}
-      onPointerUp={() => { drag.current = undefined }} onPointerCancel={() => { drag.current = undefined }}
-      onLostPointerCapture={() => { drag.current = undefined }}
-      onKeyDown={(event) => {
-        if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return
-        event.preventDefault()
-        const dx = event.key === 'ArrowRight' ? 20 : event.key === 'ArrowLeft' ? -20 : 0
-        const dy = event.key === 'ArrowDown' ? 20 : event.key === 'ArrowUp' ? -20 : 0
-        setRect(value => resizeWindow(value, edge, dx, dy, innerWidth, innerHeight))
-      }}>{edge === 'se' ? '◢' : null}</div>)}
+    <FloatingResizeHandles frame={frame} className={styles.resize} label={edge => t('resize') + ' · ' + t(edge)} />
   </section>, document.body)}
   {feePopover && createPortal(<section id="token-monitor-fee-popover" ref={feePopoverRef} role="region" aria-label={t('feeDetails')} className={styles.feePopover}
     onPointerEnter={clearFeeHide} onPointerLeave={scheduleFeeHide}

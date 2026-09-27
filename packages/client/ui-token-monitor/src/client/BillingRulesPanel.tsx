@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { emptyBillingRule, normalizeMultiplier, validateBillingRules } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { BillingModelRule, BillingRules, BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
@@ -10,6 +11,7 @@ import { readBillingSnapshot as readSnapshot, type BillingEventsState } from './
 import { BillingSourceDetails } from './BillingSourceDetails.tsx'
 import { BillingTemplatePreview } from './BillingTemplatePreview.tsx'
 import { BalanceScriptEditor } from './BalanceScriptEditor.tsx'
+import { FloatingResizeHandles, useFloatingWindow } from './window-frame.tsx'
 
 type CatalogModel = { provider: string; providerName?: string | undefined; model: string; name?: string | undefined }
 type CatalogLoaderResult = {
@@ -28,6 +30,9 @@ const priceLabels = { input: 'billingInput', cacheHit: 'billingCache', output: '
 const modelKey = (row: CatalogModel) => JSON.stringify([row.provider, row.model])
 const modelLabel = (row: CatalogModel) => (row.providerName ?? row.provider) + ' / ' + (row.name ?? row.model)
 const splitKey = 'token-monitor.billing.split.v1'
+const geometryKey = 'token-monitor.billing.geometry.v1'
+/** Opens near the middle of a desktop viewport; the user's own rectangle wins afterwards. */
+const initialRect = { x: 60, y: 72, width: 920, height: 700 }
 function initialSplit(): number {
   try {
     const value = Number(localStorage.getItem(splitKey))
@@ -215,6 +220,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
   const catalogGeneration = useRef(0)
   const bodyRef = useRef<HTMLFieldSetElement>(null)
   const resizing = useRef(false)
+  const frame = useFloatingWindow(geometryKey, initialRect)
   useEffect(() => {
     try { localStorage.setItem(splitKey, String(split)) } catch { /* Optional local preference. */ }
   }, [split])
@@ -394,11 +400,20 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     return () => { clearTimeout(timer) }
   }, [draft, multipliers, saving, snapshot, externalSnapshot, error])
 
-  return <div role="dialog" aria-label={t('billingTitle')} className={css.panel}
-    onPointerDown={(event) => { event.stopPropagation() }}>
-    <header className={css.header}><strong>{t('billingHeading')}</strong>
+  return createPortal(<div role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
+    style={{ left: frame.shown.x, top: frame.shown.y, width: frame.shown.width, height: frame.shown.height }}
+    onPointerDown={(event) => { event.stopPropagation() }}
+    onKeyDown={(event) => {
+      // 与关闭按钮同一条件：正在保存或还有未保存修改时不关闭，避免丢掉编辑。
+      if (event.key === 'Escape' && !(saving || dirty.current || scriptBusy)) onClose()
+    }}>
+    <header className={css.header}
+      onPointerDown={(event) => { frame.startDrag(event) }} onPointerMove={frame.moveDrag}
+      onPointerUp={frame.endDrag} onPointerCancel={frame.endDrag}
+      onDoubleClick={() => { frame.toggleMaximized() }}><strong>{t('billingHeading')}</strong>
       <div className={css.actions}>
         <span role={saving || saved ? 'status' : undefined}>{saving ? t('billingSaving') : saved ? t('billingSaved') : ''}</span>
+        <Button className={css.icon} aria-label={t(frame.maximized ? 'restore' : 'maximize')} onClick={() => { frame.toggleMaximized() }}>{frame.maximized ? '❐' : '□'}</Button>
         <Button className={css.icon} disabled={saving || dirty.current || scriptBusy} onClick={onClose} aria-label={t('close')}>×</Button>
       </div>
     </header>
@@ -557,5 +572,6 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
         </div>
       </section>
     </fieldset>
-  </div>
+    <FloatingResizeHandles frame={frame} className={css.resize} label={edge => t('resize') + ' · ' + t(edge)} />
+  </div>, document.body)
 }

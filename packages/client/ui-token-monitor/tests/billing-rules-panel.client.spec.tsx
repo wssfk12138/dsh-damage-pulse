@@ -160,6 +160,7 @@ afterEach(() => {
   stopEvents?.()
   stopEvents = undefined
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   localStorage.clear()
 })
 
@@ -198,11 +199,29 @@ function mount(initial = snapshot(), groups: Array<{ id: string; name?: string; 
     failures: [{ id: 'qwen', name: '千问', message: 'unavailable' }],
   }))
   const events = createBillingEvents()
-  const panel = () => <BillingRulesPanel t={t} billingEvents={events.getSnapshot()} loadModelCatalog={loadModelCatalog} onClose={vi.fn()} />
+  const close = vi.fn()
+  const panel = () => <BillingRulesPanel t={t} billingEvents={events.getSnapshot()} loadModelCatalog={loadModelCatalog} onClose={close} />
   const view = render(panel())
   stopEvents = events.subscribe(() => { view.rerender(panel()) })
-  return { loadModelCatalog, getReads: () => reads }
+  return { loadModelCatalog, close, getReads: () => reads }
 }
+
+it('drags, resizes and maximizes the billing window and never closes on an outside click', async () => {
+  const { close } = mount()
+  fireEvent.click(await screen.findByRole('button', { name: 'deepseek-official / deepseek-v4-flash' }))
+  const dialog = screen.getByRole('dialog', { name: zh.billingTitle })
+  expect(dialog.getAttribute('aria-modal')).toBe('false')
+  expect(JSON.parse(localStorage.getItem('token-monitor.billing.geometry.v1')!).width).toBe(920)
+  expect(screen.getAllByRole('separator').length).toBe(9)
+  fireEvent.keyDown(screen.getByLabelText('调整窗口大小 · 右下角'), { key: 'ArrowRight' })
+  expect(JSON.parse(localStorage.getItem('token-monitor.billing.geometry.v1')!).width).toBe(940)
+  fireEvent.click(screen.getByLabelText('最大化')); expect(dialog.style.left).toBe('8px')
+  fireEvent.click(screen.getByLabelText('还原')); expect(dialog.style.width).toBe('940px')
+  fireEvent.pointerDown(document.body)
+  expect(close).not.toHaveBeenCalled()
+  fireEvent.keyDown(dialog, { key: 'Escape' })
+  expect(close).toHaveBeenCalledOnce()
+})
 
 it('opens the light supplier card, selects a provider, and closes on outside click', async () => {
   mount()

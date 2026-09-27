@@ -1310,7 +1310,8 @@ export function BalanceWidget({
       {overviewInstalled && detailsOpen && <Suspense fallback={null}><UsageDetailsWindow
         billingInstalled={billingInstalled} t={t} onClose={() => setDetailsOpen(false)}
       /></Suspense>}
-      {billingInstalled && billingOpen && <div role="dialog" style={{ position: 'fixed', inset: 0, zIndex: 1250, display: 'grid', placeItems: 'center', padding: 12, background: 'rgba(15,40,38,.16)' }} onPointerDown={(e) => { if (e.target === e.currentTarget) setBillingOpen(false) }}><Suspense fallback={null}><BillingRulesPanel t={t} billingEvents={billingEvents} loadModelCatalog={loadModelCatalog} onClose={() => setBillingOpen(false)} /></Suspense></div>}
+      {/* 计费规则窗口自身是门户式非模态窗口：可拖动、可缩放，点空白处不关闭，也不遮挡后方对话操作。 */}
+      {billingInstalled && billingOpen && <Suspense fallback={null}><BillingRulesPanel t={t} billingEvents={billingEvents} loadModelCatalog={loadModelCatalog} onClose={() => setBillingOpen(false)} /></Suspense>}
       {notifyInstalled && settingsOpen && (
         <div
           role="dialog"

@@ -13,7 +13,7 @@ const payload = { snapshot: 'snapshot-1', capturedAt: time, rows: [
   { id: 'a', sessionId: 'one', provider: 'deepseek-official', model: 'deepseek-v4-flash', status: 'success', timestamp: time, inputTokens: 1234, outputTokens: 56, cacheReadTokens: 40000, cost: 0.012345, peak: true, firstMs: 2000, totalMs: 190000 },
   { id: 'b', sessionId: 'two', provider: 'deepseek-official', model: 'deepseek-v4-pro', status: 'success', timestamp: time, peak: false },
 ], total: 21, page: 1, pages: 2, size: 20, sessions: [{ id: 'one', title: '同名对话', project: 'Project A', child: false }, { id: 'two', title: '同名对话', project: 'Project B', child: true, parent: 'one' }], models: ['deepseek-v4-flash', 'deepseek-v4-pro'] }
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); localStorage.clear() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear() })
 const summary = { range: 'today', from: '2026-09-14', to: '2026-09-14', spendCny: 12.3, requestCount: 200, totalTokens: 100000000, activeDays: 2, cacheHitTokens: 90000000, cacheHitRate: 0.9, costPer100mTokensCny: 12.3, activeDaySpendCny: 6.15 }
 function mount(response: DetailPage = payload as DetailPage) {
   const fetcher = vi.fn(async (input: string, _options: RequestInit) => ({ ok: true, json: async () => input.includes('usage-summary') ? { ...summary, range: new URL(input, 'http://localhost').searchParams.get('range') } : response }))
@@ -243,6 +243,25 @@ it('persists columns independently of filters and restores defaults without refe
   // the document surface rather than at another element inside the dialog.
   fireEvent.pointerDown(document.body)
   expect(screen.queryByRole('menu')).toBeNull()
+})
+it('flips the column card above its trigger and caps it so neither covers the other', async () => {
+  mount(); await screen.findByText('¥0.012345')
+  const trigger = screen.getByRole('button', { name: '列设置' })
+  // jsdom lays nothing out: give the trigger a rectangle near the viewport bottom
+  // and report every other element as unmeasured, which is what the window reads.
+  const triggerRect = { x: 900, y: 700, width: 60, height: 30, top: 700, right: 960, bottom: 730, left: 900 } as DOMRect
+  const unmeasured = { x: 0, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 } as DOMRect
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    return this.textContent === '列设置' ? triggerRect : unmeasured
+  })
+  fireEvent.click(trigger)
+  const menu = await screen.findByRole('menu')
+  // 700 - 0 (unmeasured card) - 4: the card hangs above the trigger instead of being clamped back over it.
+  expect(menu.style.top).toBe('696px'); expect(menu.style.left).toBe('900px')
+  expect(document.documentElement.style.getPropertyValue('--tm-detail-menu-max')).toBe('460px')
+  fireEvent.pointerDown(document.body)
+  expect(screen.queryByRole('menu')).toBeNull()
+  expect(document.documentElement.style.getPropertyValue('--tm-detail-menu-max')).toBe('')
 })
 it('sanitizes stale preferences and never permits an empty usage table', async () => {
   localStorage.setItem('dsh-token-monitor.detail-columns', JSON.stringify(['status', 'obsolete']))

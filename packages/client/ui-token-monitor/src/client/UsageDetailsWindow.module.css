@@ -97,4 +97,7 @@
   --dsw-alias-state-error-secondary: var(--dsw-alias-detail-error);
   --dsw-specific-menu: var(--dsw-alias-detail-card);
 }
-.menuSurface[role="menu"] { z-index: 1400; max-width: min(360px, calc(100vw - 24px)); max-height: min(460px, calc(100vh - 24px)); }
+/* The owner measures the room left above or below the trigger and caps the
+   list in .menuSurface so the card can never be clamped back over the button
+   it hangs from; the fallback keeps the panel's own design maximum. */
+.menuSurface[role="menu"] { z-index: 1400; max-width: min(360px, calc(100vw - 24px)); max-height: min(var(--tm-detail-menu-max, 460px), 460px); }
