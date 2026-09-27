@@ -43,6 +43,7 @@ test("client and tools peers keep all supported compatibility legs", () => {
     assert.ok(range.includes("0.1.0-rc.5") || range.includes("0.1.0-rc.7"), `${name} should keep the older-client leg, got ${range}`)
     assert.ok(range.includes("0.1.1-rc.2"), `${name} should also allow DSH 0.1.1-rc.2, got ${range}`)
     assert.ok(range.includes("0.1.2-alpha.1"), `${name} should allow DSH Desktop 2.0.4, got ${range}`)
+    assert.ok(range.includes("0.1.6-alpha.1"), `${name} should allow DSH 0.1.6 alpha hosts, got ${range}`)
   }
 })
 
@@ -53,6 +54,6 @@ test("legacy client runtime stays development-only", () => {
 })
 
 test("dsh-tools is declared as a peer and pinned for development builds", () => {
-  assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-tools"], "^0.1.0-rc.5 || ^0.1.1-rc.2 || ^0.1.2-alpha.1 || ^0.1.3-alpha.1 || ^0.1.5-alpha.1")
+  assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-tools"], "^0.1.0-rc.5 || ^0.1.1-rc.2 || ^0.1.2-alpha.1 || ^0.1.3-alpha.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1")
   assert.ok(manifest.devDependencies?.["@deepseek-ai/dsh-tools"], "dsh-tools devDependency must be pinned")
 })
