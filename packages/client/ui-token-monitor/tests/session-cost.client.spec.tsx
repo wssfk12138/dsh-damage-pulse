@@ -155,7 +155,7 @@ describe('SessionCostBadge (formal seat)', () => {
 })
 
 describe('client apply wiring (unknown-seat old hosts)', () => {
-  function createFakeClientContext(options: { withConversationEvents?: boolean } = {}) {
+  function createFakeClientContext(options: { withConversationEvents?: boolean; withUiConversation?: boolean } = {}) {
     const registered: Array<{ options: Record<string, unknown>; component: unknown }> = []
     const injected: Array<{ key: string; callback: () => unknown }> = []
     const slots = {
@@ -169,6 +169,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
       },
     }
     const conversationEvents = options.withConversationEvents === false ? undefined : { register: vi.fn() }
+    const uiConversation = options.withUiConversation === true ? { events: { register: vi.fn() } } : undefined
     const directoryLoad = vi.fn().mockResolvedValue({
       current: { provider: 'deepseek-official', model: 'deepseek-v4-pro' },
       routable: true,
@@ -183,6 +184,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
           if (name === 'connection') return { api: { sessions: {} } }
           if (name === 'remote') return { session: { modelCatalog } }
           if (name === 'conversationEvents') return conversationEvents
+          if (name === 'uiConversation') return uiConversation
           if (name === 'modelDirectories') return modelDirectories
           return undefined
         },
@@ -191,6 +193,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
       injected,
       registered,
       conversationEvents,
+      uiConversation,
       directoryLoad,
       modelDirectories,
       modelCatalog,
@@ -216,6 +219,14 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
     await waitFor(() => expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true))
     expect(conversationEvents?.register).toHaveBeenCalledTimes(1)
     expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true)
+  })
+
+  it('registers the single-usage node through the 0.1.7 uiConversation.events registry', async () => {
+    const { ctx, injected, uiConversation, conversationEvents } = createFakeClientContext({ withUiConversation: true })
+    apply(ctx)
+    await waitFor(() => expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true))
+    expect(uiConversation?.events.register).toHaveBeenCalledTimes(1)
+    expect(conversationEvents?.register).not.toHaveBeenCalled()
   })
 
   it('waits for the trailing seat declaration instead of crashing on old hosts', async () => {

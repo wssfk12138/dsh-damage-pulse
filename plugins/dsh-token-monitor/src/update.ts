@@ -11,7 +11,7 @@ import { createRouteGuard } from './http-trust.ts'
 export const UPDATE_STATUS_PATH = '/api/token-monitor/update'
 export const UPDATE_INSTALL_PATH = '/api/token-monitor/update/install'
 export const UPDATE_REPOSITORY = 'wssfk12138/dsh-damage-pulse'
-export const CURRENT_RELEASE_VERSION = '4.1.0'
+export const CURRENT_RELEASE_VERSION = '4.1.1'
 const RELEASES_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`
 const ASSET_HOST = 'github.com'
 const REDIRECT_HOSTS = new Set(['release-assets.githubusercontent.com'])

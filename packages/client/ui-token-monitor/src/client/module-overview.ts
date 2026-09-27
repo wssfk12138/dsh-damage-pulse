@@ -8,7 +8,8 @@ import { tokenUsageNodeDefinition } from './usage-node.ts'
 export function activate(ctx: ClientContextLike, modules: ReturnType<typeof createModuleState>): () => void {
   const dispose: Array<() => void> = []
   const inject = () => ({ hooks: { modules } })
-  const events = ctx.get('conversationEvents', false)
+  // 0.1.7 把节点注册表改名为 uiConversation.events；更早的宿主仍用顶层的 conversationEvents。
+  const events = ctx.get('uiConversation', false)?.events ?? ctx.get('conversationEvents', false)
   if (events) {
     const remove = events.register(tokenUsageNodeDefinition)
     if (typeof remove === 'function') dispose.push(remove as () => void)

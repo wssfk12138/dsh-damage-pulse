@@ -79,6 +79,11 @@ interface ConversationRegistryLike {
   register(definition: ConversationNodeDefinitionLike<unknown>): unknown
 }
 
+/** 0.1.7 起的宿主把节点注册表挂在 uiConversation.events 上；更早的宿主用顶层的 conversationEvents。 */
+interface ConversationEventsServiceLike {
+  readonly events: ConversationRegistryLike
+}
+
 interface SlotsLike {
   inject(name: string, factory: () => unknown): () => void
   register(options: Record<string, unknown>, component: unknown): unknown
@@ -89,6 +94,7 @@ export interface ClientContextLike {
   effect(factory: () => unknown, label?: string): unknown
   get(name: 'connection'): unknown
   get(name: 'conversationEvents', required: false): ConversationRegistryLike | undefined
+  get(name: 'uiConversation', required: false): ConversationEventsServiceLike | undefined
   get(name: string, required?: boolean): unknown
   slots: SlotsLike
 }
