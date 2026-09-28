@@ -3,6 +3,7 @@ import { Context } from '@deepseek-ai/cordis'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import type { SessionEvent } from '@deepseek-ai/dsh-session'
 import { attachCollector } from '../src/collector.ts'
+import { appendUsageRecord } from './collector-appender.ts'
 import { createTokenCostProjectionDefinition } from '../src/projection.ts'
 import { FLASH_PRICING_START, OFFICIAL_PROVIDER_ID, PRICE_TABLE, priceUsage } from '../src/pricing.ts'
 
@@ -46,7 +47,7 @@ describe('official V4.1 Flash pricing', () => {
     const context = { on: vi.fn((_name, callback) => { listener = callback }) }
     const storage = { add: vi.fn(record => record) }
     const append = vi.fn()
-    attachCollector(context as never, storage as never, PRICE_TABLE)
+    attachCollector(context as never, storage as never, PRICE_TABLE, { appendUsageRecord })
     const events = ['deepseek-flash', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp', 'deepseek-v4-pro'].map((model, seq) => ({
       type: 'assistant/message', seq, time: valley,
       data: { turn: 1, step: seq + 1,

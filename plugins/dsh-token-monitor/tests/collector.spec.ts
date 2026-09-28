@@ -6,6 +6,7 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { createMessage } from '@deepseek-ai/dsh-llm'
 import { validateStoredEvents } from '@deepseek-ai/dsh-session-persistence'
 import type { BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
+import { appendUsageRecord } from './collector-appender.ts'
 
 describe('usage collector', () => {
   it('keeps collecting unpriced usage when billing is removed during a request', async () => {
@@ -29,7 +30,7 @@ describe('usage collector', () => {
     const ctx = new Context()
     await ctx.plugin(SessionStore)
     const storage = { add: vi.fn(record => record) }
-    attachCollector(ctx, storage as never, PRICE_TABLE)
+    attachCollector(ctx, storage as never, PRICE_TABLE, { appendUsageRecord })
     const session = ctx.sessions.create()
     session.append('assistant/message', {
       stream: [], turn: 1, step: 1,
@@ -52,7 +53,7 @@ describe('usage collector', () => {
     }
     const storage = { add: vi.fn(record => record) }
     const onPersistedRecord = vi.fn()
-    attachCollector(context as never, storage as never, PRICE_TABLE, { onPersistedRecord })
+    attachCollector(context as never, storage as never, PRICE_TABLE, { onPersistedRecord, appendUsageRecord })
 
     const append = vi.fn()
     listener?.({ id: 'session-zero', append }, {

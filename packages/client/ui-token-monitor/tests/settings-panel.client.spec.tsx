@@ -10,6 +10,7 @@ import {
 } from '@deepseek-ai/dsh-token-monitor-contract'
 import { TokenMonitorSettingsPanel } from '../src/client/TokenMonitorSettingsPanel.tsx'
 import type { WechatConnectionApi, WechatRuntimeStatus } from '../src/client/wechatConnectionApi.ts'
+import type { HostCompatApi, HostCompatStatus } from '../src/client/hostCompatApi.ts'
 
 const wechatStatus: WechatRuntimeStatus = {
   schemaVersion: 1,
@@ -32,7 +33,32 @@ interface MountOptions {
   settings?: Partial<TokenMonitorSettings>
   delayMs?: number
   failure?: string
+  hostCompatApi?: HostCompatApi
 }
+
+it('shows the session-record notice when the host cannot keep the ignorable marker', async () => {
+  const unsupported: HostCompatStatus = {
+    schemaVersion: 1,
+    sessionRecords: { capability: 'unsupported', hostVersion: '0.1.7-alpha.2', detail: 'test', forced: false },
+  }
+  const hostCompatApi = { status: vi.fn(async () => unsupported) } as unknown as HostCompatApi
+  mount({ hostCompatApi })
+  const hint = await screen.findByText(/不会把「可忽略」标记写进会话日志/u)
+  expect(hint.getAttribute('data-host-compat-hint')).toBe('')
+  expect(hostCompatApi.status).toHaveBeenCalledTimes(1)
+})
+
+it('stays silent when the host keeps the marker', async () => {
+  const supported: HostCompatStatus = {
+    schemaVersion: 1,
+    sessionRecords: { capability: 'supported', hostVersion: '0.1.7-rc.2', detail: 'test', forced: false },
+  }
+  const hostCompatApi = { status: vi.fn(async () => supported) } as unknown as HostCompatApi
+  mount({ hostCompatApi })
+  await screen.findByText('提醒规则')
+  await waitFor(() => { expect(hostCompatApi.status).toHaveBeenCalledTimes(1) })
+  expect(screen.queryByText(/可忽略/u)).toBeNull()
+})
 
 it('starts settings with rules and removes the overview and its request', async () => {
   mount()
@@ -92,7 +118,7 @@ function mount(options: MountOptions = {}) {
     settings: { ...defaults, ...overrides },
   })
   const element = (snapshot: TokenMonitorSettingsSnapshot) => (
-    <TokenMonitorSettingsPanel title="通知设置" snapshot={snapshot} onSave={onSave} onClose={onClose} wechatApi={wechatApi} />
+    <TokenMonitorSettingsPanel title="通知设置" snapshot={snapshot} onSave={onSave} onClose={onClose} wechatApi={wechatApi} hostCompatApi={options.hostCompatApi} />
   )
   const view = render(element(snapshotFor(state.revision)))
   return { onSave, onClose, state, view, snapshotFor, element }

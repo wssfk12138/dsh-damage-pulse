@@ -85,6 +85,8 @@ export interface CollectorOptions {
   pricingEnabled?: () => boolean
   onPersistedRecord?: (record: UsageRecord, damageKind: 'normal' | 'miss') => void
   readBilling?: () => BillingSnapshot
+  /** 会话用量行的唯一写入出口；缺省时不写入，宿主兼容判定由实现方负责。 */
+  appendUsageRecord?: (session: Session, record: UsageRecord) => void
 }
 
 export function attachCollector(
@@ -142,11 +144,7 @@ export function attachCollector(
     // 追加「单次用量」仅日志事件，供 Web Client 回放渲染单次用量行（F1）。
     // 新版 Session 禁止在事件发布期间重入；信息性记录明确允许无插件读者忽略。
     queueMicrotask(() => {
-      try {
-        session.append('token-usage/record', { record } satisfies TokenUsageRecordData, { ignorable: true })
-      } catch (error) {
-        console.warn('[dsh-token-monitor] 用量行追加失败，持久账本已保留:', String(error))
-      }
+      options.appendUsageRecord?.(session, record)
     })
   })
 }

@@ -24,6 +24,7 @@ import { useRouteEligibility } from './useRouteEligibility.ts'
 import { createTokenMonitorSettingsApi } from './settingsApi.ts'
 import { TokenMonitorSettingsApiError } from './settingsApi.ts'
 import { createWechatConnectionApi } from './wechatConnectionApi.ts'
+import { createHostCompatApi } from './hostCompatApi.ts'
 import { createNotificationEventsApi, type TokenMonitorNotificationEvent } from './notificationApi.ts'
 import { applyNotificationPollResult, createNotificationQueueState, dequeueNotificationItem, notificationMatchesScope, type NotificationVisualItem } from './notificationQueue.ts'
 import type { BalanceInfo } from './types.ts'
@@ -60,6 +61,7 @@ type BalanceWidgetProps = PropsRuntime<'shell.overlay'> & PropsLocale<'token-mon
 const settingsApi = createTokenMonitorSettingsApi()
 const notificationEventsApi = createNotificationEventsApi()
 const wechatConnectionApi = createWechatConnectionApi()
+const hostCompatApi = createHostCompatApi()
 
 const CARD: React.CSSProperties = {
   position: 'fixed',
@@ -1343,6 +1345,7 @@ export function BalanceWidget({
                 saveProvider={saveProviderSettings}
                 onClose={() => setSettingsOpen(false)}
                 wechatApi={wechatConnectionApi}
+                hostCompatApi={hostCompatApi}
               /></Suspense>
             )}
         </div>

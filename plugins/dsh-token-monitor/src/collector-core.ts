@@ -3,13 +3,15 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
-import { isValidUsageRecord, type TokenUsageRecordData, type UsageRecord } from './types.ts'
+import { isValidUsageRecord, type UsageRecord } from './types.ts'
 import type { UsageStorage } from './storage.ts'
 
 export interface UsageCollectorOptions {
   readBilling?: () => BillingSnapshot | undefined
   priceRecord?: (record: UsageRecord, frozen: BillingSnapshot | undefined) => UsageRecord
   onPersistedRecord?: (record: UsageRecord, kind: 'normal' | 'miss') => void
+  /** 会话用量行的唯一写入出口；缺省时不写入，宿主兼容判定由实现方负责。 */
+  appendUsageRecord?: (session: Session, record: UsageRecord) => void
 }
 
 /** Capture each live source event once, even while all optional modules are absent. */
@@ -44,8 +46,7 @@ export function attachUsageCollector(ctx: Context, storage: UsageStorage, option
     options.onPersistedRecord?.(record, kind)
     queueMicrotask(() => {
       if (!active) return
-      try { session.append('token-usage/record', { record } satisfies TokenUsageRecordData, { ignorable: true }) }
-      catch (error) { console.warn('[dsh-token-monitor] Usage event append failed; ledger retained:', String(error)) }
+      options.appendUsageRecord?.(session, record)
     })
   })
 }

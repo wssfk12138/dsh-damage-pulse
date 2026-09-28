@@ -16,6 +16,7 @@ import {
   type TokenMonitorSettingsSnapshot,
 } from '@deepseek-ai/dsh-token-monitor-contract'
 import { PRODUCT_NAME } from './branding.ts'
+import { hostCompatHint, type HostCompatApi, type HostCompatStatus } from './hostCompatApi.ts'
 import {
   WechatConnectionApiError,
   type WechatConnectionApi,
@@ -91,6 +92,8 @@ export interface TokenMonitorSettingsPanelProps {
   onSave(request: TokenMonitorSettingsPatchRequest): Promise<TokenMonitorSettingsSnapshot>
   onClose(): void
   wechatApi: WechatConnectionApi
+  /** 可选：宿主兼容状态；缺省时不展示兼容性提示。 */
+  hostCompatApi?: HostCompatApi
   /**
    * Optional local-only renderer. The component never sends the short-lived QR payload
    * anywhere except to this callback and never writes it to browser storage.
@@ -265,6 +268,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   const [saveError, setSaveError] = useState<string>()
   const [status, setStatus] = useState<WechatRuntimeStatus>()
   const [statusError, setStatusError] = useState<string>()
+  const [hostCompat, setHostCompat] = useState<HostCompatStatus>()
   const [action, setAction] = useState<'login' | 'confirm' | 'reconnect' | 'disconnect' | 'test'>()
   const [actionMessage, setActionMessage] = useState<string>()
   const [actionError, setActionError] = useState<string>()
@@ -456,6 +460,16 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   }, [props.wechatApi, wechatInstalled])
 
   useEffect(() => {
+    const api = props.hostCompatApi
+    if (api === undefined) return
+    const controller = new AbortController()
+    void api.status(controller.signal).then(next => {
+      if (!controller.signal.aborted) setHostCompat(next)
+    }).catch(() => undefined)
+    return () => { controller.abort() }
+  }, [props.hostCompatApi])
+
+  useEffect(() => {
     if (!wechatInstalled) return
     const expiresAt = loginSession?.expiresAt ?? status?.pendingLogin?.expiresAt
     if (expiresAt === undefined) return
@@ -598,6 +612,8 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
 
   const busy = action !== undefined || status?.operation !== undefined && status.operation !== 'idle'
   const ownershipHint = capabilityHint(status)
+  // 兼容性提示与微信状态无关：宿主不保留标记时，这里说明会话用量记录为何停写。
+  const hostCompatWarning = hostCompat === undefined ? undefined : hostCompatHint(hostCompat)
   const expiresAt = loginSession?.expiresAt ?? status?.pendingLogin?.expiresAt
   const secondsRemaining = expiresAt === undefined ? undefined : Math.max(0, Math.ceil((expiresAt - clock) / 1_000))
   const canLogin = status?.capabilities.canLogin === true && !busy
@@ -686,6 +702,14 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
           <img src={cuteAsset('cute-icon-close')} alt="" />
         </button>
       </header>
+
+      {hostCompatWarning !== undefined && (
+        <p
+          role="status"
+          data-host-compat-hint=""
+          style={{ margin: '0 0 12px', padding: '10px 12px', borderRadius: 12, background: 'var(--dsw-alias-monitor-warning-bg)', color: 'var(--dsw-alias-monitor-muted)', fontSize: 12, lineHeight: 1.6 }}
+        >{hostCompatWarning}</p>
+      )}
 
       <div className="token-monitor-settings__grid">
         <div className="token-monitor-settings__left-stack">

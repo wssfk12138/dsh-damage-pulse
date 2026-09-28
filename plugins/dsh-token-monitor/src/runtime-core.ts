@@ -4,6 +4,8 @@ import { migrateMissingTokenCost } from './migration.ts'
 import type { Context } from '@deepseek-ai/cordis'
 import type { ModuleServices } from './module-services.ts'
 import { attachUsageCollector } from './collector-core.ts'
+import { SessionRecordWriter } from './session-records.ts'
+import { registerHostCompatRoute } from './host-compat-route.ts'
 import { attachDisplayScope, registerDisplayScopeRoute } from './display-scope.ts'
 import { registerSessionCostsRoute } from './session-costs-route.ts'
 import { UsageStorage } from './storage.ts'
@@ -52,16 +54,27 @@ export function apply(ctx: Context, services: ModuleServices, installed: (id: st
   ctx.inject(['sessionProjections', 'sessionProjectionCache', 'sessionPersistence'], migrateMissingTokenCost)
   const work = new ModuleWork()
   ctx.effect(() => () => work.stop(), 'token-monitor: settings writes')
+  // 宿主未确认会落盘 ignorable 标记时不写会话用量行：没有标记的未知事件会让整份
+  // 会话日志被读取端拒绝解释（issue #24），停写后金额仍由插件账本与兜底路由提供。
+  const sessionRecords = new SessionRecordWriter({
+    onStop: status => ctx.logger.warn(`token-monitor: ${status.detail}`),
+  })
+  if (!sessionRecords.enabled()) {
+    const status = sessionRecords.status()
+    ctx.logger.warn(`token-monitor: 已停写会话用量记录（capability=${status.capability}）：${status.detail}`)
+  }
   attachUsageCollector(ctx, services.storage, {
     readBilling: () => services.billing?.readSnapshot(),
     priceRecord: (record, frozen) => services.billing?.priceRecord(record, frozen) ?? record,
     onPersistedRecord: (record, kind) => { services.billing?.onPersistedRecord(record, kind); services.observeRecord?.(record, kind) },
+    appendUsageRecord: (session, record) => { sessionRecords.append(session, record) },
   })
   attachDetails(ctx, services.details, services.priceTable())
   const routes = attachDisplayScope(ctx)
   ctx.inject(['webServer', 'connection'], web => {
     registerDisplayScopeRoute(web, routes)
     registerSessionCostsRoute(web, () => services.storage.list())
+    registerHostCompatRoute(web, () => sessionRecords.status())
     registerTokenMonitorSettingsRoute(web, services.settings, {
       allowed: key => Object.entries(TOKEN_MONITOR_OWNED_FIELDS).some(([id, keys]) => keys.includes(key) && installed(id)),
       run: action => work.run(action),

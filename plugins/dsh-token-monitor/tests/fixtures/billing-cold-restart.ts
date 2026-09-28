@@ -5,6 +5,7 @@ import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
 import { createMessage } from '@deepseek-ai/dsh-llm'
 import { emptyBillingRule, type BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
 import { attachCollector } from '../../src/collector.ts'
+import { appendUsageRecord } from '../collector-appender.ts'
 import { UsageStorage } from '../../src/storage.ts'
 import { PRICE_TABLE } from '../../src/pricing.ts'
 import { createTokenCostProjectionDefinition } from '../../src/projection.ts'
@@ -21,7 +22,7 @@ try {
     }],
   }] } }
   const storage = new UsageStorage(() => true, directory)
-  attachCollector(ctx, storage, PRICE_TABLE, { readBilling: () => snapshot })
+  attachCollector(ctx, storage, PRICE_TABLE, { readBilling: () => snapshot, appendUsageRecord })
   const eventsPath = join(directory, 'events.json')
   const events = phase === 'restore' ? JSON.parse(readFileSync(eventsPath, 'utf8')) : []
   const session = ctx.sessions.create(SessionId('billing-cold-restart'), { seed: events })

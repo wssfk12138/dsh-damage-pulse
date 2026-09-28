@@ -7,6 +7,7 @@ import { attachCollector } from '../plugins/dsh-token-monitor/src/collector.ts'
 import { OFFICIAL_PROVIDER_ID, PRICE_TABLE } from '../plugins/dsh-token-monitor/src/pricing.ts'
 import type { UsageStorage } from '../plugins/dsh-token-monitor/src/storage.ts'
 import type { UsageRecord } from '../plugins/dsh-token-monitor/src/types.ts'
+import { appendUsageRecord } from '../plugins/dsh-token-monitor/tests/collector-appender.ts'
 
 const EVENT_TIME = Date.UTC(2026, 7, 21, 0, 0, 0)
 
@@ -42,7 +43,7 @@ test('collector persists unpriced usage without charging it, then charges priced
     },
   }) as unknown as SessionEvent
 
-  attachCollector(context, storage, PRICE_TABLE)
+  attachCollector(context, storage, PRICE_TABLE, { appendUsageRecord })
   assert.ok(sessionEventListener)
   const initialChargeSeq = currentChargeSeq()
 
