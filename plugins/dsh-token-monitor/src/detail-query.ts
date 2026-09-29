@@ -3,6 +3,7 @@ import type { UsageStorage } from './storage.ts'
 import type { DetailStore } from './details.ts'
 import { publicAttempt } from './details.ts'
 import type { PricingTable } from './pricing.ts'
+import { sameProviderFamily } from './pricing.ts'
 
 /** Freeze query membership while the user pages through incoming request history. */
 export class DetailQueries {
@@ -48,14 +49,14 @@ export class DetailQueries {
       return false
     }
     const rows = snapshot.rows.filter(row => row.timestamp >= from && row.timestamp <= to
-      && (!p.get('provider') || row.provider === p.get('provider'))
+      && sameProviderFamily(p.get('provider'), row.provider)
       && (tab === 'usage' ? row.status === 'success' : row.status === 'error' || (p.get('cancelled') === 'true' && row.status === 'cancelled'))
       && (!p.get('model') || row.model === p.get('model')) && (!p.get('project') || sessions.get(row.sessionId)?.project === p.get('project'))
       && (!p.get('sessionText') || ((sessions.get(row.sessionId)?.title ?? '') + ' ' + row.sessionId).toLowerCase().includes(p.get('sessionText')!.toLowerCase()))
       && (!session || belongs(row.sessionId)) && (tab === 'usage' || !p.get('errorType') || (row.errorType ?? 'unknown') === p.get('errorType')))
     const pages = Math.max(1, Math.ceil(rows.length / size)), actual = Math.min(page, pages)
     return { snapshot: token, capturedAt: snapshot.at, rows: rows.slice((actual - 1) * size, actual * size), total: rows.length, page: actual, pages, size,
-      sessions: snapshot.sessions, models: [...new Set(snapshot.rows.filter(r => !p.get('provider') || r.provider === p.get('provider')).map(r => r.model))].sort(),
+  sessions: snapshot.sessions, models: [...new Set(snapshot.rows.filter(r => sameProviderFamily(p.get('provider'), r.provider)).map(r => r.model))].sort(),
       providers: [...new Set(snapshot.rows.map(r => r.provider))].sort() }
   }
 }

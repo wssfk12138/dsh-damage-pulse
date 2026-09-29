@@ -1,7 +1,7 @@
 /** Freeze exact model rules and CNY costs at collection time. */
 import { createHash } from 'node:crypto'
 import { emptyBillingRule, type BillingSnapshot, type BillingRules, type BillingModelRule, type BillingApplied } from '@deepseek-ai/dsh-token-monitor-contract'
-import { PRICE_TABLE, isStatutoryHoliday, type CostBreakdown, type PricingTable } from './pricing.ts'
+import { OFFICIAL_PROVIDER_ID, PRICE_TABLE, isOfficialProvider, isStatutoryHoliday, type CostBreakdown, type PricingTable } from './pricing.ts'
 
 /** Rule identity and settlement facts stored with each usage ledger record. */
 /**
@@ -9,7 +9,7 @@ import { PRICE_TABLE, isStatutoryHoliday, type CostBreakdown, type PricingTable 
  * 都在中国法定节假日整天空闲、工作日按配置窗口计高峰。
  */
 function isDeepseekBillingModel(provider: string, model: string): boolean {
-  return provider === 'deepseek-official' || /deepseek/i.test(model)
+  return isOfficialProvider(provider) || /deepseek/i.test(model)
 }
 
 export interface BillingDecision extends CostBreakdown {
@@ -54,15 +54,16 @@ export function defaultBillingRules(table: PricingTable = PRICE_TABLE): BillingR
   const kimi = { 'kimi-k3': { input: 19, cacheHit: 1.9, output: 95 } }
   const rules: BillingRules = { version: 1, providers: [
     { provider: 'deepseek-official', enabled: true, models: deepseek },
+    { provider: 'deepseek-account', enabled: true, models: structuredClone(deepseek) },
     { provider: 'openai', enabled: true, models: Object.entries(openaiPrices).map(([model, price]) => fromPrice(model, price)) },
     { provider: 'zhipu', enabled: true, models: Object.entries(zhipuPrices).map(([model, price]) => ({ ...fromPrice(model, price), ...(zhipuTiers[model] ? { tiers: zhipuTiers[model].map(tier => ({ ...tier })) } : {}) })) },
     { provider: 'kimi', enabled: true, models: Object.entries(kimi).map(([model, price]) => fromPrice(model, price)) },
   ] }
   for (const provider of rules.providers) for (const rule of provider.models) {
-    rule.source = { templateId: `${provider.provider}/${rule.model}`, version: provider.provider === 'deepseek-official' ? table.version : 'legacy-2026-09-15',
-      name: 'Installed pricing table', ...(provider.provider === 'deepseek-official' ? { url: 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing/' } : {}),
-      verifiedAt: null, originalCurrency: provider.provider === 'deepseek-official' ? 'CNY' : 'unknown', originalUnit: 'per million tokens',
-      conversionBasis: provider.provider === 'deepseek-official' ? 'CNY; no conversion' : 'Legacy numeric values interpreted as CNY; original currency and conversion not verified', modified: false }
+    rule.source = { templateId: `${provider.provider}/${rule.model}`, version: isOfficialProvider(provider.provider) ? table.version : 'legacy-2026-09-15',
+      name: 'Installed pricing table', ...(isOfficialProvider(provider.provider) ? { url: 'https://api-docs.deepseek.com/zh-cn/quick_start/pricing/' } : {}),
+      verifiedAt: null, originalCurrency: isOfficialProvider(provider.provider) ? 'CNY' : 'unknown', originalUnit: 'per million tokens',
+      conversionBasis: isOfficialProvider(provider.provider) ? 'CNY; no conversion' : 'Legacy numeric values interpreted as CNY; original currency and conversion not verified', modified: false }
   }
   return rules
 }
@@ -76,7 +77,9 @@ export function defaultBillingRules(table: PricingTable = PRICE_TABLE): BillingR
  * @returns Frozen costs and explicit billing state.
  */
 export function billUsage(snapshot: BillingSnapshot, usage: { inputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; outputTokens: number }, provider: string, model: string, timestamp: number): BillingDecision {
+  // 账号路由与 API key 路由共用同一套官方价格；旧快照只有官方条目时按别名回退。
   const owner = snapshot.rules.providers.find(item => item.provider === provider)
+    ?? (isOfficialProvider(provider) ? snapshot.rules.providers.find(item => item.provider === OFFICIAL_PROVIDER_ID) : undefined)
   const rule = owner?.models.find(item => item.model === model)
   const result: BillingDecision = { cost: 0, costInput: 0, costCache: 0, costCacheRead: 0, costCacheWrite: 0, costOutput: 0, peak: false, billingStatus: 'unpriced', billingRuleVersion: snapshot.revision, modelMultiplier: rule?.multiplier ?? 1, ...(rule ? { billingRule: structuredClone(rule) } : {}) }
   if (owner?.enabled === false || rule?.enabled === false) return { ...result, billingStatus: 'disabled', billingReason: owner?.enabled === false ? 'provider-disabled' : 'model-disabled' }

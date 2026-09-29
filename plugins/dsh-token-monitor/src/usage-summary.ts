@@ -75,6 +75,8 @@ function validWindow(window: UsageSummaryWindow | undefined): UsageSummaryWindow
 }
 
 /** Aggregate all usage identities; historical prices only contribute to monetary metrics. */
+import { isOfficialProvider } from './pricing.ts'
+
 export function summarizeUsage(records: readonly UsageRecord[], range: UsageSummaryRange, now = Date.now(), provider?: string, window?: UsageSummaryWindow): UsageSummary | undefined {
   if (!['all', '30d', '7d', 'yesterday', 'today', 'custom'].includes(range)) return undefined
   // 自定义范围按调用方给出的毫秒边界聚合，与使用记录列表使用同一窗口；边界非法时不可聚合。
@@ -84,7 +86,10 @@ export function summarizeUsage(records: readonly UsageRecord[], range: UsageSumm
   const from = custom !== undefined ? beijingDate(custom.from) ?? null : rangeStart(range, to)
   const selected = records.filter(record => {
     if (!isValidRecord(record)) return false
-    if (provider && record.provider !== provider) return false
+    // 官方计费路由的两种 provider id 属同一族：按族过滤，历史 deepseek-official 记录
+    // 在账号路由配置下同样计入概览。
+    if (provider && record.provider !== provider
+      && !(isOfficialProvider(provider) && isOfficialProvider(record.provider))) return false
     if (custom !== undefined) return record.timestamp >= custom.from && record.timestamp <= custom.to
     if (record.timestamp > now) return false
     const date = beijingDate(record.timestamp)

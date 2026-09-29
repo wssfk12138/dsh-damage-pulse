@@ -12,6 +12,7 @@ import type {} from '@deepseek-ai/dsh-session-persistence'
 import type { Session } from '@deepseek-ai/dsh-session'
 import type { DetailRow, DetailSession } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { PricingTable } from './pricing.ts'
+import { sameProviderFamily } from './pricing.ts'
 import { DetailQueries } from './detail-query.ts'
 import { createRouteGuard } from './http-trust.ts'
 
@@ -81,7 +82,7 @@ export class DetailStore {
     // 整组指标会被显示成“未记录”而掩盖更早的真实用量；全部缺数据时再退回最近的成功记录。
     return [...this.attempts.values()].filter(row => row.status === 'success' && (scope === undefined
       || (scope.sessionId === undefined || row.sessionId === scope.sessionId)
-      && (scope.provider === undefined || row.provider === scope.provider)
+      && sameProviderFamily(scope.provider, row.provider)
       && (scope.model === undefined || row.model === scope.model)))
       .sort((a, b) => Number(displaysUsage(b)) - Number(displaysUsage(a)) || b.timestamp - a.timestamp || b.id.localeCompare(a.id))[0]
   }

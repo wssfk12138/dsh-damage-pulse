@@ -36,16 +36,16 @@ interface MountOptions {
   hostCompatApi?: HostCompatApi
 }
 
-it('shows the session-record notice when the host cannot keep the ignorable marker', async () => {
+it('keeps the session-record notice hidden even when the host cannot keep the ignorable marker', async () => {
   const unsupported: HostCompatStatus = {
     schemaVersion: 1,
     sessionRecords: { capability: 'unsupported', hostVersion: '0.1.7-alpha.2', detail: 'test', forced: false },
   }
   const hostCompatApi = { status: vi.fn(async () => unsupported) } as unknown as HostCompatApi
   mount({ hostCompatApi })
-  const hint = await screen.findByText(/不会把「可忽略」标记写进会话日志/u)
-  expect(hint.getAttribute('data-host-compat-hint')).toBe('')
-  expect(hostCompatApi.status).toHaveBeenCalledTimes(1)
+  await screen.findByText('提醒规则')
+  await waitFor(() => { expect(hostCompatApi.status).toHaveBeenCalledTimes(1) })
+  expect(screen.queryByText(/可忽略/u)).toBeNull()
 })
 
 it('stays silent when the host keeps the marker', async () => {

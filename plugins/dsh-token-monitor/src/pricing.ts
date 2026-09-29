@@ -117,12 +117,30 @@ export interface CostBreakdown {
   peak: boolean
 }
 
-/** DSH 内 DeepSeek 官方供应商的稳定 ID；只有该供应商具备计费资格。 */
+/** DSH 内 DeepSeek 官方供应商的稳定 ID；官方计费路由的身份见 OFFICIAL_PROVIDER_IDS。 */
 export const OFFICIAL_PROVIDER_ID = 'deepseek-official'
+
+/** DeepSeek 官方计费路由的全部 provider id；API key 路由与账号路由价格口径相同。 */
+export const OFFICIAL_PROVIDER_IDS = [OFFICIAL_PROVIDER_ID, 'deepseek-account'] as const
+
+/** provider 是否走 DeepSeek 官方计费路由（含 0.2.0 起的账号路由）。 */
+export function isOfficialProvider(provider: string): boolean {
+  return (OFFICIAL_PROVIDER_IDS as readonly string[]).includes(provider)
+}
+
+/** 两个 provider 是否属于同一计费族（官方 API key 路由与账号路由同族）。
+ * @param left - 调用方给出的 provider；缺省或空串表示不按 provider 过滤。
+ * @param right - 记录自身携带的 provider。
+ * @returns 是否按同族对待。
+ */
+export function sameProviderFamily(left: string | null | undefined, right: string): boolean {
+  if (left === null || left === undefined || left === '') return true
+  return left === right || (isOfficialProvider(left) && isOfficialProvider(right))
+}
 
 /** provider + model 通过资格门禁后返回的价格表命中结果。 */
 export interface PricingEligibility {
-  provider: typeof OFFICIAL_PROVIDER_ID
+  provider: string
   model: string
   matchedModel: string
   price: { peak: ModelPrice; offPeak: ModelPrice }
@@ -235,11 +253,13 @@ export function resolvePricingEligibility(
   ts: number,
   table: PricingTable = PRICE_TABLE,
 ): PricingEligibility | undefined {
-  if (provider !== OFFICIAL_PROVIDER_ID || typeof model !== 'string') return undefined
+  if (!isOfficialProvider(provider) || typeof model !== 'string') return undefined
   const active = selectPriceTable(ts, table)
   const entries = Object.entries(active.models).sort(([a], [b]) => b.length - a.length)
   const matched = entries.find(([name]) => model === name || model.startsWith(`${name}-`))
   if (matched === undefined) return undefined
+  // 账号路由与 API key 路由统一按官方身份落账：概览、计费规则与投影都按同一族取数，
+  // 否则账号路由下悬浮卡片的用量概览会查不到历史记录而显示「未记录」。
   return { provider: OFFICIAL_PROVIDER_ID, model, matchedModel: matched[0], price: matched[1] }
 }
 

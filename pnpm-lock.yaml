@@ -17,6 +17,9 @@ importers:
       '@deepseek-ai/dsh-home-paths':
         specifier: 0.1.7-alpha.2
         version: 0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)
+      ipaddr.js:
+        specifier: 2.2.0
+        version: 2.2.0
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
@@ -201,9 +204,6 @@ importers:
       diff:
         specifier: 9.0.0
         version: 9.0.0
-      ipaddr.js:
-        specifier: 2.2.0
-        version: 2.2.0
       jsdom:
         specifier: 29.1.1
         version: 29.1.1

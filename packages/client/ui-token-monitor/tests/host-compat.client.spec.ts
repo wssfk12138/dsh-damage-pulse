@@ -36,13 +36,18 @@ describe('host compatibility hint', () => {
   it('is silent when the host keeps the marker', () => {
     expect(hostCompatHint(parseHostCompatStatus({ ...payload, sessionRecords: { capability: 'supported', detail: 'ok', forced: false } }))).toBeUndefined()
   })
+  // 2026-09-29 决定先不展示该提示，所以缺省调用一律返回 undefined；下面的用例用显式 show
+  // 参数继续覆盖文案内容，宿主补上 ignorable 转发后把开关改回 true 即恢复展示。
+  it('stays hidden by default even when the host cannot keep the marker', () => {
+    expect(hostCompatHint(parseHostCompatStatus(payload))).toBeUndefined()
+  })
   it('names the detected version, the required line and the ledger fallback', () => {
-    const hint = hostCompatHint(parseHostCompatStatus(payload))
+    const hint = hostCompatHint(parseHostCompatStatus(payload), true)
     expect(hint).toContain('0.1.7-alpha.2')
     expect(hint).toContain('本地账本')
   })
   it('explains the unknown case with the explicit override', () => {
-    const hint = hostCompatHint(parseHostCompatStatus({ ...payload, sessionRecords: { capability: 'unknown', detail: 'no package', forced: false } }))
+    const hint = hostCompatHint(parseHostCompatStatus({ ...payload, sessionRecords: { capability: 'unknown', detail: 'no package', forced: false } }), true)
     expect(hint).toContain('DSH_TOKEN_MONITOR_FORCE_SESSION_RECORDS=1')
   })
 })

@@ -76,11 +76,20 @@ export function createHostCompatApi(
   }
 }
 
-/** 设置页提示文案：写入能力为 supported 时返回 undefined。
+/**
+ * 设置页提示文案的开关。2026-09-29 用户决定先不展示该提示：会话用量已改由本地
+ * 账本统计，界面再报「已停止写入会话日志」会让使用者误以为功能不可用。宿主补上
+ * ignorable 转发后把这里改回 true 即可恢复，判定逻辑与状态数据都保持不动。
+ */
+const SHOW_HOST_COMPAT_HINT = false
+
+/** 设置页提示文案：写入能力为 supported、或提示被关闭时返回 undefined。
  * @param status 宿主兼容状态。
+ * @param show 是否允许展示；缺省取当前开关 SHOW_HOST_COMPAT_HINT，测试用它核对文案内容。
  * @returns 需要向用户展示的说明，或 undefined。
  */
-export function hostCompatHint(status: HostCompatStatus): string | undefined {
+export function hostCompatHint(status: HostCompatStatus, show = SHOW_HOST_COMPAT_HINT): string | undefined {
+  if (!show) return undefined
   const { capability, hostVersion, detail } = status.sessionRecords
   if (capability === 'supported') return undefined
   if (capability === 'unsupported') {

@@ -2,7 +2,7 @@
 import { evaluateBalanceScript, OFFICIAL_BALANCE_SCRIPT, validateBalanceRequest, type BalanceRequest } from './balance-script.ts'
 import type { BuiltInBalanceAdapter } from './balance-adapters.ts'
 import { endpointKey, validateBalanceEndpoint, validateBalanceScripts, BalanceScriptConflictError, MAX_BALANCE_ENDPOINTS, type BalanceEndpoint, type BalanceScriptEntry } from './balance-storage.ts'
-import { OFFICIAL_PROVIDER_ID } from './pricing.ts'
+import { OFFICIAL_PROVIDER_ID, isOfficialProvider } from './pricing.ts'
 import { refuseScriptLiteral, type RefusedScriptLiteral } from './script-literals.ts'
 import { PluginStoreConflictError, type TokenMonitorStore } from './plugin-store.ts'
 
@@ -65,7 +65,7 @@ export class BalanceScriptConfig {
     // A saved script is the owner's explicit choice and always wins; only a
     // provider that never saved one can fall back to a Host-shipped adapter.
     const adapter = saved === undefined ? await this.resolveAdapter(provider) : undefined
-    const entry = saved ?? { revision: 0, script: adapter?.script ?? (provider === OFFICIAL_PROVIDER_ID ? OFFICIAL_BALANCE_SCRIPT : '') }
+    const entry = saved ?? { revision: 0, script: adapter?.script ?? (isOfficialProvider(provider) ? OFFICIAL_BALANCE_SCRIPT : '') }
     const key = adapter === undefined ? 'saved' : 'built-in'
     const cached = this.validations.get(provider)
     if (cached?.key === key && cached.script === entry.script) {
@@ -153,6 +153,6 @@ export class BalanceScriptConfig {
     const stored = this.store.get().balanceEndpoints?.[provider]
     if (stored !== undefined) return stored
     const shipped = adapter === undefined ? [] : [adapter.endpoint]
-    return provider === OFFICIAL_PROVIDER_ID ? [...OFFICIAL_BALANCE_ENDPOINTS, ...shipped] : shipped
+    return isOfficialProvider(provider) ? [...OFFICIAL_BALANCE_ENDPOINTS, ...shipped] : shipped
   }
 }
