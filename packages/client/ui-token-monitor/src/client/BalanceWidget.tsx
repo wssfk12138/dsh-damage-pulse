@@ -283,9 +283,24 @@ interface PendingFloat {
   suppressWhaleReaction?: boolean
 }
 
+/** DeepSeek 官方计费路由的全部 provider id；与 Host 的 OFFICIAL_PROVIDER_IDS 对齐。 */
+const OFFICIAL_PROVIDER_IDS = ['deepseek-official', 'deepseek-account'] as const
+
+/** provider 是否走 DeepSeek 官方计费路由（含账号路由）。 */
+function isOfficialRoute(provider: string | undefined): boolean {
+  return provider !== undefined && (OFFICIAL_PROVIDER_IDS as readonly string[]).includes(provider)
+}
+
+/**
+ * 扣费事件是否有可用的计费规则。账号路由与官方 API key 路由同族：已保存的旧快照只有
+ * `deepseek-official` 条目时按官方条目回退，与 Host billUsage 的回退口径一致；否则账号
+ * 路由的扣费事件会被整体丢弃——既不飘字，也不触发鲸鱼娘的受击/扣血动画。
+ */
 function hasConfiguredBillingRule(snapshot: BillingSnapshot | undefined, provider: string | undefined, model: string | undefined): boolean {
   if (snapshot === undefined || !provider || !model) return false
-  const providerRule = snapshot.rules.providers.find(item => item.provider === provider)
+  const providers = snapshot.rules.providers
+  const providerRule = providers.find(item => item.provider === provider)
+    ?? (isOfficialRoute(provider) ? providers.find(item => item.provider === 'deepseek-official') : undefined)
   return providerRule?.enabled === true && providerRule.models.some(item => item.model === model && item.enabled === true)
 }
 
@@ -564,7 +579,7 @@ export function BalanceWidget({
   const loadProviderSettings = useCallback((provider: string) => createTokenMonitorSettingsApi(fetch, `/api/token-monitor/settings?${new URLSearchParams({ provider })}`).get(), [])
   const saveProviderSettings = useCallback(async (provider: string, request: TokenMonitorSettingsPatchRequest) => {
     const snapshot = await createTokenMonitorSettingsApi(fetch, `/api/token-monitor/settings?${new URLSearchParams({ provider })}`).patch(request)
-    if (provider === 'deepseek-official') applySettingsSnapshot(snapshot)
+    if (isOfficialRoute(provider)) applySettingsSnapshot(snapshot)
     if (activeProviderRef.current === provider && (notificationSettingsRef.current?.snapshot.revision ?? -1) <= snapshot.revision) {
       notificationSettingsRef.current = { provider, snapshot }
     }
@@ -1014,7 +1029,7 @@ export function BalanceWidget({
           }
           for (const part of parts) {
             if (!Number.isFinite(part.cost) || part.cost <= 0) continue
-            const localDebit = scope?.provider === 'deepseek-official' && lastBalanceSnapshot.current?.currency === 'CNY' ? part.cost : undefined
+            const localDebit = isOfficialRoute(scope?.provider) && lastBalanceSnapshot.current?.currency === 'CNY' ? part.cost : undefined
             trigger(`${eventId}-${part.suffix}`, `-${fmtCost(part.cost)}¥`, 'red', part.kind, part.label, event.seq, localDebit)
           }
         }
@@ -1507,7 +1522,7 @@ export function BalanceWidget({
             <div title={'总耗时 ' + fmtLatency(usageOverview?.totalMs ?? null)} style={{ color: latencyColor(usageOverview?.totalMs ?? null, true), borderLeft: '3px solid currentColor', paddingLeft: 7, whiteSpace: 'nowrap' }}>{fmtLatency(usageOverview?.totalMs ?? null)}</div>
           </div>
         </div>}
-        {billingInstalled && (previewOverride !== undefined || scope?.provider === 'deepseek-official') && <span
+        {billingInstalled && (previewOverride !== undefined || isOfficialRoute(scope?.provider)) && <span
           style={{
             fontWeight: 700,
             fontSize: PEAK_FONT_SIZE,
