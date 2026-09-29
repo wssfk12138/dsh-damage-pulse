@@ -95,8 +95,11 @@ export function useFloatingWindow(storageKey: string, fallback: WindowRect): Flo
   useEffect(() => {
     try { localStorage.setItem(storageKey, JSON.stringify(rect)) } catch { /* Optional viewing preference. */ }
   }, [storageKey, rect])
+  // 最大化同样要避开桌面外壳的标题条：外壳把标题条高度发布为 --dsh-frame-top-clearance。
+  // 只按四边等距 inset 时，浮窗自己的「还原 / 关闭」按钮会落在桌面窗口按钮下面，用户点不到。
+  const topInset = overlayTopMargin(overlayMargin)
   const shown = maximized
-    ? { x: overlayMargin, y: overlayMargin, width: viewport.width - overlayMargin * 2, height: viewport.height - overlayMargin * 2 }
+    ? { x: overlayMargin, y: topInset, width: viewport.width - overlayMargin * 2, height: viewport.height - topInset - overlayMargin }
     : rect
   return {
     shown,

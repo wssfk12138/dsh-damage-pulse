@@ -112,20 +112,18 @@ describe('custom billing', () => {
 
   it('seeds the supported provider templates without pricing empty providers', () => {
     const rules = defaultBillingRules()
-    expect(rules.providers.map(provider => provider.provider)).toEqual(['deepseek-official', 'deepseek-account', 'openai', 'zhipu', 'kimi'])
-    // 账号路由与 API key 路由共用同一套官方模型价格。
-    expect(rules.providers.find(provider => provider.provider === 'deepseek-account')?.models.map(model => model.model))
-      .toEqual(rules.providers.find(provider => provider.provider === 'deepseek-official')?.models.map(model => model.model))
+    expect(rules.providers.map(provider => provider.provider)).toEqual(['deepseek-official', 'openai', 'zhipu', 'kimi'])
+    // 账号路由与 API key 路由同族，因此不再单独播下一条重复的供应商记录（界面上不会出现两行 DeepSeek）；
+    // 账号调用的计价由 billUsage 的官方族回退负责，见下一个用例。
+    expect(rules.providers.find(provider => provider.provider === 'deepseek-account')).toBeUndefined()
     expect(rules.providers.find(provider => provider.provider === 'openai')?.models.find(model => model.model === 'gpt-5.4')?.fixed).toEqual({ input: null, cacheHit: null, output: null })
     expect(rules.providers.find(provider => provider.provider === 'openai')?.models.find(model => model.model === 'gpt-5.4')?.peak).toEqual({ input: 2.5, cacheHit: 0.25, output: 15 })
     expect(rules.providers.find(provider => provider.provider === 'hunyuan')).toBeUndefined()
     expect(rules.providers.find(provider => provider.provider === 'qwen')).toBeUndefined()
   })
 
-  it('prices the DeepSeek account route from the official rules when the saved snapshot has no account entry', () => {
-    const rules = defaultBillingRules()
-    rules.providers = rules.providers.filter(provider => provider.provider !== 'deepseek-account')
-    const saved = { revision: 7, rules } as unknown as BillingSnapshot
+  it('prices the DeepSeek account route from the official rules', () => {
+    const saved = { revision: 7, rules: defaultBillingRules() } as unknown as BillingSnapshot
     const decision = billUsage(saved, { inputTokens: 1_000_000, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 0 },
       'deepseek-account', 'deepseek-v4-pro', Date.parse('2026-09-14T10:00:00+08:00'))
     expect(decision.billingStatus).toBe('priced')

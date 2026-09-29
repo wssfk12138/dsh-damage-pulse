@@ -117,13 +117,29 @@ try {
   await ctx.settings.mutate('dsh-token-monitor', [{ op: 'set', path: ['showWhaleGirl'], value: false }])
   const settingsAfterWrite = await (await fetch(url + '/api/token-monitor/settings')).json()
   assert.equal(settingsAfterWrite.settings.showWhaleGirl, false)
-  await uninstall(['billing'])
-  assert.equal((await fetch(url + '/api/token-monitor/billing')).status, 404)
-  for (const file of manifest.modules.find(m => m.id === 'billing').files) await assert.rejects(readFile(join(installedPackage, 'runtime', file.root, file.path)), { code: 'ENOENT' })
-  assert.equal((await fetch(url + '/api/token-monitor/usage')).status, 200)
+  // 模块化卸载：逐个卸载五个功能模块，核对状态、物理文件被清掉，且其余模块的文件保持完好。
+  const uninstallOrder = ['overview', 'notify', 'wechat', 'pet', 'billing']
+  for (const [index, moduleId] of uninstallOrder.entries()) {
+    const moduleFiles = manifest.modules.find(m => m.id === moduleId).files
+    assert.equal((await snapshot()).modules.find(m => m.id === moduleId)?.status, 'installed', moduleId + ' should start installed')
+    await uninstall([moduleId])
+    assert.equal((await fetch(url + '/api/token-monitor/modules')).status, 200, 'module manager should stay reachable after removing ' + moduleId)
+    assert.notEqual((await snapshot()).modules.find(m => m.id === moduleId)?.status, 'installed', moduleId + ' should stop being installed')
+    for (const file of moduleFiles) {
+      await assert.rejects(readFile(join(installedPackage, 'runtime', file.root, file.path)), { code: 'ENOENT' }, moduleId + ' file should be physically removed: ' + file.path)
+    }
+    const survivorId = uninstallOrder[index + 1]
+    if (survivorId !== undefined) {
+      const survivorFile = manifest.modules.find(m => m.id === survivorId).files[0]
+      assert.equal((await readFile(join(installedPackage, 'runtime', survivorFile.root, survivorFile.path))).length > 0, true, 'not-yet-removed modules must stay intact')
+    }
+  }
+  assert.equal((await fetch(url + '/api/token-monitor/billing')).status, 404, 'the removed billing module must stop serving its route')
   await ctx.fiber.dispose()
   url = await start()
-  assert.equal((await snapshot()).modules.find(m => m.id === 'billing').status, 'removed')
+  for (const moduleId of ['overview', 'notify', 'wechat', 'pet', 'billing']) {
+    assert.equal((await snapshot()).modules.find(m => m.id === moduleId)?.status, 'removed', moduleId + ' should be tombstoned after the restart')
+  }
   const settingsAfterRestart = await (await fetch(url + '/api/token-monitor/settings')).json()
   assert.equal(settingsAfterRestart.settings.showWhaleGirl, false)
   const removed = await uninstall([], true, false)

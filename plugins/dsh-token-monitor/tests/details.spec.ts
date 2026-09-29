@@ -53,6 +53,18 @@ describe('detailed usage', () => {
     expect(result.rows.map(item => item.id)).toEqual(['a', 'start'])
     expect(result.providers).toEqual(['a', 'b'])
   })
+  it('lists the official provider family once and matches either route id when filtering', () => {
+    const { store, queries } = setup()
+    store.add(row('api-key', { provider: 'deepseek-official', timestamp: now - 1000 }))
+    store.add(row('account', { provider: 'deepseek-account', timestamp: now - 900 }))
+    store.add(row('other', { provider: 'fast', timestamp: now - 800 }))
+    const byAccount = queries.query(new URLSearchParams({ range: 'all', provider: 'deepseek-account' }), now)
+    // 同族的两种 id 只列一条，避免下拉里出现两个 DeepSeek。
+    expect(byAccount.providers).toEqual(['deepseek-official', 'fast'])
+    expect([...byAccount.rows.map(item => item.id)].sort()).toEqual(['account', 'api-key'])
+    const byOfficial = queries.query(new URLSearchParams({ range: 'all', provider: 'deepseek-official' }), now)
+    expect([...byOfficial.rows.map(item => item.id)].sort()).toEqual(['account', 'api-key'])
+  })
   it('shows missing legacy cache subtotals as unknown without rewriting or recalculating the ledger', () => {
     const { dir, store } = setup()
     const legacy = { sessionId: 'parent', provider: 'v', model: 'm', turn: 1, step: 1, timestamp: now - 1000, inputTokens: 100, cacheReadTokens: 200, cacheWriteTokens: 300, outputTokens: 50, reasoningTokens: 0, costInput: 1, costCache: 2, costOutput: 3, cost: 6, peak: false }

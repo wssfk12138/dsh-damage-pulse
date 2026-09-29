@@ -137,7 +137,7 @@ it('loads production plugin, changes prices through real agent tools, pushes rul
   ], { efforts: [{ id: ReasoningEffortId('high'), name: 'High' }], defaultEffort: ReasoningEffortId('high') })
   const { ctx, url } = await boot(adapter)
   const templates = await (await fetch(url + '/api/token-monitor/billing/templates')).json()
-  expect(templates.providers.map((provider: { provider: string }) => provider.provider)).toEqual(['deepseek-official', 'deepseek-account', 'openai', 'zhipu', 'kimi'])
+  expect(templates.providers.map((provider: { provider: string }) => provider.provider)).toEqual(['deepseek-official', 'openai', 'zhipu', 'kimi'])
   expect((await fetch(url + '/api/token-monitor/billing/templates', { method: 'PUT' })).status).toBe(405)
   const initial = await snapshot(url)
   const configured = await call(ctx, updateName, { provider: 'billing-test', model: 'test-model', expectedRevision: initial.revision,

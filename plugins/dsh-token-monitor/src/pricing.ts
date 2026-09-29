@@ -138,6 +138,14 @@ export function sameProviderFamily(left: string | null | undefined, right: strin
   return left === right || (isOfficialProvider(left) && isOfficialProvider(right))
 }
 
+/** 展示用的稳定 provider id：官方族成员统一落到 OFFICIAL_PROVIDER_ID。
+ * @param provider - 记录或规则里携带的 provider。
+ * @returns 同族统一后的展示 id。
+ */
+export function displayProviderId(provider: string): string {
+  return isOfficialProvider(provider) ? OFFICIAL_PROVIDER_ID : provider
+}
+
 /** provider + model 通过资格门禁后返回的价格表命中结果。 */
 export interface PricingEligibility {
   provider: string

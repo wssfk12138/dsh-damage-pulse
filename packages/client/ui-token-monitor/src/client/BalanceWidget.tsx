@@ -34,6 +34,8 @@ import type { WhalePose as AnimatedWhalePose } from './WhaleGirlStage.tsx'
 import { isPeakPeriod } from './peakPeriod.ts'
 import { applyDebitToDisplay, comparableBalances } from './balanceMath.ts'
 import { compactTokens, latencyTone } from './detail-model.ts'
+import { isOfficialRoute } from './providerFamily.ts'
+import { overlayTopMargin } from './window-frame.tsx'
 
 const UsageDetailsWindow = lazy(() => import('./UsageDetailsWindow.tsx').then(module => ({ default: module.UsageDetailsWindow })))
 const TokenMonitorSettingsPanel = lazy(() => import('./TokenMonitorSettingsPanel.tsx').then(module => ({ default: module.TokenMonitorSettingsPanel })))
@@ -85,8 +87,26 @@ const GREEN = '#30a46c'
 const UNKNOWN_COLOR = '#8a8a8a'
 const WHALE_ASSET_ROOT = '/assets/dsh-token-monitor/whale-girl'
 /** 鲸鱼娘宽度按卡片宽度取比例：显示用量概览时卡片更宽，用较小比例维持角色视觉尺寸。 */
-const WHALE_WIDTH_WITH_OVERVIEW = '60%'
-const WHALE_WIDTH_PLAIN = '80%'
+/** 鲸鱼娘宽度：无论悬浮卡片多宽，都取卡片宽度的 90%。 */
+const WHALE_WIDTH = '90%'
+/**
+ * 扣血反馈（飘字字号、飘字起点与余额受击位移）跟随鲸鱼娘等比缩放：这些尺寸是按约 200px 宽的
+ * 悬浮卡片调定的，卡片更宽则整体放大、更窄则整体缩小。鲸鱼娘始终是卡片宽度的 90%，因此两者同比
+ * 例变化；鲸鱼娘自身的关键帧与冲击标记画在 512 画布内，随画布一起缩放。
+ */
+const DAMAGE_REFERENCE_WIDTH_PX = 200
+const DAMAGE_SCALE_MIN = 0.75
+const DAMAGE_SCALE_MAX = 1.8
+const DAMAGE_FONT_SIZE = 18
+const DAMAGE_MISS_FONT_SIZE = 23
+const DAMAGE_LABEL_FONT_SIZE = 11
+const DAMAGE_ORIGIN_WITH_WHALE_PX = 42
+const DAMAGE_ORIGIN_PLAIN_PX = 8
+/** 由悬浮卡片实测宽度换算扣血反馈的缩放系数。 */
+function damageScaleFor(cardWidthPx: number): number {
+  if (!Number.isFinite(cardWidthPx) || cardWidthPx <= 0) return 1
+  return Math.min(DAMAGE_SCALE_MAX, Math.max(DAMAGE_SCALE_MIN, cardWidthPx / DAMAGE_REFERENCE_WIDTH_PX))
+}
 /**
  * 用量数据排版：两行取同一行高，↓/↑ 与 ◉、首字与总耗时因此逐行对齐；
  * 行距等于行高，文本正好填满行盒，既不裁切也不留半行空白。
@@ -108,14 +128,29 @@ const BALANCE_LABEL_FONT_SIZE = 16
 type WhalePose = AnimatedWhalePose
 const DEATH_ASSET = `${WHALE_ASSET_ROOT}/death-stranded-v6-trim.png`
 
-/** 附件参考节奏：扣费文字以最终字号快速显现，平稳上飘后渐隐。 */
-const KEYFRAMES = `
+/**
+ * 附件参考节奏：扣费文字以最终字号快速显现，平稳上飘后渐隐。
+ * 上飘距离在基准上放大 3 倍（用户要求 +200%），并按扣血反馈的缩放系数等比缩放；
+ * 出现节奏、初速下沉 5px 与 prefers-reduced-motion 的精简版保持不变。
+ */
+const FLOAT_DRIFT_SCALE = 3
+/**
+ * 扣血飘字的基准时长（速度 100%）。用户要求把飘动速度降到 30%，因此时长等比拉长到约
+ * 3.33 倍——距离不变、单位时间位移变小。出现节奏、渐隐曲线与 reduced-motion 精简版保持原样。
+ */
+const FLOAT_BASE_DURATION_MS = 1_250
+const FLOAT_SPEED_FACTOR = 0.3
+const FLOAT_DURATION_MS = Math.round(FLOAT_BASE_DURATION_MS / FLOAT_SPEED_FACTOR)
+const FLOAT_ANIMATION = 'tkm-impact-float ' + String(FLOAT_DURATION_MS) + 'ms cubic-bezier(.2,.72,.3,1) forwards'
+const floatKeyframes = (scale: number): string => {
+  const drift = (base: number): string => String(Math.round(base * FLOAT_DRIFT_SCALE * scale * 10) / 10) + 'px'
+  return `
 @keyframes tkm-impact-float {
   0%   { opacity: 0; transform: translate3d(0, 5px, 0); }
   8%   { opacity: 1; transform: translate3d(0, 0, 0); }
-  64%  { opacity: 1; transform: translate3d(0, -32px, 0); }
-  82%  { opacity: .76; transform: translate3d(0, -43px, 0); }
-  100% { opacity: 0; transform: translate3d(0, -56px, 0); }
+  64%  { opacity: 1; transform: translate3d(0, -${drift(32)}, 0); }
+  82%  { opacity: .76; transform: translate3d(0, -${drift(43)}, 0); }
+  100% { opacity: 0; transform: translate3d(0, -${drift(56)}, 0); }
 }
 @keyframes tkm-impact-float-reduced {
   0%   { opacity: 0; transform: translate3d(0, 6px, 0); }
@@ -128,6 +163,7 @@ const KEYFRAMES = `
   }
 }
 `
+}
 
 /** 单条扣费文字；定位由鲸鱼娘头顶的独立反馈层负责。 */
 const FLOAT: React.CSSProperties = {
@@ -135,13 +171,13 @@ const FLOAT: React.CSSProperties = {
   left: '50%',
   bottom: 0,
   fontFamily: 'Inter, "Segoe UI", "Microsoft YaHei", sans-serif',
-  fontSize: 18,
+  fontSize: DAMAGE_FONT_SIZE,
   fontWeight: 700,
   lineHeight: 1,
   fontVariantNumeric: 'tabular-nums',
   pointerEvents: 'none',
   zIndex: 1001,
-  animation: 'tkm-impact-float 1250ms cubic-bezier(.2,.72,.3,1) forwards',
+  animation: FLOAT_ANIMATION,
   transformOrigin: '50% 100%',
   translate: '-50% 0',
   whiteSpace: 'nowrap',
@@ -283,14 +319,6 @@ interface PendingFloat {
   suppressWhaleReaction?: boolean
 }
 
-/** DeepSeek 官方计费路由的全部 provider id；与 Host 的 OFFICIAL_PROVIDER_IDS 对齐。 */
-const OFFICIAL_PROVIDER_IDS = ['deepseek-official', 'deepseek-account'] as const
-
-/** provider 是否走 DeepSeek 官方计费路由（含账号路由）。 */
-function isOfficialRoute(provider: string | undefined): boolean {
-  return provider !== undefined && (OFFICIAL_PROVIDER_IDS as readonly string[]).includes(provider)
-}
-
 /**
  * 扣费事件是否有可用的计费规则。账号路由与官方 API key 路由同族：已保存的旧快照只有
  * `deepseek-official` 条目时按官方条目回退，与 Host billUsage 的回退口径一致；否则账号
@@ -324,7 +352,7 @@ interface RawChargeEvent {
 const CHARGE_POLL_MS = 1_000
 /** 余额轮询周期：与 Host 侧 BalanceService 同频，官方结算延迟很小，15s 足以让显示值贴近官网。 */
 const BALANCE_POLL_MS = 15_000
-const FLOAT_MS = 1_250
+const FLOAT_MS = FLOAT_DURATION_MS
 const FLOAT_EMIT_INTERVAL_MS = 450
 const FLASH_MS = 620
 const WHALE_POSE_MS = 1_250
@@ -418,6 +446,19 @@ export function BalanceWidget({
   // 拖拽起点：按下时的鼠标位置 + 卡片位置。
   const dragStart = useRef<{ x: number; y: number; left: number; top: number; pointerId: number; moved: boolean } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
+  /** 悬浮卡片实测宽度：扣血反馈与受击位移按它等比缩放。 */
+  const [cardWidthPx, setCardWidthPx] = useState(0)
+  useEffect(() => {
+    const node = cardRef.current
+    if (node === null || typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width
+      if (typeof width === 'number' && width > 0) setCardWidthPx(width)
+    })
+    observer.observe(node)
+    return () => { observer.disconnect() }
+  }, [])
+  const damageScale = damageScaleFor(cardWidthPx)
   const notificationSettingsRef = useRef<{ provider: string; snapshot: TokenMonitorSettingsSnapshot }>()
   const notificationQueueRef = useRef(createNotificationQueueState())
   const notificationSeeded = useRef(false)
@@ -460,9 +501,11 @@ export function BalanceWidget({
     setDragging(false)
     const menuWidth = 176
     const menuHeight = 234
+    // 顶部下限避开桌面外壳的标题条，否则菜单顶部会被窗口按钮盖住而点不到。
+    const minTop = overlayTopMargin(4)
     setContextMenu({
       left: clamp(event.clientX, 4, Math.max(4, window.innerWidth - menuWidth - 4)),
-      top: clamp(event.clientY, 4, Math.max(4, window.innerHeight - menuHeight - 4)),
+      top: clamp(event.clientY, minTop, Math.max(minTop, window.innerHeight - menuHeight - 4)),
     })
   }, [])
 
@@ -484,9 +527,10 @@ export function BalanceWidget({
     if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
       event.preventDefault()
       const rect = event.currentTarget.getBoundingClientRect()
+      const minTop = overlayTopMargin(4)
       setContextMenu({
         left: clamp(rect.left, 4, Math.max(4, window.innerWidth - 180)),
-        top: clamp(rect.bottom + 4, 4, Math.max(4, window.innerHeight - 164)),
+        top: clamp(rect.bottom + 4, minTop, Math.max(minTop, window.innerHeight - 164)),
       })
     }
   }, [])
@@ -741,11 +785,11 @@ export function BalanceWidget({
     const strong = kind === 'miss'
     node.animate([
       { transform: getComputedStyle(node).transform === 'none' ? 'translate3d(0,0,0) scale(1)' : getComputedStyle(node).transform },
-      { transform: strong ? 'translate3d(-2px,3px,0) scale(.955)' : 'translate3d(0,2px,0) scale(.978)', offset: .22 },
-      { transform: strong ? 'translate3d(2px,-1px,0) scale(1.025)' : 'translate3d(0,-1px,0) scale(1.012)', offset: .55 },
+      { transform: strong ? `translate3d(${String(-2 * damageScale)}px,${String(3 * damageScale)}px,0) scale(.955)` : `translate3d(0,${String(2 * damageScale)}px,0) scale(.978)`, offset: .22 },
+      { transform: strong ? `translate3d(${String(2 * damageScale)}px,${String(-1 * damageScale)}px,0) scale(1.025)` : `translate3d(0,${String(-1 * damageScale)}px,0) scale(1.012)`, offset: .55 },
       { transform: 'translate3d(0,0,0) scale(1)' },
     ], { duration: strong ? 620 : 440, easing: 'cubic-bezier(.2,.86,.25,1)', fill: 'forwards' })
-  }, [])
+  }, [damageScale])
 
   /** 将一条反馈真正发射到共同轨道。 */
   const emit = useCallback((pending: PendingFloat) => {
@@ -1201,7 +1245,7 @@ export function BalanceWidget({
 
   const amountColor = flash === 'red' ? RED : flash === 'green' ? GREEN : 'var(--dsh-color-accent, #4c8dff)'
   const shownBalance = display ?? balanceInfo?.totalBalance ?? 0
-  const whaleWidth = usageVisible ? WHALE_WIDTH_WITH_OVERVIEW : WHALE_WIDTH_PLAIN
+  const whaleWidth = WHALE_WIDTH
   const depleted = balanceAvailable && shownBalance <= 0
   const onWhalePoseComplete = (completedPose: WhalePose) => {
     if (completedPose !== 'revive-recharge' || !revivingRef.current) return
@@ -1230,7 +1274,7 @@ export function BalanceWidget({
       onPointerCancel={cancelDrag}
       onLostPointerCapture={cancelDrag}
     >
-      <style>{KEYFRAMES}</style>
+      <style>{floatKeyframes(damageScale)}</style>
       {managerOpen && refreshModules && <ModuleManagerPanel
         snapshot={modules} refresh={refreshModules} onClose={() => setManagerOpen(false)}
         onConfigErased={(ids) => {
@@ -1428,7 +1472,9 @@ export function BalanceWidget({
           style={{
             position: 'absolute',
             left: '50%',
-            bottom: showWhaleGirl ? 'calc(100% + 42px)' : 'calc(100% + 8px)',
+            bottom: showWhaleGirl
+              ? `calc(100% + ${String(DAMAGE_ORIGIN_WITH_WHALE_PX * damageScale)}px)`
+              : `calc(100% + ${String(DAMAGE_ORIGIN_PLAIN_PX * damageScale)}px)`,
             width: 0,
             height: 0,
             zIndex: 12,
@@ -1450,7 +1496,7 @@ export function BalanceWidget({
                 alignItems: 'baseline',
                 justifyContent: 'center',
                 gap: anim.damageKind === 'miss' ? 5 : 4,
-                fontSize: anim.damageKind === 'miss' ? 23 : FLOAT.fontSize,
+                fontSize: (anim.damageKind === 'miss' ? DAMAGE_MISS_FONT_SIZE : DAMAGE_FONT_SIZE) * damageScale,
                 fontWeight: 800,
                 animation: FLOAT.animation,
                 textShadow: anim.damageKind === 'miss'
@@ -1461,7 +1507,7 @@ export function BalanceWidget({
               {anim.label !== undefined && (
                 <span style={{
                   color: RED,
-                  fontSize: 11,
+                  fontSize: DAMAGE_LABEL_FONT_SIZE * damageScale,
                   fontWeight: 800,
                 }}>
                   {anim.label}

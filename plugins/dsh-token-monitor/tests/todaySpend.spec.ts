@@ -160,7 +160,8 @@ describe('today spend aggregation', () => {
     expect(storage.add(first)).toBeUndefined()
   })
 
-  it('retains replay identities beyond the transient animation window', () => {
+  // 这条用例要写入 2100 条记录，满载运行时 5s 默认超时不够；显式给足时间，避免整树运行时抖动。
+  it('retains replay identities beyond the transient animation window', { timeout: 30_000 }, () => {
     const dataDir = mkdtempSync(join(tmpdir(), 'dsh-token-monitor-idempotency-long-'))
     const storage = new UsageStorage(() => true, dataDir)
     const first = { ...record(1_000, 0.25), sessionId: 'long-session', sourceEventSeq: 1 }

@@ -3,7 +3,7 @@ import type { UsageStorage } from './storage.ts'
 import type { DetailStore } from './details.ts'
 import { publicAttempt } from './details.ts'
 import type { PricingTable } from './pricing.ts'
-import { sameProviderFamily } from './pricing.ts'
+import { displayProviderId, sameProviderFamily } from './pricing.ts'
 
 /** Freeze query membership while the user pages through incoming request history. */
 export class DetailQueries {
@@ -57,6 +57,6 @@ export class DetailQueries {
     const pages = Math.max(1, Math.ceil(rows.length / size)), actual = Math.min(page, pages)
     return { snapshot: token, capturedAt: snapshot.at, rows: rows.slice((actual - 1) * size, actual * size), total: rows.length, page: actual, pages, size,
   sessions: snapshot.sessions, models: [...new Set(snapshot.rows.filter(r => sameProviderFamily(p.get('provider'), r.provider)).map(r => r.model))].sort(),
-      providers: [...new Set(snapshot.rows.map(r => r.provider))].sort() }
+      providers: [...new Set(snapshot.rows.map(r => displayProviderId(r.provider)))].sort() }
   }
 }

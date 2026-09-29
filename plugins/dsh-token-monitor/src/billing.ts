@@ -54,7 +54,6 @@ export function defaultBillingRules(table: PricingTable = PRICE_TABLE): BillingR
   const kimi = { 'kimi-k3': { input: 19, cacheHit: 1.9, output: 95 } }
   const rules: BillingRules = { version: 1, providers: [
     { provider: 'deepseek-official', enabled: true, models: deepseek },
-    { provider: 'deepseek-account', enabled: true, models: structuredClone(deepseek) },
     { provider: 'openai', enabled: true, models: Object.entries(openaiPrices).map(([model, price]) => fromPrice(model, price)) },
     { provider: 'zhipu', enabled: true, models: Object.entries(zhipuPrices).map(([model, price]) => ({ ...fromPrice(model, price), ...(zhipuTiers[model] ? { tiers: zhipuTiers[model].map(tier => ({ ...tier })) } : {}) })) },
     { provider: 'kimi', enabled: true, models: Object.entries(kimi).map(([model, price]) => fromPrice(model, price)) },

@@ -17,6 +17,7 @@ import {
 } from '@deepseek-ai/dsh-token-monitor-contract'
 import { PRODUCT_NAME } from './branding.ts'
 import { hostCompatHint, type HostCompatApi, type HostCompatStatus } from './hostCompatApi.ts'
+import { displayProviderId } from './providerFamily.ts'
 import {
   WechatConnectionApiError,
   type WechatConnectionApi,
@@ -717,7 +718,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
               <div id="rules-settings-title"><SectionTitle iconName="cute-icon-warning" title="提醒规则" /></div>
               {props.loadProvider && <select aria-label="提醒供应商" value={provider} disabled={saveState === 'saving' || switchingProvider} onChange={(event) => { void selectProvider(event.target.value) }} style={{ maxWidth: '48%', minWidth: 0, color: 'inherit', background: 'var(--dsw-alias-monitor-button)', border: '1px solid var(--dsw-alias-monitor-button-border)', borderRadius: 8, padding: '4px 6px', font: 'inherit', fontSize: 12 }}>
-                {[...new Set(['deepseek-official', ...(props.providers ?? [])])].map(id => <option key={id} value={id}>{id === 'deepseek-official' ? 'DeepSeek' : id}</option>)}
+                {[...new Set(['deepseek-official', ...(props.providers ?? [])].map(displayProviderId))].map(id => <option key={id} value={id}>{id === 'deepseek-official' ? 'DeepSeek' : id}</option>)}
               </select>}
             </div>
             <fieldset disabled={switchingProvider} style={{ display: 'contents', border: 0, margin: 0, padding: 0, minWidth: 0 }}>
