@@ -34,20 +34,17 @@ for (const id of ['manager', 'core', ...ids]) {
   await artifact(ids.includes(id) ? id : 'core', 'host', id + '.mjs', resolve(output, 'host', id + '.mjs'))
 }
 
+// Follow the current entry; old build chunks may still exist in lib.
 // Static dependencies belong to their sole feature, or to core when shared.
 const hasPath = async path => { try { await access(path); return true } catch { return false } }
-const client = await hasPath(resolve(repo, 'packages/client/ui-token-monitor/lib/client.js'))
-  ? resolve(repo, 'packages/client/ui-token-monitor/lib')
-  : resolve(repo, 'lib')
-const splitClient = await hasPath(resolve(client, 'client.WhaleGirlStage.js'))
-const roots = splitClient
-  ? new Map([
-      ['client.js', 'core'], ['client.WhaleGirlStage.js', 'pet'], ['client.UsageDetailsWindow.js', 'overview'],
-      ['client.TokenMonitorSettingsPanel.js', 'notify'],
-      ['client.BillingRulesPanel.js', 'billing'],
-      ['client.FeeExplanation.js', 'billing'], ['client.WechatLoginQr.js', 'wechat'],
-    ])
-  : new Map([['client.js', 'core']])
+// The public package build writes lib/; package-local lib may be stale.
+const client = resolve(repo, 'lib')
+const roots = new Map([
+  ['client.js', 'core'], ['client.WhaleGirlStage.js', 'pet'], ['client.UsageDetailsWindow.js', 'overview'],
+  ['client.TokenMonitorSettingsPanel.js', 'notify'],
+  ['client.BillingRulesPanel.js', 'billing'],
+  ['client.FeeExplanation.js', 'billing'], ['client.WechatLoginQr.js', 'wechat'],
+])
 const demands = new Map()
 const visit = async (file, owner) => {
   const set = demands.get(file) ?? new Set()
@@ -57,9 +54,10 @@ const visit = async (file, owner) => {
   for (const match of text.matchAll(/require\(["']\.\/([^"']+)["']\)/g)) await visit(match[1], owner)
   for (const match of text.matchAll(/require\.async\(["']\.\/([^"']+)["']\)/g)) {
     if (!roots.has(match[1])) throw new Error('Unclassified dynamic feature: ' + match[1])
+    await visit(match[1], roots.get(match[1]))
   }
 }
-for (const [file, owner] of roots) await visit(file, owner)
+await visit('client.js', 'core')
 // Anything left unvisited would be silently dropped from the manifest; report it instead.
 const reached = new Set(demands.keys())
 const unclassified = (await readdir(client)).filter(file => file.endsWith('.js') && !reached.has(file))

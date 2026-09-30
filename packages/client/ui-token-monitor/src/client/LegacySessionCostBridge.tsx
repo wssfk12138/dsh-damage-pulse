@@ -27,6 +27,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId, SessionSummaryLike } from './host-contracts.ts'
+import { LEDGER_COST_TITLE, ledgerSessionCost, resolveSessionCost, useSessionLedger, type LedgerSessionSummary } from './sessionLedger.ts'
 import {
   formatSessionCost,
   asSessionCostProjection,
@@ -75,18 +76,18 @@ const STYLE_TEXT = [
 
 /** 会话金额索引：按会话 id 直读 + 按唯一 displayTitle 查会话（重名标题互斥）。 */
 interface SessionCostIndex {
-  bySessionId: Map<SessionId, number>
+  bySessionId: Map<SessionId, { cost: number; fromLedger: boolean }>
   byUniqueTitle: Map<string, SessionSummaryLike>
   /** 出现重名的标题集合：匹配到这些标题的行结构可信但无法归属，按 fail-closed 跳过。 */
   ambiguousTitles: ReadonlySet<string>
 }
 
-function buildCostIndex(byId: Record<SessionId, SessionSummaryLike>): SessionCostIndex {
-  const bySessionId = new Map<SessionId, number>()
+function buildCostIndex(byId: Record<SessionId, SessionSummaryLike>, ledger?: ReadonlyMap<string, LedgerSessionSummary>): SessionCostIndex {
+  const bySessionId = new Map<SessionId, { cost: number; fromLedger: boolean }>()
   const titleCounts = new Map<string, number>()
   const ambiguousTitles = new Set<string>()
   for (const summary of Object.values(byId)) {
-    const cost = readSessionCost(asSessionCostProjection(summary.projectionValues))
+    const cost = resolveSessionCost(readSessionCost(asSessionCostProjection(summary.projectionValues)), ledgerSessionCost(ledger, summary.id))
     if (cost !== undefined) bySessionId.set(summary.id, cost)
     titleCounts.set(summary.displayTitle, (titleCounts.get(summary.displayTitle) ?? 0) + 1)
   }
@@ -155,8 +156,8 @@ function injectIntoRow(row: Element, index: SessionCostIndex, resolution: Extrac
   span.setAttribute(SESSION_COST_MARKER, '')
   span.setAttribute(BRIDGE_MARKER, '')
   span.setAttribute(SESSION_ID_ATTR, summary.id)
-  span.setAttribute('title', SESSION_COST_TITLE)
-  span.textContent = formatSessionCost(cost)
+  span.setAttribute('title', cost.fromLedger ? LEDGER_COST_TITLE : SESSION_COST_TITLE)
+  span.textContent = formatSessionCost(cost.cost)
   row.insertBefore(span, timeNode)
   return 'injected'
 }
@@ -169,7 +170,8 @@ function injectIntoRow(row: Element, index: SessionCostIndex, resolution: Extrac
  */
 export function LegacySessionCostBridge({ useSessions }: LegacyBridgeProps) {
   const byId = useSessions(state => state.byId)
-  const costIndex = useMemo(() => buildCostIndex(byId), [byId])
+  const ledger = useSessionLedger()
+  const costIndex = useMemo(() => buildCostIndex(byId, ledger), [byId, ledger])
   const costIndexRef = useRef(costIndex)
   costIndexRef.current = costIndex
   const stoppedRef = useRef(false)
@@ -255,8 +257,10 @@ export function LegacySessionCostBridge({ useSessions }: LegacyBridgeProps) {
           && existing.getAttribute(SESSION_ID_ATTR) === current.id
           && timeAnchorAfter(entry.row, entry.resolution.span) !== undefined
         if (valid) {
-          const text = formatSessionCost(cost)
+          const text = formatSessionCost(cost.cost)
           if (existing.textContent !== text) existing.textContent = text
+          const title = cost.fromLedger ? LEDGER_COST_TITLE : SESSION_COST_TITLE
+          if (existing.getAttribute('title') !== title) existing.setAttribute('title', title)
           continue
         }
         existing.remove()

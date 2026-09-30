@@ -51,7 +51,9 @@ const sourceClient = (() => {
 const sourceHost = readText(join(repo, 'plugins/dsh-token-monitor/src/migration.ts'))
 const wechatSource = ['connection.ts', 'index.ts', 'sender.ts', 'tools.ts'].map(name => readText(join(repo, 'plugins/wechat-notify/src', name))).join('\n')
 check('host routes cover settings, budget, usage, billing, and notifications', ['/api/token-monitor/settings', '/api/token-monitor/daily-budget', '/api/token-monitor/usage-summary', '/api/token-monitor/billing', '/api/token-monitor/notification-events', '/api/token-monitor/charge-events'].every(path => host.includes(path)))
-check('secure asset routes', host.includes('/assets/dsh-token-monitor/\${directory}') && host.includes('settings-ui/cute') && host.includes('whale-girl') && host.includes('kind: "prefix"'))
+// 资源前缀必须来自契约常量，落在插件自有的文档相对命名空间（桌面外壳独占 /assets/**）。
+// 打包产物把常量内联成字面量，路由模板保持 ${TOKEN_MONITOR_ASSET_BASE}/${directory}。
+check('secure asset routes', host.includes('TOKEN_MONITOR_ASSET_BASE = "/token-monitor-assets"') && host.includes('${TOKEN_MONITOR_ASSET_BASE}/${directory}') && !host.includes('/assets/dsh-token-monitor/${directory}') && host.includes('settings-ui/cute') && host.includes('whale-girl') && host.includes('kind: "prefix"'))
 check('host billing and usage implementations', host.includes('summarizeUsage') && host.includes('billing') && host.includes('sourceEventSeq'))
 check('WeChat route paths and tool names', ['/api/token-monitor/wechat', '/status', '/login', '/confirm', '/reconnect', '/disconnect', '/test'].every(marker => host.includes(marker)) && ['wechat_notify', 'wechat_login', 'wechat_login_confirm'].every(marker => wechatSource.includes(marker)))
 check('WeChat source uses CLI environment', wechatSource.includes('WECHAT_NOTIFY_CLAWBOT_INDEX') && wechatSource.includes('wechat_notify') && !wechatSource.includes('cli-in-wechat-v1'))

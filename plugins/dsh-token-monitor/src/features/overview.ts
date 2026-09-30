@@ -19,7 +19,11 @@ export function apply(ctx: Context, services: ModuleServices): void {
   ctx.inject(['webServer', 'connection'], web => {
     const guard = createRouteGuard(web)
     registerDetailsRoute(web, queries, metadata)
-    registerOverviewRoute(web, details, metadata)
+    const handler = registerOverviewRoute(web, details, metadata)
+    web.effect(() => {
+      services.overview = handler
+      return () => { if (services.overview === handler) delete services.overview }
+    }, 'token-monitor: overview lifecycle')
     web.effect(() => web.webServer.register({ kind: 'exact', path: '/api/token-monitor/usage', handler: (req, res) => {
       if (!guard(req, res)) return
       const url = new URL(req.url ?? '/', 'http://localhost')

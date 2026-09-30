@@ -5,12 +5,12 @@ import { displayScopeKey, type DisplayScope, type DisplayScopeLoader } from './d
 
 /** Poll without overlap, cancel on foreground changes, and never borrow a background route. */
 export function useDisplayScope(
-  useSessions: SnapshotSelectorHook<SessionListStateLike>, load: DisplayScopeLoader | undefined,
+  useSessions: SnapshotSelectorHook<SessionListStateLike>, load: DisplayScopeLoader | undefined, enabled = true,
 ): DisplayScope | undefined {
   const sessionId = useSessions(snapshot => activeSessionId(snapshot))
   const [resolved, setResolved] = useState<{ sessionId: typeof sessionId; scope: DisplayScope | undefined }>()
   useEffect(() => {
-    if (!load) return
+    if (!load || !enabled) return
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
     const refresh = async () => {
@@ -26,6 +26,6 @@ export function useDisplayScope(
     }
     void refresh()
     return () => { controller.abort(); clearTimeout(timer) }
-  }, [load, sessionId])
-  return resolved?.sessionId === sessionId ? resolved?.scope : undefined
+  }, [load, sessionId, enabled])
+  return enabled && resolved?.sessionId === sessionId ? resolved?.scope : undefined
 }

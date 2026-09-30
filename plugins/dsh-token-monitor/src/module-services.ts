@@ -1,5 +1,6 @@
 /** Shared live services passed explicitly to independently loaded optional modules. */
 import type { Context } from '@deepseek-ai/cordis'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { TokenMonitorSettings } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { TokenMonitorStore } from './plugin-store.ts'
 import type { TokenMonitorSettingsHandle } from './settings-handle.ts'
@@ -27,5 +28,9 @@ export interface ModuleServices {
   }
   observeRecord?: (record: UsageRecord, kind: 'normal' | 'miss') => void
   wechat?: WechatNotificationSender
+  /** Optional module owns the stream; management only forwards live requests. */
+  overview?: (request: IncomingMessage, response: ServerResponse) => Promise<void>
+  displayScope?: (request: IncomingMessage, response: ServerResponse) => void
+  notificationEvents?: (request: IncomingMessage, response: ServerResponse) => void
 }
 export interface RuntimeFeature { apply(ctx: Context, services: ModuleServices): void | Promise<void> }

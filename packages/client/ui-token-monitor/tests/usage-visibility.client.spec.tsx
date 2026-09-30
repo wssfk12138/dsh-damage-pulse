@@ -66,7 +66,7 @@ function mountSessionWidget() {
 
 const usageBlock = () => document.querySelector('[data-token-monitor-token-layout]')
 const sourceNote = () => document.querySelector('[data-token-monitor-usage-source]')
-const overviewCalls = (calls: string[]) => calls.filter(call => call.startsWith('/api/token-monitor/overview'))
+const overviewCalls = (calls: string[]) => calls.filter(call => call.startsWith('/api/token-monitor/modules/overview'))
 const settle = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
 
 it('脚本有效且用户关闭用量概览时不显示概览，也不请求概览接口', async () => {

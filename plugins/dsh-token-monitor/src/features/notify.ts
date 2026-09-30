@@ -3,12 +3,17 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ModuleServices } from '../module-services.ts'
 import { createProviderNotificationObserver } from '../provider-notifications.ts'
 import { NotificationEventBuffer, createPeakTransitionNotification } from '../notification-events.ts'
-import { registerNotificationEventsRoute } from '../notification-route.ts'
+import { createNotificationEventsRouteHandler, registerNotificationEventsRoute } from '../notification-route.ts'
 import { attachPeakBoundaryReminder } from '../peak-reminder.ts'
 import { createGatedWechatSender } from '../wechat-gate.ts'
 
 export function apply(ctx: Context, services: ModuleServices): void {
   const events = new NotificationEventBuffer()
+  const handler = createNotificationEventsRouteHandler(events)
+  ctx.effect(() => {
+    services.notificationEvents = handler
+    return () => { if (services.notificationEvents === handler) delete services.notificationEvents }
+  }, 'token-monitor: live notification stream')
   const pending = new Set<Promise<unknown>>()
   const observe = createProviderNotificationObserver(services.storage.history(), services.readProvider, (provider, draft, message) => {
     if (!events.publish(draft) || !services.readProvider(provider).wechatNotificationsEnabled || !services.wechat) return

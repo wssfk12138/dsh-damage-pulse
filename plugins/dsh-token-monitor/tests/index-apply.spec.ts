@@ -12,9 +12,10 @@ describe('plugin source entrypoint', () => {
       on: vi.fn(),
       // sessions 是 apply 声明的必需注入（inject 数组形式即非空拦截），只有 webServer 等宿主集成可选。
       sessions: { list: () => [] },
+      settings: { describe: () => [] },
     } as unknown as Context
 
-    await apply(ctx)
+    await apply(ctx, {} as never)
     expect(bootModules).toHaveBeenCalledWith(ctx, expect.stringMatching(/[\\/]plugins[\\/]dsh-token-monitor$/), expect.stringMatching(/[\\/]packages[\\/]client[\\/]ui-token-monitor[\\/]lib$/))
   })
 })

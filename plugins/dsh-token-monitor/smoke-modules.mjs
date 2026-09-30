@@ -120,7 +120,7 @@ try {
   assert.equal(Array.isArray(billing.rules?.providers), true)
   assert.equal(billing.rules.providers.length > 0, true)
   assert.equal(billing.rules.providers.some(provider => provider.provider === 'deepseek-official'), true)
-  const assetResponse = await fetch(url + '/assets/dsh-token-monitor/whale-girl/idle.png')
+  const assetResponse = await fetch(url + '/token-monitor-assets/whale-girl/idle.png')
   assert.equal(assetResponse.status, 200)
   assert.match(assetResponse.headers.get('content-type') ?? '', /^image\/png/i)
   const assetBytes = new Uint8Array(await assetResponse.arrayBuffer())
@@ -149,7 +149,7 @@ try {
   state.wholePlugin.erased = false; state.wholePlugin.pending = true
   await writeFile(statePath, JSON.stringify(state))
   url = await start()
-  assert.equal((await fetch(url + '/api/token-monitor/modules')).status, 404)
+  assert.equal((await snapshot()).pluginRemoved, true)
   assert.equal(JSON.parse(await readFile(statePath, 'utf8')).wholePlugin.pending, false)
   assert.equal((await readFile(join(root, 'profile', 'profiles', 'fixture', 'cordis.profile.yml'), 'utf8')).includes('showWhaleGirl'), false)
   console.log('Built payload smoke: boot, physical removal, tombstone restart, whole removal, absent-core cleanup PASS')

@@ -29,13 +29,19 @@ function batch(overrides: Record<string, unknown> = {}): Record<string, unknown>
 }
 
 describe('notification events client API', () => {
+  it('reports a removed module without parsing an empty batch or retrying', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    const result = await createNotificationEventsApi(fetcher).poll({ seq: 0 })
+    expect(result).toMatchObject({ ok: false, failure: { kind: 'unavailable', status: 204 } })
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
   it('performs a no-store GET and returns copied, strictly parsed events', async () => {
     const raw = batch()
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(raw), { status: 200 }))
     const signal = new AbortController().signal
     const result = await createNotificationEventsApi(fetcher).get(0, signal)
 
-    expect(fetcher).toHaveBeenCalledWith('/api/token-monitor/notification-events?since=0', {
+    expect(fetcher).toHaveBeenCalledWith('/api/token-monitor/modules/notification-events?since=0', {
       method: 'GET',
       cache: 'no-store',
       signal,
@@ -120,10 +126,10 @@ describe('notification events client API', () => {
     const result = await createNotificationEventsApi(fetcher).poll({ streamId: 'stream-1', seq: 9 })
 
     expect(result).toMatchObject({ ok: true, streamChanged: true, batch: recovered })
-    expect(fetcher).toHaveBeenNthCalledWith(1, '/api/token-monitor/notification-events?since=9', {
+    expect(fetcher).toHaveBeenNthCalledWith(1, '/api/token-monitor/modules/notification-events?since=9', {
       method: 'GET', cache: 'no-store',
     })
-    expect(fetcher).toHaveBeenNthCalledWith(2, '/api/token-monitor/notification-events?since=0', {
+    expect(fetcher).toHaveBeenNthCalledWith(2, '/api/token-monitor/modules/notification-events?since=0', {
       method: 'GET', cache: 'no-store',
     })
   })

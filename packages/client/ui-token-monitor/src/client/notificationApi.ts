@@ -109,7 +109,7 @@ export interface NotificationEventsPollSuccess {
 }
 
 /** Failure categories that the main window may ignore and retry. */
-export type NotificationEventsPollFailureKind = 'aborted' | 'network' | 'http' | 'protocol'
+export type NotificationEventsPollFailureKind = 'aborted' | 'network' | 'http' | 'protocol' | 'unavailable'
 
 /** Serializable failure description returned instead of rejecting a fail-soft poll. */
 export interface NotificationEventsPollFailure {
@@ -356,7 +356,7 @@ function failure(error: unknown, signal: AbortSignal | undefined): NotificationE
   if (error instanceof NotificationEventsApiError) {
     return {
       ok: false,
-      failure: { kind: 'http', message: error.message, status: error.status },
+      failure: { kind: error.status === 204 ? 'unavailable' : 'http', message: error.message, status: error.status },
     }
   }
   if (error instanceof NotificationEventsProtocolError) {
@@ -382,7 +382,7 @@ export interface NotificationEventsApi {
  */
 export function createNotificationEventsApi(
   fetcher: FetchLike = fetch,
-  endpoint = '/api/token-monitor/notification-events',
+  endpoint = '/api/token-monitor/modules/notification-events',
 ): NotificationEventsApi {
   const request = async (since: number, signal?: AbortSignal): Promise<TokenMonitorNotificationBatch> => {
     assertSince(since)
@@ -392,7 +392,7 @@ export function createNotificationEventsApi(
       cache: 'no-store',
       ...(signal === undefined ? {} : { signal }),
     })
-    if (!response.ok) throw new NotificationEventsApiError(response.status)
+    if (!response.ok || response.status === 204) throw new NotificationEventsApiError(response.status)
     let value: unknown
     try {
       value = await response.json()

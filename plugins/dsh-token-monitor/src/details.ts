@@ -4,6 +4,7 @@ import { replaceHistoryFile } from './history-file.ts'
 import { join } from 'node:path'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import { assistantStreamFirstTokenTime, lastAssistantStreamChunk } from '@deepseek-ai/dsh-llm'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-session-title'
@@ -153,7 +154,7 @@ export function registerDetailsRoute(ctx: Context, queries: DetailQueries, prepa
 /** Register the lightweight latest-request snapshot used by the balance widget. */
 export function registerOverviewRoute(ctx: Context, store: DetailStore, prepare: () => Promise<void> = async () => {}) {
   const guard = createRouteGuard(ctx)
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/overview', handler: async (req, res) => {
+  const handler = async (req: IncomingMessage, res: ServerResponse) => {
    if (!guard(req, res)) return
    if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
   await prepare()
@@ -169,5 +170,7 @@ export function registerOverviewRoute(ctx: Context, store: DetailStore, prepare:
   } : undefined)
   res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
   res.end(JSON.stringify(row === undefined ? null : { timestamp: row.timestamp, sessionId: row.sessionId, provider: row.provider, inputTokens: row.inputTokens ?? null, outputTokens: row.outputTokens ?? null, cacheReadTokens: row.cacheReadTokens ?? null, firstMs: row.firstMs ?? null, totalMs: row.totalMs ?? null, model: row.model }))
- } }), 'dsh-token-monitor: overview')
+ }
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/overview', handler }), 'dsh-token-monitor: overview')
+  return handler
 }

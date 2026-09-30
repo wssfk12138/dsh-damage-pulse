@@ -1,4 +1,4 @@
-.window { position: fixed; z-index: 1300; display: flex; flex-direction: column; pointer-events: auto; user-select: text; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); border: 0; box-shadow: var(--dsw-elevation-prominent); border-radius: 14px; overflow: hidden; font: 13px/1.5 sans-serif; font-variant-numeric: tabular-nums; }
+.window { position: fixed; z-index: 1300; display: flex; flex-direction: column; pointer-events: auto; user-select: text; color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-layer-2); border: 0; box-shadow: var(--dsw-elevation-prominent); border-radius: var(--dsw-radius-lg, var(--dsh-token-monitor-radius-lg)); overflow: hidden; font: 13px/1.5 sans-serif; font-variant-numeric: tabular-nums; }
 .title { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; cursor: grab; touch-action: none; background: var(--dsw-alias-bg-layer-3); }
 .actions, .filters, .tabs, .quick { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .filters { padding: 10px 14px 0; }
@@ -21,7 +21,7 @@
 .feeInfo { display: grid; place-items: center; flex: 0 0 26px; width: 26px; height: 26px; padding: 3px; border: 0; border-radius: 50%; corner-shape: round; color: var(--dsw-alias-detail-muted); background: transparent; cursor: pointer; }
 .feeInfo span { display: grid; place-items: center; width: 18px; height: 18px; border: 0.5px solid var(--dsw-alias-detail-border); border-radius: 50%; corner-shape: round; font: 600 11px/1 sans-serif; }
 .feeInfo:hover, .feeInfo:focus-visible, .feeInfo[aria-expanded="true"] { color: var(--dsw-alias-detail-brand); background: var(--dsw-alias-detail-hover); }
-.feeInfo:focus-visible { outline: 2px solid var(--dsw-alias-detail-brand); outline-offset: 1px; }
+.feeInfo:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: 1px; }
 .secondary { color: var(--dsw-alias-label-tertiary); font-size: 11px; line-height: 18px; }
 .ellipsis { max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .input, .good, .valley { color: var(--dsw-alias-state-success-secondary); }
@@ -45,7 +45,7 @@
 .resize[data-edge="nw"] { top: 0; left: 0; cursor: nwse-resize; }
 .resize[data-edge="se"] { bottom: 0; right: 0; cursor: nwse-resize; }
 .resize[data-edge="sw"] { bottom: 0; left: 0; cursor: nesw-resize; }
-.resize:focus-visible { outline: 2px solid var(--dsw-alias-label-primary); outline-offset: -2px; }
+.resize:focus-visible { outline: 2px solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary)); outline-offset: -2px; }
 .tokenPair { white-space: nowrap; }
 .requestInfo { font-size: 11px; line-height: 16px; overflow-wrap: anywhere; }
 .requestInfo summary { cursor: pointer; color: var(--dsw-alias-label-tertiary); }
@@ -58,7 +58,7 @@
 .window[data-short="true"] .top { min-height: 0; }
 .window[data-short="true"] .scroll { min-height: 64px; }
 .message { padding: 30px; text-align: center; }
-.feePopover { box-sizing: border-box; position: fixed; z-index: 1400; width: 338px; max-width: calc(100vw - 16px); max-height: min(500px, calc(100vh - 16px)); overflow: auto; padding: 14px 16px; border: 0; border-radius: 9px; color-scheme: var(--dsw-alias-detail-color-scheme); color: var(--dsw-alias-detail-label); background: var(--dsw-alias-detail-bg); box-shadow: var(--dsw-elevation-panel); font: 13px/1.5 sans-serif; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.feePopover { box-sizing: border-box; position: fixed; z-index: 1400; width: 338px; max-width: calc(100vw - 16px); max-height: min(500px, calc(100vh - 16px)); overflow: auto; padding: 14px 16px; border: 0; border-radius: var(--dsw-radius-sm, var(--dsh-token-monitor-radius-sm)); color-scheme: var(--dsw-alias-detail-color-scheme); color: var(--dsw-alias-detail-label); background: var(--dsw-alias-detail-bg); box-shadow: var(--dsw-elevation-panel); font: 13px/1.5 sans-serif; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .explanation h2 { margin: 0 0 8px; font-size: 15px; line-height: 21px; }
 .feeFields { display: grid; gap: 4px; margin: 0; }
 .feeField { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, auto); align-items: baseline; gap: 12px; }
@@ -73,7 +73,7 @@
 .feeSource { margin-top: 10px; }
 .feeSource > details { padding: 8px 0 0; border: 0; border-top: 0.5px solid var(--dsw-alias-detail-border); border-radius: 0; background: transparent; font-size: 11px; }
 .feeSource summary { color: var(--dsw-alias-detail-muted); }
-.select { padding: 5px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); border: 0.5px solid var(--dsw-alias-border-l2); border-radius: 6px; }
+.select { padding: 5px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); border: 0.5px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-sm, var(--dsh-token-monitor-radius-sm)); }
 
 /* Portaled column choices share the host-aware opaque detail palette. */
 .window, .menuSurface {
@@ -95,7 +95,6 @@
   --dsw-alias-state-success-secondary: var(--dsw-alias-detail-success);
   --dsw-alias-state-warn-secondary: var(--dsw-alias-detail-warning);
   --dsw-alias-state-error-secondary: var(--dsw-alias-detail-error);
-  --dsw-specific-menu: var(--dsw-alias-detail-card);
 }
 /* The owner measures the room left above or below the trigger and caps the
    list in .menuSurface so the card can never be clamped back over the button

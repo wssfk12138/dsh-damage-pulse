@@ -8,6 +8,7 @@ import { ModuleReleases, artifactKey } from './module-releases.ts'
 import { compareReleaseVersions, validModuleId } from './module-files.ts'
 import { replaceModuleArtifacts } from './module-transaction.ts'
 import { ModuleWork } from './module-work.ts'
+import type { ModuleServices } from './module-services.ts'
 
 async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> {
   if (req.headers['content-type']?.split(';')[0]?.trim() !== 'application/json') throw new ModuleOperationError('UNSUPPORTED_MEDIA_TYPE', 415)
@@ -24,8 +25,19 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
   throw new ModuleOperationError('INVALID_JSON', 400)
 }
 
-export function registerModuleRoutes(ctx: Context, manager: ModuleManager, stateFile: string, releases = new ModuleReleases()): void {
+export function registerModuleRoutes(ctx: Context, manager: ModuleManager, stateFile: string, releases = new ModuleReleases(), liveRoutes: () => Pick<ModuleServices, 'notificationEvents' | 'overview' | 'displayScope'> = () => ({})): void {
   const guard = createRouteGuard(ctx), work = new ModuleWork()
+  for (const [path, key] of [['notification-events', 'notificationEvents'], ['overview', 'overview'], ['display-scope', 'displayScope']] as const) ctx.effect(() => ctx.webServer.register({
+    kind: 'exact', path: '/api/token-monitor/modules/' + path, handler: (req, res) => {
+      if (!guard(req, res)) return
+      if (req.method !== 'GET' && !(key === 'notificationEvents' && req.method === 'HEAD')) {
+        res.writeHead(405, { Allow: key === 'notificationEvents' ? 'GET, HEAD' : 'GET', 'Cache-Control': 'no-store' }); res.end(); return
+      }
+      const handler = liveRoutes()[key]
+      if (handler) { handler(req, res); return }
+      res.writeHead(204, { 'Cache-Control': 'no-store' }); res.end()
+    },
+  }), 'token-monitor: ' + path + ' lifecycle route')
   let busy = false
   ctx.effect(() => () => work.stop(), 'token-monitor: management requests')
   const install = async (expectedRevision: number, restore?: ModuleRestoreRequest) => {

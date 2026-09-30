@@ -11,6 +11,12 @@
  * redefined here.
  */
 body {
+  /* Shared host radius scale for older hosts that do not publish it yet. */
+  --dsh-token-monitor-radius-sm: 8px;
+  --dsh-token-monitor-radius-md: 12px;
+  --dsh-token-monitor-radius-lg: 16px;
+  --dsh-token-monitor-radius-xl: 20px;
+  --dsh-token-monitor-radius-panel: 28px;
   --dsw-alias-detail-bg: #f7f9ff;
   --dsw-alias-detail-border: #dce5f5;
   --dsw-alias-detail-brand: #3858a8;

@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { TOKEN_MONITOR_CUTE_ASSET_BASE, TOKEN_MONITOR_WHALE_ASSET_BASE } from '@deepseek-ai/dsh-token-monitor-contract'
 
 type AssetRouteContext = Pick<import('@deepseek-ai/cordis').Context, 'webServer'>
 
@@ -13,8 +14,8 @@ export const TOKEN_MONITOR_ASSET_ROOT = fileURLToPath(
 )
 
 export const TOKEN_MONITOR_ASSET_ROUTES = [
-  { path: '/assets/dsh-token-monitor/whale-girl', directory: 'whale-girl' },
-  { path: '/assets/dsh-token-monitor/settings-ui/cute', directory: 'settings-ui/cute' },
+  { path: TOKEN_MONITOR_WHALE_ASSET_BASE, directory: 'whale-girl' },
+  { path: TOKEN_MONITOR_CUTE_ASSET_BASE, directory: 'settings-ui/cute' },
 ] as const
 
 function isMissingFile(error: unknown): boolean {

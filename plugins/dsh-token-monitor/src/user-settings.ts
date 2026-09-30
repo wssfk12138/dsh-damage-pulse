@@ -15,11 +15,34 @@ import {
   type TokenMonitorSettingsPatch,
 } from '@deepseek-ai/dsh-token-monitor-contract'
 import { isVolatile } from '@deepseek-ai/cosmokit'
-import { TOKEN_MONITOR_VOLATILE_FIELDS, type ProviderNotificationOverrides, type TokenMonitorUserConfig } from './config-base.ts'
+import { Config, TOKEN_MONITOR_VOLATILE_FIELDS, type ProviderNotificationOverrides, type TokenMonitorUserConfig } from './config-base.ts'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
+
+declare module '@deepseek-ai/cordis' {
+  interface Events {
+    /** Legacy namespace providers emit after persisting a changed resolved value.
+     * @param ns Updated namespace.
+     * @param next New resolved value.
+     * @param prev Previous resolved value.
+     * @param source Update origin.
+     * @mode emit
+     */
+    'settings/updated'(ns: SettingsNamespace, next: unknown, prev: unknown, source: 'update' | 'provider'): void
+  }
+}
 
 /** 持久化命名空间：就是 profile 配置项 id，改名会让旧设置失去归属。 */
 export const TOKEN_MONITOR_SETTINGS_NS = 'dsh-token-monitor'
+
+/** Namespace providers require consumer registration; profile providers own it in the Loader. */
+export function registerUserSettings(ctx: Context, entry: TokenMonitorUserConfig): void {
+  const provider = ctx.settings as typeof ctx.settings & {
+    register?: (ns: string, schema: typeof Config, options: { base: TokenMonitorUserConfig }) => unknown
+  }
+  if (typeof provider.register === 'function' && descriptorFor(ctx) === undefined) {
+    provider.register(TOKEN_MONITOR_SETTINGS_NS, Config, { base: entry })
+  }
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -86,7 +109,8 @@ export function isPermanentSettingsError(error: unknown): boolean {
 
 /** 重试判据：只有版本冲突值得重读一次描述符再写。 */
 function isRetryable(error: unknown): boolean {
-  return error instanceof SettingsConflictError && !isPermanentSettingsError(error)
+  return (error instanceof SettingsConflictError || isRecord(error) && error.code === 'SETTINGS_CONFLICT')
+    && !isPermanentSettingsError(error)
 }
 
 /**

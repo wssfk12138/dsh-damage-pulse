@@ -45,6 +45,27 @@ describe('session cost fallback route', () => {
     expect(normalizeSessionId('abc')).toBe('abc')
   })
 
+  it('adds persisted child usage to its parent without changing the child row or unrelated sessions', () => {
+    const sessions = new Map([
+      ['parent', { id: 'parent', title: 'Parent', project: 'one', child: false }],
+      ['child', { id: 'child', title: 'Child', project: 'one', child: true, parent: 'session-parent' }],
+      ['other-child', { id: 'other-child', title: 'Other', project: 'two', child: true, parent: 'session-parent' }],
+    ])
+    const source = [
+      summary({ sessionId: 'session-parent', cost: 1.2, calls: 2 }),
+      summary({ sessionId: 'child', cost: 3.04, calls: 5 }),
+      summary({ sessionId: 'other-child', cost: 7, calls: 8 }),
+      summary({ sessionId: 'orphan', cost: 0.5, calls: 1 }),
+    ]
+    const rows = summarizeLedgerSessions(source, sessions)
+    expect(rows.find(row => row.id === 'parent')).toEqual(expect.objectContaining({ cost: 4.24, calls: 7 }))
+    expect(rows.find(row => row.id === 'child')).toEqual(expect.objectContaining({ cost: 3.04, calls: 5 }))
+    expect(rows.find(row => row.id === 'other-child')?.cost).toBe(7)
+    expect(rows.find(row => row.id === 'orphan')?.cost).toBe(0.5)
+    expect(source[0]?.cost).toBe(1.2)
+    expect(summarizeLedgerSessions(source, sessions).find(row => row.id === 'parent')?.cost).toBe(4.24)
+  })
+
   it('serves the aggregate to an accepted caller and fails closed otherwise', () => {
     const summaries = [summary({ sessionId: 'session-a', cost: 0.25, lastActivity: 2 }), summary({ sessionId: 'b', cost: 1.5, lastActivity: 1 })]
     const accepted = response()

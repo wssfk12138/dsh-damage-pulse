@@ -30,7 +30,7 @@ import * as billingFeature from './module-billing.ts'
 /** 核心依赖：slot 注册 + Host 连接。旧版 Conversation Node 注册表按需使用。 */
 export const inject = ['slots', 'connection', 'remote.session', 'modelDirectories', 'locale']
 
-export function apply(ctx: ClientContextLike): void {
+export async function apply(ctx: ClientContextLike): Promise<void> {
   ctx.effect(() => (ctx.get('locale') as LocaleRuntime).register('token-monitor.details', { zh, en }), 'token-monitor: detail dictionaries')
   const modelDirectories = ctx.get('modelDirectories') as ModelDirectoryResolver
   const remote = ctx.get('remote') as ModelCatalogConnectionLike['remote']
@@ -44,6 +44,11 @@ export function apply(ctx: ClientContextLike): void {
   ctx.effect(() => () => billingEvents.dispose(), 'token-monitor: billing events')
 
   const modules = createModuleState()
+  // A static package client remains discoverable after payload removal. Read
+  // the tombstone before mounting anything that would poll the deleted core.
+  await modules.refresh().catch(() => { /* Unknown state retains management. */ })
+  const initial = modules.getSnapshot()
+  if (initial?.pluginRemoved && !initial.cleanupPending) { modules.dispose(); return }
   billingEvents.setEnabled(false)
   const active = new Map<string, () => void>()
   const loading = new Map<string, object>()
@@ -85,6 +90,7 @@ export function apply(ctx: ClientContextLike): void {
   }, BalanceWidget))
   ctx.effect(() => {
     const unsubscribe = modules.subscribe(reconcile)
+    reconcile()
     return () => { disposed = true; unsubscribe(); disposeOptional(); removeWidget(); modules.dispose() }
   }, 'token-monitor: installed module seats')
 }

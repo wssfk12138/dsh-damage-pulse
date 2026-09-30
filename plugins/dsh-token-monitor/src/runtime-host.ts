@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths'
 import type { ModuleReleaseManifest } from '@deepseek-ai/dsh-token-monitor-contract'
+import { TOKEN_MONITOR_ASSET_BASE } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { ModuleServices, RuntimeFeature } from './module-services.ts'
 import type * as Core from './runtime-core.ts'
 import type { ArtifactRoots } from './module-files.ts'
@@ -66,7 +67,10 @@ export async function apply(ctx: Context, options: RuntimeOptions): Promise<void
   manager = await ModuleManager.open(manifest, stateFile, roots, lifecycle)
   ctx.inject(['webServer'], web => {
     for (const directory of ['settings-ui/cute', 'whale-girl']) {
-      const path = `/assets/dsh-token-monitor/${directory}`
+      // The desktop shell answers every /assets/** request from its own frozen
+      // front-end bundle, so plugin images must live under their own
+      // document-relative prefix to reach this Host at all.
+      const path = `${TOKEN_MONITOR_ASSET_BASE}/${directory}`
       const serve = createTokenMonitorAssetHandler(path, resolve(roots.assets, directory))
       web.effect(() => web.webServer.register({ kind: 'prefix', path, handler: (req, res) => {
         if (manager.snapshot().pluginRemoved && !manager.snapshot().cleanupPending || directory === 'whale-girl' && !manager.isInstalled('pet')) { res.writeHead(404); res.end(); return }
@@ -80,5 +84,5 @@ export async function apply(ctx: Context, options: RuntimeOptions): Promise<void
     for (const id of ordered) if (manager.isInstalled(id)) await lifecycle.start(id)
     await lifecycle.startCore()
   }
-  ctx.inject(['webServer', 'connection'], web => registerModuleRoutes(web, manager, stateFile))
+  ctx.inject(['webServer', 'connection'], web => registerModuleRoutes(web, manager, stateFile, undefined, () => services))
 }

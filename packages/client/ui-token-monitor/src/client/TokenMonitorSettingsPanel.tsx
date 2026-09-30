@@ -10,6 +10,7 @@ import {
 } from 'react'
 import {
   TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY,
+  TOKEN_MONITOR_CUTE_ASSET_BASE,
   type TokenMonitorSettings,
   type TokenMonitorSettingsPatch,
   type TokenMonitorSettingsPatchRequest,
@@ -26,7 +27,7 @@ import {
 } from './wechatConnectionApi.ts'
 const LocalLoginQr = lazy(() => import('./WechatLoginQr.tsx').then(module => ({ default: module.WechatLoginQr })))
 
-const CUTE_ASSET_ROOT = '/assets/dsh-token-monitor/settings-ui/cute'
+const CUTE_ASSET_ROOT = TOKEN_MONITOR_CUTE_ASSET_BASE
 function cuteAsset(name: string): string { return `${CUTE_ASSET_ROOT}/${name}.png` }
 
 const SETTINGS_KEYS = [
@@ -488,6 +489,8 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   }, [loginSession, status?.pendingLogin?.expiresAt, wechatInstalled])
 
   const refreshStatus = async () => {
+    // 微信模块未安装时宿主没有注册连接路由，任何请求都会以 404 落在一个并没有对外暴露的红字错误上；这里与挂载时的状态查询保持同一道门禁。
+    if (!wechatInstalled) return
     statusController.current?.abort()
     const controller = new AbortController()
     statusController.current = controller

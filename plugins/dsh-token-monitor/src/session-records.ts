@@ -59,9 +59,18 @@ function defaultReadHostImplementation(): HostSessionImplementation {
     if (typeof manifest.version === 'string' && manifest.version !== '') version = manifest.version
   } catch { version = undefined }
   try {
-    return { entry, version, source: readFileSync(entry, 'utf8'), detail: '宿主实现来自 ' + entry }
+    return {
+      entry,
+      source: readFileSync(entry, 'utf8'),
+      detail: '宿主实现来自 ' + entry,
+      ...(version === undefined ? {} : { version }),
+    }
   } catch (error) {
-    return { entry, version, detail: '无法读取宿主实现 ' + entry + '：' + String((error as Error)?.message ?? error) }
+    return {
+      entry,
+      detail: '无法读取宿主实现 ' + entry + '：' + String((error as Error)?.message ?? error),
+      ...(version === undefined ? {} : { version }),
+    }
   }
 }
 

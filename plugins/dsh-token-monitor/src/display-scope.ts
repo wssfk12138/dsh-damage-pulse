@@ -1,4 +1,5 @@
 /** Actual execution routes, retained through tool waits and cleared on idle. */
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-host-webserver'
@@ -23,16 +24,15 @@ export function attachDisplayScope(ctx: Context): Map<string, ExecutionRoute> {
 }
 
 /** Expose only the requested session's active route; selectors remain Client-owned. */
-export function registerDisplayScopeRoute(ctx: Context, routes: ReadonlyMap<string, ExecutionRoute>): void {
+export function registerDisplayScopeRoute(ctx: Context, routes: ReadonlyMap<string, ExecutionRoute>) {
   const guard = createRouteGuard(ctx)
-  ctx.effect(() => ctx.webServer.register({
-    kind: 'exact', path: '/api/token-monitor/display-scope',
-    handler: (req, res) => {
+  const handler = (req: IncomingMessage, res: ServerResponse) => {
       if (!guard(req, res)) return
       if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
       const sessionId = new URL(req.url ?? '/', 'http://localhost').searchParams.get('sessionId')
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify(sessionId === null ? null : routes.get(sessionId) ?? null))
-    },
-  }), 'token-monitor: display scope route')
+  }
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/display-scope', handler }), 'token-monitor: display scope route')
+  return handler
 }

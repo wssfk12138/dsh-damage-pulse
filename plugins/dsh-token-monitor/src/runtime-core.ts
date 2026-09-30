@@ -72,8 +72,12 @@ export function apply(ctx: Context, services: ModuleServices, installed: (id: st
   attachDetails(ctx, services.details, services.priceTable())
   const routes = attachDisplayScope(ctx)
   ctx.inject(['webServer', 'connection'], web => {
-    registerDisplayScopeRoute(web, routes)
-    registerSessionCostsRoute(web, () => services.storage.list())
+    const handler = registerDisplayScopeRoute(web, routes)
+    web.effect(() => {
+      services.displayScope = handler
+      return () => { if (services.displayScope === handler) delete services.displayScope }
+    }, 'token-monitor: display scope lifecycle')
+    registerSessionCostsRoute(web, () => services.storage.list(), services.details.sessions)
     registerHostCompatRoute(web, () => sessionRecords.status())
     registerTokenMonitorSettingsRoute(web, services.settings, {
       allowed: key => Object.entries(TOKEN_MONITOR_OWNED_FIELDS).some(([id, keys]) => keys.includes(key) && installed(id)),

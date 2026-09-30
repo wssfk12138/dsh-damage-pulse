@@ -1,3 +1,4 @@
+import { MenuSurface } from './MenuSurface.tsx'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
@@ -443,12 +444,12 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
           onClick={() => { setProviderOpen(value => !value) }}>
           <span>{catalog.groups.find(group => group.id === providerFilter)?.name ?? (providerFilter || t('billingAllProviders'))}</span><span aria-hidden="true">⌄</span>
         </Button>
-        {providerOpen && <div role="listbox" aria-label={t('billingProvider')} className={css.providerOptions}>
-          {['', ...providerIds].map(provider => <button key={provider} type="button" role="option"
+        {providerOpen && <MenuSurface role="listbox" aria-label={t('billingProvider')} className={css.providerOptions}>
+          {['', ...providerIds].map(provider => <button key={provider} className={css.providerOption} type="button" role="option"
             aria-selected={providerFilter === provider} onClick={() => { setProviderFilter(provider); if (provider && tab === 'balance') select(provider); setProviderOpen(false) }}>
             {catalog.groups.find(group => group.id === provider)?.name ?? (provider || t('billingAllProviders'))}
           </button>)}
-        </div>}
+        </MenuSurface>}
       </div>
       <input placeholder={t('billingSearch')} aria-label={t('billingSearch')} value={query}
         onChange={(event) => { setQuery(event.target.value) }} />

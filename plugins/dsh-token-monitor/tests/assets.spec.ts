@@ -4,6 +4,7 @@ import { AddressInfo } from 'node:net'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { TOKEN_MONITOR_CUTE_ASSET_BASE, TOKEN_MONITOR_WHALE_ASSET_BASE } from '@deepseek-ai/dsh-token-monitor-contract'
 import {
   createTokenMonitorAssetHandler,
   registerTokenMonitorAssetRoutes,
@@ -45,8 +46,8 @@ describe('token monitor asset routes', () => {
 
     expect(register).toHaveBeenCalledTimes(2)
     expect(register.mock.calls.map(([route]) => route)).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'prefix', path: '/assets/dsh-token-monitor/whale-girl' }),
-      expect.objectContaining({ kind: 'prefix', path: '/assets/dsh-token-monitor/settings-ui/cute' }),
+      expect.objectContaining({ kind: 'prefix', path: TOKEN_MONITOR_WHALE_ASSET_BASE }),
+      expect.objectContaining({ kind: 'prefix', path: TOKEN_MONITOR_CUTE_ASSET_BASE }),
     ]))
   })
 

@@ -200,13 +200,25 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
     }
   }
 
+  it('does not revive overlays or polling for a removed package on restart', async () => {
+    const fetcher = vi.fn(async (_url: string) => new Response(JSON.stringify({ ...installedSnapshot, pluginRemoved: true,
+      modules: installedSnapshot.modules.map(module => ({ ...module, status: 'removed', autoInstallBlocked: true })),
+    })))
+    vi.stubGlobal('fetch', fetcher)
+    const { ctx, injected } = createFakeClientContext()
+    await apply(ctx)
+    expect(injected).toHaveLength(0)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(fetcher.mock.calls[0]?.[0]).toContain('/api/token-monitor/modules')
+  })
+
   it('keeps the legacy event registry optional in the activation contract', () => {
     expect(inject).toEqual(['slots', 'connection', 'remote.session', 'modelDirectories', 'locale'])
   })
 
   it('activates the remaining UI when the new host has no conversationEvents service', async () => {
     const { ctx, injected } = createFakeClientContext({ withConversationEvents: false })
-    expect(() => apply(ctx)).not.toThrow()
+    await expect(apply(ctx)).resolves.toBeUndefined()
     await waitFor(() => expect(injected.some(entry => entry.key === 'conversation.composer.dock')).toBe(true))
     expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(false)
     expect(injected.some(entry => entry.key === 'conversation.composer.dock')).toBe(true)
@@ -215,7 +227,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
 
   it('preserves the single-usage node on old hosts that provide conversationEvents', async () => {
     const { ctx, injected, conversationEvents } = createFakeClientContext()
-    apply(ctx)
+    await apply(ctx)
     await waitFor(() => expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true))
     expect(conversationEvents?.register).toHaveBeenCalledTimes(1)
     expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true)
@@ -223,7 +235,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
 
   it('registers the single-usage node through the 0.1.7 uiConversation.events registry', async () => {
     const { ctx, injected, uiConversation, conversationEvents } = createFakeClientContext({ withUiConversation: true })
-    apply(ctx)
+    await apply(ctx)
     await waitFor(() => expect(injected.some(entry => entry.key === 'conversation.chat.node')).toBe(true))
     expect(uiConversation?.events.register).toHaveBeenCalledTimes(1)
     expect(conversationEvents?.register).not.toHaveBeenCalled()
@@ -231,7 +243,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
 
   it('waits for the trailing seat declaration instead of crashing on old hosts', async () => {
     const { ctx, injected, registered } = createFakeClientContext()
-    apply(ctx)
+    await apply(ctx)
     await waitFor(() => expect(injected.some(entry => entry.key === SESSION_ROW_TRAILING_SLOT)).toBe(true))
     const trailing = injected.find(entry => entry.key === SESSION_ROW_TRAILING_SLOT)
     expect(trailing).toBeDefined()
@@ -249,7 +261,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
   it('injects a display scope loader backed by the idle model directory', async () => {
     const { ctx, injected, registered, modelDirectories } = createFakeClientContext()
     vi.stubGlobal('fetch', vi.fn(async () => new Response('null', { status: 200 })))
-    apply(ctx)
+    await apply(ctx)
     injected.find(entry => entry.key === 'shell.overlay')?.callback()
     const balance = registered.find(entry => entry.options.id === 'token-monitor-balance')
     const injectedProps = (balance?.options.inject as (() => Record<string, unknown>))()
@@ -264,7 +276,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
 
   it('registers the formal badge once the trailing seat is declared', async () => {
     const { ctx, injected, registered } = createFakeClientContext()
-    apply(ctx)
+    await apply(ctx)
     await waitFor(() => expect(injected.some(entry => entry.key === SESSION_ROW_TRAILING_SLOT)).toBe(true))
     const trailing = injected.find(entry => entry.key === SESSION_ROW_TRAILING_SLOT)
     expect(trailing).toBeDefined()
@@ -279,7 +291,7 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
 
   it('loads the global catalog through the Host remote service and propagates failures', async () => {
     const { ctx, injected, registered, modelCatalog } = createFakeClientContext()
-    apply(ctx)
+    await apply(ctx)
     injected.find(entry => entry.key === 'shell.overlay')?.callback()
     const balance = registered.find(entry => entry.options.id === 'token-monitor-balance')
     const props = (balance?.options.inject as () => Record<string, unknown>)()
@@ -292,6 +304,17 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
 })
 
 describe('LegacySessionCostBridge (old-host fallback)', () => {
+  it('shows the durable ledger amount when an old host has no projection cost', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ sessions: [{
+      id: 's-ledger', cost: 4.2408, calls: 274, inputTokens: 1, cacheReadTokens: 0,
+      cacheWriteTokens: 0, outputTokens: 1, totalTokens: 2, lastActivity: 1,
+    }] }))))
+    appendRow(legacyRowHtml('Ledger'))
+    render(<LegacySessionCostBridge {...kitFor(listState([summary('s-ledger', 'Ledger')]))} />)
+    await waitFor(() => expect(injectedNodes()[0]?.textContent).toBe('¥4.24'))
+    expect(injectedNodes()).toHaveLength(1)
+  })
+
   it('injects the amount between title and time on a legacy row', () => {
     appendRow(legacyRowHtml('One'))
     render(<LegacySessionCostBridge {...kitFor(listState([summary('s1', 'One', 0.008)]))} />)

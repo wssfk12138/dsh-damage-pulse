@@ -4,6 +4,8 @@ import { existsSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { bootModules } from './module-bootstrap.ts'
+import { registerUserSettings } from './user-settings.ts'
+import type { TokenMonitorUserConfig } from './config-base.ts'
 import type {} from '@deepseek-ai/dsh-session-projection'
 import type {} from '@deepseek-ai/dsh-session-projection-cache'
 import type {} from '@deepseek-ai/dsh-session-persistence'
@@ -18,7 +20,8 @@ export const inject = ['sessions', 'credentials', 'settings']
 /** Start the installed release; a whole-plugin tombstone leaves this loader inert.
  * @param ctx Host-owned plugin lifetime.
  */
-export async function apply(ctx: Context): Promise<void> {
+export async function apply(ctx: Context, config: TokenMonitorUserConfig): Promise<void> {
+  registerUserSettings(ctx, config)
   const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
   // Source checkouts keep the browser bundle beside the workspace package. A
   // packed install has no workspace tree, so prefer the installed runtime/client

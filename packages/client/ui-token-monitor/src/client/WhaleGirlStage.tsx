@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { TOKEN_MONITOR_WHALE_ASSET_BASE } from '@deepseek-ai/dsh-token-monitor-contract'
 
 export type WhalePose = 'idle' | 'weak-pain' | 'normal-pain' | 'critical-pain' | 'critical-combo' | 'heal-happy' | 'revive-recharge'
 
@@ -12,7 +13,7 @@ interface WhaleGirlStageProps {
   syncEpoch?: number
 }
 
-const ASSET_ROOT = '/assets/dsh-token-monitor/whale-girl'
+const ASSET_ROOT = TOKEN_MONITOR_WHALE_ASSET_BASE
 const IDLE_ROOT = `${ASSET_ROOT}/idle-v4-r2`
 const FEEDBACK_EXPRESSION_ROOT = `${ASSET_ROOT}/feedback-expression-v4-r4-model/frames`
 const CRITICAL_EXPRESSION_ROOT = `${ASSET_ROOT}/feedback-expression-v4-r5-critical-model/frames`

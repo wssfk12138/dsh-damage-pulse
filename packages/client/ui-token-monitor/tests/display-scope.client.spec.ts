@@ -23,6 +23,14 @@ describe('foreground display scope', () => {
     await expect(load(SessionId('main'), new AbortController().signal)).rejects.toThrow('Execution route unavailable')
     expect(directories.directoryFor).not.toHaveBeenCalled()
   })
+  it('reports an absent core without parsing JSON or borrowing the selector', async () => {
+    const directories = { directoryFor: vi.fn() }
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    const load = createDisplayScopeLoader(directories, async () => ({}), fetcher)
+    expect(await load(SessionId('main'), new AbortController().signal)).toBeUndefined()
+    expect(directories.directoryFor).not.toHaveBeenCalled()
+    expect(fetcher.mock.calls[0]?.[0]).toContain('/modules/display-scope?')
+  })
   it('never lets a delayed background response replace a new foreground', async () => {
     vi.useFakeTimers()
     let selected = 'A'

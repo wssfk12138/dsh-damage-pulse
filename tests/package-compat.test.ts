@@ -55,6 +55,14 @@ test("legacy client runtime stays development-only", () => {
 })
 
 test("dsh-tools is declared as a peer and pinned for development builds", () => {
-  assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-tools"], "^0.1.0-rc.5 || ^0.1.1-rc.2 || ^0.1.2-alpha.1 || ^0.1.3-alpha.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-rc.2")
+  assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-tools"], "^0.1.0-rc.5 || ^0.1.1-rc.2 || ^0.1.2-alpha.1 || ^0.1.3-alpha.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-rc.2 || 0.2.0-rc.2")
   assert.ok(manifest.devDependencies?.["@deepseek-ai/dsh-tools"], "dsh-tools devDependency must be pinned")
+})
+
+test("current desktop peers admit only the verified 0.2 prerelease", () => {
+  for (const [name, range] of Object.entries(manifest.peerDependencies)) {
+    if (!name.startsWith("@deepseek-ai/dsh-")) continue
+    assert.ok(range.split(" || ").includes("0.2.0-rc.2"), name)
+    assert.ok(!range.includes("^0.2"), name)
+  }
 })

@@ -1,0 +1,1 @@
+.surface { border-radius: var(--dsw-radius-sm, var(--dsh-token-monitor-radius-sm)); background: var(--dsw-menu-surface-fill, var(--dsw-specific-menu, var(--dsw-alias-detail-card))); backdrop-filter: var(--dsw-menu-backdrop-filter, none); color: var(--dsw-alias-label-primary); }

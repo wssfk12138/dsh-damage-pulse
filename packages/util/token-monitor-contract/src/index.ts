@@ -12,6 +12,22 @@ export const TOKEN_MONITOR_SETTINGS_MAX_BODY_BYTES = 16 * 1024
 /** Maximum daily budget accepted by Token Monitor settings validation. */
 export const TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY = 1_000_000
 
+/**
+ * Browser-relative base path the plugin serves its PNG assets from.
+ *
+ * The desktop shell answers every `/assets/**` request itself from its own
+ * frozen front-end bundle, so a plugin asset published under that prefix never
+ * reaches the Host and the browser gets a 404. Plugin assets are therefore
+ * published under a document-relative namespace of their own, which the shell
+ * forwards to the Host unchanged. Both the Host route table and the Client
+ * image URLs derive from this one constant so they cannot drift apart.
+ */
+export const TOKEN_MONITOR_ASSET_BASE = '/token-monitor-assets'
+/** Browser-relative base path of the whale-girl animation frames. */
+export const TOKEN_MONITOR_WHALE_ASSET_BASE = `${TOKEN_MONITOR_ASSET_BASE}/whale-girl`
+/** Browser-relative base path of the small settings and module icons. */
+export const TOKEN_MONITOR_CUTE_ASSET_BASE = `${TOKEN_MONITOR_ASSET_BASE}/settings-ui/cute`
+
 /** Metric displayed in the compact Token Monitor widget. */
 export type TokenMonitorDisplayMode = 'balance' | 'spend'
 

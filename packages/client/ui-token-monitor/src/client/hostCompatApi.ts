@@ -69,7 +69,10 @@ export function createHostCompatApi(
 ): HostCompatApi {
   return {
     async status(signal) {
-      const response = await fetchImpl(path, { signal, headers: { accept: 'application/json' } })
+      const response = await fetchImpl(path, {
+        ...signal === undefined ? {} : { signal },
+        headers: { accept: 'application/json' },
+      })
       if (!response.ok) throw new HostCompatProtocolError(`HTTP ${String(response.status)}`)
       return parseHostCompatStatus(await response.json())
     },

@@ -1,12 +1,13 @@
 import { useId, useRef, useState, useEffect } from 'react'
 import type { ModuleRestorePlan, ModuleSnapshot, ModuleUpdateStatus } from '@deepseek-ai/dsh-token-monitor-contract'
+import { TOKEN_MONITOR_CUTE_ASSET_BASE } from '@deepseek-ai/dsh-token-monitor-contract'
 import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DetailKey, DetailTranslate } from './detail-locales.ts'
 import { moduleApi } from './moduleApi.ts'
 import { ManagerCommunityIcon } from './ModuleManagerIcons.tsx'
 import css from './ModuleManagerPanel.module.css'
 
-const asset = (name: string) => `/assets/dsh-token-monitor/settings-ui/cute/${name}.png`
+const asset = (name: string) => `${TOKEN_MONITOR_CUTE_ASSET_BASE}/${name}.png`
 const labels: Record<string, [DetailKey, DetailKey, string]> = {
   pet: ['modulesPet', 'modulesPetDescription', 'warning'],
   overview: ['modulesOverview', 'modulesOverviewDescription', 'warning'],

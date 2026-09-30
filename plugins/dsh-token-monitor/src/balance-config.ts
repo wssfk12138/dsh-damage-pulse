@@ -2,7 +2,7 @@
 import { evaluateBalanceScript, OFFICIAL_BALANCE_SCRIPT, validateBalanceRequest, type BalanceRequest } from './balance-script.ts'
 import type { BuiltInBalanceAdapter } from './balance-adapters.ts'
 import { endpointKey, validateBalanceEndpoint, validateBalanceScripts, BalanceScriptConflictError, MAX_BALANCE_ENDPOINTS, type BalanceEndpoint, type BalanceScriptEntry } from './balance-storage.ts'
-import { OFFICIAL_PROVIDER_ID, isOfficialProvider } from './pricing.ts'
+import { isOfficialProvider } from './pricing.ts'
 import { refuseScriptLiteral, type RefusedScriptLiteral } from './script-literals.ts'
 import { PluginStoreConflictError, type TokenMonitorStore } from './plugin-store.ts'
 

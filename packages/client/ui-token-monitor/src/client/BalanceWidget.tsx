@@ -1,3 +1,4 @@
+import { MenuSurface } from './MenuSurface.tsx'
 /**
  * 余额悬浮卡片：挂载在 frame 级浮动层（shell.overlay，右下角）。
  *
@@ -18,6 +19,7 @@ import type { PropsLocale, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createBillingEvents } from './billingEvents.ts'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { type BillingSnapshot, type TokenMonitorSettingsSnapshot, type TokenMonitorSettingsPatchRequest } from '@deepseek-ai/dsh-token-monitor-contract'
+import { TOKEN_MONITOR_WHALE_ASSET_BASE } from '@deepseek-ai/dsh-token-monitor-contract'
 import { PRODUCT_NAME } from './branding.ts'
 import type { RouteEligibilityLoader } from './routeEligibility.ts'
 import { useRouteEligibility } from './useRouteEligibility.ts'
@@ -85,7 +87,7 @@ const CARD: React.CSSProperties = {
 const RED = '#ff3b30'
 const GREEN = '#30a46c'
 const UNKNOWN_COLOR = '#8a8a8a'
-const WHALE_ASSET_ROOT = '/assets/dsh-token-monitor/whale-girl'
+const WHALE_ASSET_ROOT = TOKEN_MONITOR_WHALE_ASSET_BASE
 /** 鲸鱼娘宽度按卡片宽度取比例：显示用量概览时卡片更宽，用较小比例维持角色视觉尺寸。 */
 /** 鲸鱼娘宽度：无论悬浮卡片多宽，都取卡片宽度的 90%。 */
 const WHALE_WIDTH = '90%'
@@ -373,7 +375,7 @@ export function BalanceWidget({
   const petInstalled = installed('pet'), overviewInstalled = installed('overview')
   const notifyInstalled = installed('notify'), billingInstalled = installed('billing'), wechatInstalled = installed('wechat')
   const [managerOpen, setManagerOpen] = useState(false)
-  const scope = useDisplayScope(useSessions, loadDisplayScope)
+  const scope = useDisplayScope(useSessions, loadDisplayScope, useModules === undefined || modules !== undefined && !modules.pluginRemoved && !modules.restartRequired)
   const legacyEligible = useRouteEligibility(useSessions, loadRouteEligibility, loadDisplayScope !== undefined || previewOverride !== undefined)
   const scopeKey = displayScopeKey(scope)
   const activeProviderRef = useRef(scope?.provider)
@@ -956,13 +958,15 @@ export function BalanceWidget({
     if (!shouldPoll || !usageVisible) return
     const controller = new AbortController()
     let timer: ReturnType<typeof setTimeout> | undefined
+    let unavailable = false
     const query = scope ? '?' + new URLSearchParams({ provider: scope.provider, model: scope.model, ...(scope.sessionId === undefined ? {} : { sessionId: scope.sessionId }) }) : ''
     // 当前会话没有该模型的记录时，再按“供应商 + 模型”跨会话取该模型最近一条成功记录：
     // 用户要求“只要之前用过该模型就显示它的用量”，同时不得借用其它模型的数据。
     const modelQuery = scope && scope.sessionId !== undefined ? '?' + new URLSearchParams({ provider: scope.provider, model: scope.model }) : query
     const read = async (search: string): Promise<UsageOverview | null | undefined> => {
       try {
-        const response = await fetch('/api/token-monitor/overview' + search, { cache: 'no-store', signal: controller.signal })
+        const response = await fetch('/api/token-monitor/modules/overview' + search, { cache: 'no-store', signal: controller.signal })
+        if (response.status === 204) { unavailable = true; void refreshModules?.(); return undefined }
         return response.ok ? await response.json() as UsageOverview | null : undefined
       } catch { return undefined /* Keep the current scope's last telemetry during transient failures. */ }
     }
@@ -973,11 +977,11 @@ export function BalanceWidget({
         setUsageOverview(data)
         if (data !== null) setFallbackUsageSnapshot(data)
       }
-      if (!controller.signal.aborted) timer = setTimeout(() => { void poll() }, 1000)
+      if (!controller.signal.aborted && !unavailable) timer = setTimeout(() => { void poll() }, 1000)
     }
     void poll()
     return () => { controller.abort(); clearTimeout(timer) }
-  }, [shouldPoll, usageVisible, scope])
+  }, [shouldPoll, usageVisible, scope, refreshModules])
 
   // 扣费轮询：每秒增量拉取；严格按 seq 逐事件入队，不按类型聚合或重排。
   useEffect(() => {
@@ -1213,6 +1217,10 @@ export function BalanceWidget({
     const poll = async () => {
       const result = await notificationEventsApi.poll(notificationQueueRef.current.cursor, controller.signal)
       if (controller.signal.aborted) return
+      if (!result.ok && result.failure.kind === 'unavailable') {
+        void refreshModules?.()
+        return
+      }
       timer = setTimeout(() => void poll(), 1_000)
       if (!result.ok) return
       if (!notificationSeeded.current) {
@@ -1235,7 +1243,7 @@ export function BalanceWidget({
       clearTimeout(timer)
       if (notificationBubbleTimer.current !== undefined) clearTimeout(notificationBubbleTimer.current)
     }
-  }, [consumeNotification, shouldPoll, scopeKey, notifyInstalled])
+  }, [consumeNotification, shouldPoll, scopeKey, notifyInstalled, refreshModules])
 
   // Keep the portal mounted across background conversation route changes.
   // Legacy route checks must settle before the card is visible; an explicit
@@ -1285,7 +1293,7 @@ export function BalanceWidget({
       />}
       {!balanceAvailable && !usageVisible && <button type="button" className={moduleCss.anchor} onClick={() => setManagerOpen(true)} aria-label={t('modulesAnchor')}>⚙</button>}
       {contextMenu !== null && (
-        <div
+        <MenuSurface
           ref={contextMenuRef}
           role="menu"
           aria-label="余额显示设置"
@@ -1302,8 +1310,7 @@ export function BalanceWidget({
             top: contextMenu.top,
             minWidth: 176,
             padding: 6,
-            borderRadius: 6,
-            background: 'var(--dsh-color-surface-overlay, rgba(28, 28, 28, 0.96))',
+            borderRadius: 'var(--dsw-radius-sm, var(--dsh-token-monitor-radius-sm))',
             color: 'var(--dsh-color-text, #e8e8e8)',
             boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
             border: '1px solid rgba(255,255,255,0.12)',
@@ -1366,7 +1373,7 @@ export function BalanceWidget({
           </button>}
           {billingInstalled && <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setBillingOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>¥</span><span>计费规则</span></button>}
           <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setManagerOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>↻</span><span>{t('modulesTitle')}</span></button>
-        </div>
+        </MenuSurface>
       )}
       {overviewInstalled && detailsOpen && <Suspense fallback={null}><UsageDetailsWindow
         billingInstalled={billingInstalled} t={t} onClose={() => setDetailsOpen(false)}

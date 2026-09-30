@@ -246,6 +246,7 @@ export function registerBillingSettingsRoutes(ctx: Context, store: TokenMonitorS
     // 自有状态与活配置任一变化都推送一次完整快照。
     const unwatch = store.subscribe(publish)
     const unwatchConfig = ctx.events.on('loader/volatile-update', publish)
+    const unwatchNamespace = ctx.events.on('settings/updated', publish)
     const unregister = ctx.webServer.register({
       kind: 'exact', path: '/api/token-monitor/billing/events',
       handler: (request, response) => {
@@ -257,7 +258,7 @@ export function registerBillingSettingsRoutes(ctx: Context, store: TokenMonitorS
         response.write(`data: ${JSON.stringify(snapshot())}\n\n`)
       },
     })
-    return () => { unwatch(); unwatchConfig(); unregister(); for (const client of clients) client.end(); clients.clear() }
+    return () => { unwatch(); unwatchConfig(); unwatchNamespace(); unregister(); for (const client of clients) client.end(); clients.clear() }
   }, 'dsh-token-monitor: live billing snapshots')
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact', path: '/api/token-monitor/billing',
