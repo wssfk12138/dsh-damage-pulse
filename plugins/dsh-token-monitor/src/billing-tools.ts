@@ -8,6 +8,8 @@ import { readBillingSnapshot } from './settings.ts'
 import type { TokenMonitorStore } from './plugin-store.ts'
 import type { TokenMonitorSettingsHandle } from './settings-handle.ts'
 import { ModuleWork } from './module-work.ts'
+import { resolveBillingProvider } from './billing-rule-resolution.ts'
+import { OFFICIAL_PROVIDER_ID } from './pricing.ts'
 
 const rate = { oneOf: [{ type: 'number' }, { type: 'null' }] } as const
 const prices = { type: 'object', additionalProperties: false, properties: {
@@ -34,7 +36,7 @@ export function registerBillingTools(ctx: Context, store: TokenMonitorStore, han
     toolCtx.effect(() => () => work.stop(), 'token-monitor: billing tool operations')
     toolCtx.effect(() => toolCtx.tools.register(defineTool({
       name: 'token_monitor_billing_get',
-      description: 'Read Host-global model billing rules and their revision. Only currently available models are listed. Use exact provider/model IDs from this result before updating prices. Rates are CNY per million tokens; no currency conversion. Does not change settings or historical costs.',
+      description: 'Read Host-global model billing rules and their revision. Only currently available models are listed. Each group reports ruleProvider/ruleSource: the provider entry that actually governs billing, and whether it is an explicit saved entry or inherits the shared official-family rules. enabled and each model rule come from that governing entry, so an inherited account route no longer reads as disabled. enabled alone does not prove every model has complete prices; check model.hasRule. Use exact provider/model IDs from this result before updating prices. Rates are CNY per million tokens; no currency conversion. Does not change settings or historical costs.',
       parameters: { provider: { type: 'string', description: 'Optional exact provider ID.' }, model: { type: 'string', description: 'Optional exact model ID; provide provider too.' } },
       output,
       async execute(args, exec) {
@@ -50,8 +52,11 @@ export function registerBillingTools(ctx: Context, store: TokenMonitorStore, han
         exec.signal.throwIfAborted()
         const snapshot = readBillingSnapshot(store, handle)
         return { revision: snapshot.revision, currency: 'CNY', priceUnit: 'per million tokens', timezone: 'Asia/Shanghai', groups: groups.map(group => {
-          const provider = snapshot.rules.providers.find(p => p.provider === group.provider)
-          return { ...group, enabled: provider?.enabled ?? false, models: group.models.map(model => ({ ...model, rule: provider?.models.find(m => m.model === model.model) ?? emptyBillingRule(model.model) })) }
+          const { owner, source } = resolveBillingProvider(snapshot.rules, group.provider)
+          return { ...group, enabled: owner?.enabled ?? false, ruleProvider: owner?.provider ?? null, ruleSource: source, models: group.models.map(model => ({
+            ...model, hasRule: owner?.models.some(item => item.model === model.model) ?? false,
+            rule: owner?.models.find(item => item.model === model.model) ?? emptyBillingRule(model.model),
+          })) }
         }) } as unknown as JsonValue
         })
       },
@@ -59,7 +64,7 @@ export function registerBillingTools(ctx: Context, store: TokenMonitorStore, han
     })), 'token-monitor: read billing tool')
     toolCtx.effect(() => toolCtx.tools.register(defineTool({
       name: 'token_monitor_billing_update',
-      description: 'Save only the requested fields for one available provider/model. Call token_monitor_billing_get first and supply its expectedRevision. Changes are Host-global and apply to requests started after this update; in-flight and historical costs keep their original rules. Preserve unspecified fields and other models. On revision conflict read again; never blindly retry. Prices are CNY per million tokens, multiplier must be positive. Change prices only when requested by the user; do not invent rates. providerEnabled affects every model under that provider.',
+      description: 'Save only the requested fields for one available provider/model. Call token_monitor_billing_get first and supply its expectedRevision, its exact provider/model IDs, and respect ruleSource. When a provider inherits the shared official-family rules (ruleSource official-family), this tool refuses the update with INHERITED_BILLING_RULES and saves nothing, because creating a partial account entry would shadow the inherited prices. Change the shared prices in the existing billing settings instead. Changes are Host-global and apply to requests started after this update; in-flight and historical costs keep their original rules. Preserve unspecified fields and other models. On revision conflict read again; never blindly retry. Prices are CNY per million tokens, multiplier must be positive. Change prices only when requested by the user; do not invent rates. providerEnabled affects every model under that provider.',
       parameters: {
         provider: { type: 'string', required: true }, model: { type: 'string', required: true }, expectedRevision: { type: 'integer', required: true },
         providerEnabled: { type: 'boolean', description: 'Explicit provider-wide billing switch; a newly created provider defaults to disabled.' },
@@ -81,6 +86,11 @@ export function registerBillingTools(ctx: Context, store: TokenMonitorStore, han
         exec.signal.throwIfAborted()
         const snapshot = readBillingSnapshot(store, handle)
         if (snapshot.revision !== args.expectedRevision) throw new Error('Billing revision conflict. Read current rules and reapply only the user-requested changes.')
+        // 继承共享规则时拒绝写入：新建局部账号条目会遮蔽继承价格并默认关闭计费。
+        const inherited = resolveBillingProvider(snapshot.rules, args.provider)
+        if (inherited.source === 'official-family') throw new Error('INHERITED_BILLING_RULES: provider "' + args.provider
+          + '" has no entry of its own and inherits the shared "' + (inherited.owner?.provider ?? OFFICIAL_PROVIDER_ID)
+          + '" rules, so this update was refused and nothing was saved. Change the shared DeepSeek prices in the existing billing settings; a dedicated account rule needs its own explicit creation flow, which this tool does not provide.')
         let provider = snapshot.rules.providers.find(p => p.provider === args.provider)
         if (!provider) { provider = { provider: args.provider, enabled: false, models: [] }; snapshot.rules.providers.push(provider) }
         if (args.providerEnabled !== undefined) provider.enabled = args.providerEnabled

@@ -9,6 +9,41 @@ import { createBillingEvents } from '../src/client/billingEvents.ts'
 
 let stopEvents: (() => void) | undefined
 
+it('shows inherited account prices without creating an override and explicitly opens their shared owner', async () => {
+  mount(snapshot(), [{ id: 'deepseek-account', models: [{ id: 'deepseek-v4-flash', name: 'Flash' }] }])
+  const account = await screen.findByRole('button', { name: 'deepseek-account / Flash' })
+  expect(account.textContent).not.toContain(zh.unpriced)
+  fireEvent.click(account)
+  const input = screen.getByRole<HTMLInputElement>('spinbutton', { name: '人民币 / 百万 Token · 未缓存输入' })
+  expect(input.value).toBe('1')
+  expect(input.closest('fieldset[disabled]')).not.toBeNull()
+  expect(screen.getByRole<HTMLInputElement>('checkbox', { name: '启用供应商计费' }).disabled).toBe(true)
+  expect(screen.getByText(/当前继承 deepseek-official 的共享计费规则/)).toBeTruthy()
+  expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === 'PUT')).toBe(false)
+  fireEvent.click(screen.getByRole('button', { name: '编辑共享规则' }))
+  fireEvent.change(screen.getByRole('textbox', { name: '倍率' }), { target: { value: '3' } })
+  await screen.findByText(zh.billingSaved)
+  const request = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === 'PUT')![1]!
+  const rules = JSON.parse(request.body as string).rules as BillingRules
+  expect(rules.providers.map(provider => provider.provider)).toEqual(['deepseek-official'])
+  expect(rules.providers[0]!.models[0]!.multiplier).toBe(3)
+  expect(rules.providers[0]!.models[0]!.fixed.input).toBe(1)
+})
+
+it('does not fall back to shared prices for an explicit empty or disabled account entry', async () => {
+  const initial = snapshot()
+  initial.rules.providers.push({ provider: 'deepseek-account', enabled: false, models: [] })
+  mount(initial, [{ id: 'deepseek-account', models: [{ id: 'deepseek-v4-flash', name: 'Flash' }] }])
+  const account = await screen.findByRole('button', { name: 'deepseek-account / Flash' })
+  expect(account.textContent).toContain(zh.disabled)
+  fireEvent.click(account)
+  expect(screen.queryByText(/当前继承/)).toBeNull()
+  expect(screen.getByRole<HTMLInputElement>('spinbutton', { name: '人民币 / 百万 Token · 未缓存输入' }).value).toBe('')
+  const enabled = screen.getByRole<HTMLInputElement>('checkbox', { name: '启用供应商计费' })
+  expect(enabled.disabled).toBe(false)
+  expect(enabled.checked).toBe(false)
+})
+
 it('retains a newly selected model and newer edits while an earlier autosave finishes', async () => {
   mount()
   fireEvent.click(await screen.findByRole('button', { name: 'deepseek-official / deepseek-v4-flash' }))

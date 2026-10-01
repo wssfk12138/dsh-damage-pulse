@@ -4,6 +4,7 @@ import type { CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import { emptyBillingRule, normalizeMultiplier, validateBillingRules } from '@deepseek-ai/dsh-token-monitor-contract'
+import { resolveBillingProvider } from '@deepseek-ai/dsh-token-monitor-contract/src/billing-rule-resolution.ts'
 import type { BillingModelRule, BillingRules, BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
 import { zh } from './detail-locales.ts'
 import type { DetailKey, DetailTranslate } from './detail-locales.ts'
@@ -299,15 +300,27 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     const combined = catalog.groups.flatMap(group => group.models.map(model => ({
       provider: group.id, providerName: group.name, model: model.id, name: model.name,
     })))
+    // Account-only catalogs still need a reachable editor for their saved shared rules.
+    if (draft) for (const row of [...combined]) {
+      const resolved = resolveBillingProvider(draft, row.provider)
+      if (resolved.source === 'official-family' && resolved.owner) {
+        const owner = resolved.owner
+        if (!combined.some(item => item.provider === owner.provider && item.model === row.model)) {
+          combined.push({ ...row, provider: owner.provider, providerName: owner.provider })
+        }
+      }
+    }
     return [...new Map(combined.map(row => [modelKey(row), row])).values()]
-  }, [catalog])
+  }, [catalog, draft])
   const providerIds = [...new Set([
-    ...catalog.groups.map(group => group.id), ...catalog.failures.map(failure => failure.id),
+    ...rows.map(row => row.provider), ...catalog.failures.map(failure => failure.id),
   ])]
   const searchWords = query.trim().toLowerCase().split(/[\s/]+/).filter(Boolean)
   const visibleRows = rows.filter(row => (!providerFilter || row.provider === providerFilter)
     && searchWords.every(word => [row.provider, row.providerName, row.model, row.name].join(' ').toLowerCase().includes(word)))
-  const providerRule = draft?.providers.find(provider => provider.provider === selectedProvider)
+  const resolvedProvider = draft && resolveBillingProvider(draft, selectedProvider)
+  const providerRule = resolvedProvider?.owner
+  const inherited = resolvedProvider?.source === 'official-family'
   const selectedRow = rows.find(row => row.provider === selectedProvider && row.model === selectedModel)
   const rule = selectedRow && (providerRule?.models.find(model => model.model === selectedModel) ?? emptyBillingRule(selectedModel))
   const selectedKey = modelKey({ provider: selectedProvider, model: selectedModel })
@@ -460,7 +473,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     <fieldset ref={bodyRef} className={css.body} disabled={!draft} style={{ '--billing-list-ratio': String(split * 100) + '%' } as CSSProperties}>
       <section className={css.sidebar}>
         {selectedProvider && <label className={css.checkbox}>
-          <input type="checkbox" checked={providerRule?.enabled ?? true} onChange={(event) => {
+          <input type="checkbox" disabled={inherited} checked={providerRule?.enabled ?? true} onChange={(event) => {
             const enabled = event.target.checked
             dirty.current = true
             editVersion.current++
@@ -475,7 +488,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
         </div>}
         <div className={css.modelList}>
           {visibleRows.map((row) => {
-            const provider = draft?.providers.find(item => item.provider === row.provider)
+            const provider = draft && resolveBillingProvider(draft, row.provider).owner
             const model = provider?.models.find(item => item.model === row.model)
             const status = provider?.enabled === false || model?.enabled === false ? t('disabled') : hasPrices(model) ? '' : t('unpriced')
             return <Button key={modelKey(row)} className={css.model} title={row.provider + ' / ' + row.model} aria-label={modelLabel(row)}
@@ -514,6 +527,11 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
           {rule ? <>
             <h3 title={selectedRow.provider + ' / ' + rule.model}>{modelLabel(selectedRow)}</h3>
             <p className={css.hint}>{selectedRow.provider} / {rule.model}</p>
+            {inherited && providerRule && <div className={css.hint}>
+              <p>{t('billingInherited', { provider: providerRule.provider })}</p>
+              <Button onClick={() => { setProviderFilter(''); select(providerRule.provider, selectedModel) }}>{t('billingEditShared')}</Button>
+            </div>}
+            <fieldset disabled={inherited} className={css.stack} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
             <BillingSourceDetails source={rule.source} t={t} />
             {currentTemplate?.rule.source && rule.source && currentTemplate.rule.source.version !== rule.source.version && <p role="status">{t('billingTemplateChanged')}</p>}
             {templatesFailed ? <div role="alert">{t('billingTemplatesFailed')}<Button onClick={() => { void loadTemplates() }}>{t('billingRetry')}</Button></div> : <div className={css.stack}>
@@ -569,6 +587,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
               <h4>{t('billingTiers')}</h4><p className={css.hint}>{t('billingTierHint')}</p>
               <TierFields t={t} tiers={rule.tiers ?? []} onChange={(tiers) => { update({ tiers }) }} />
             </>}
+            </fieldset>
           </> : <p>{t('billingSelect')}</p>}
         </div>
       </section>

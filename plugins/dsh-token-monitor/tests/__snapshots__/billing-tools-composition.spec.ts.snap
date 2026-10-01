@@ -3,7 +3,7 @@
 exports[`loads production plugin, changes prices through real agent tools, pushes rules and preserves costs across reload > model-visible billing tools 1`] = `
 [
   {
-    "description": "Read Host-global model billing rules and their revision. Only currently available models are listed. Use exact provider/model IDs from this result before updating prices. Rates are CNY per million tokens; no currency conversion. Does not change settings or historical costs.",
+    "description": "Read Host-global model billing rules and their revision. Only currently available models are listed. Each group reports ruleProvider/ruleSource: the provider entry that actually governs billing, and whether it is an explicit saved entry or inherits the shared official-family rules. enabled and each model rule come from that governing entry, so an inherited account route no longer reads as disabled. enabled alone does not prove every model has complete prices; check model.hasRule. Use exact provider/model IDs from this result before updating prices. Rates are CNY per million tokens; no currency conversion. Does not change settings or historical costs.",
     "name": "token_monitor_billing_get",
     "parameters": {
       "properties": {
@@ -20,7 +20,7 @@ exports[`loads production plugin, changes prices through real agent tools, pushe
     },
   },
   {
-    "description": "Save only the requested fields for one available provider/model. Call token_monitor_billing_get first and supply its expectedRevision. Changes are Host-global and apply to requests started after this update; in-flight and historical costs keep their original rules. Preserve unspecified fields and other models. On revision conflict read again; never blindly retry. Prices are CNY per million tokens, multiplier must be positive. Change prices only when requested by the user; do not invent rates. providerEnabled affects every model under that provider.",
+    "description": "Save only the requested fields for one available provider/model. Call token_monitor_billing_get first and supply its expectedRevision, its exact provider/model IDs, and respect ruleSource. When a provider inherits the shared official-family rules (ruleSource official-family), this tool refuses the update with INHERITED_BILLING_RULES and saves nothing, because creating a partial account entry would shadow the inherited prices. Change the shared prices in the existing billing settings instead. Changes are Host-global and apply to requests started after this update; in-flight and historical costs keep their original rules. Preserve unspecified fields and other models. On revision conflict read again; never blindly retry. Prices are CNY per million tokens, multiplier must be positive. Change prices only when requested by the user; do not invent rates. providerEnabled affects every model under that provider.",
     "name": "token_monitor_billing_update",
     "parameters": {
       "properties": {
@@ -493,8 +493,9 @@ exports[`loads production plugin, changes prices through real agent tools, pushe
       "enabled": true,
       "models": [
         {
+          "hasRule": true,
           "model": "test-model",
-          "name": "Test model",
+          "name": "test-model",
           "rule": {
             "enabled": true,
             "fixed": {
@@ -546,6 +547,8 @@ exports[`loads production plugin, changes prices through real agent tools, pushe
       ],
       "name": "billing-test",
       "provider": "billing-test",
+      "ruleProvider": "billing-test",
+      "ruleSource": "explicit",
     },
   ],
   "priceUnit": "per million tokens",

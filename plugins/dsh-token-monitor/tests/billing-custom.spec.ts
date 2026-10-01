@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { billUsage, defaultBillingRules } from '../src/billing.ts'
+import { resolveBillingProvider } from '../src/billing-rule-resolution.ts'
 import type { BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
 import { validateBillingRules } from '@deepseek-ai/dsh-token-monitor-contract'
 
@@ -129,5 +130,73 @@ describe('custom billing', () => {
     expect(decision.billingStatus).toBe('priced')
     expect(decision.cost).toBeGreaterThan(0)
     expect(decision.billingRule?.model).toBe('deepseek-v4-pro')
+  })
+})
+
+/** 合成价格夹具：与时间、节假日、倍率无关，金额按定义手算，不复用被测函数。 */
+const SYNTHETIC = { input: 2, cacheHit: 0.5, cacheWrite: 2, output: 8 }
+const SYNTHETIC_USAGE = { inputTokens: 1_000_000, cacheReadTokens: 200_000, cacheWriteTokens: 100_000, outputTokens: 300_000 }
+function officialWith(rule: Partial<{ enabled: boolean; modelEnabled: boolean; multiplier: number }> = {}) {
+  const model = { model: 'deepseek-v4-pro', enabled: rule.modelEnabled ?? true, multiplier: rule.multiplier ?? 1, mode: 'fixed' as const,
+    fixed: { ...SYNTHETIC }, peak: { ...SYNTHETIC }, offPeak: { ...SYNTHETIC }, periods: [] }
+  return { revision: 7, rules: { version: 1, providers: [{ provider: 'deepseek-official', enabled: rule.enabled ?? true, models: [model] }] } } as unknown as BillingSnapshot
+}
+
+describe('billing rule resolution', () => {
+  it('T1: prices the account route through the inherited official rule at the independently computed amount', () => {
+    const saved = officialWith()
+    expect(resolveBillingProvider(saved.rules, 'deepseek-account')).toMatchObject({ source: 'official-family' })
+    const decision = billUsage(saved, SYNTHETIC_USAGE, 'deepseek-account', 'deepseek-v4-pro', Date.parse('2026-09-14T10:00:00+08:00'))
+    expect(decision.billingStatus).toBe('priced')
+    expect(decision).toMatchObject({ costInput: 2, costCacheRead: 0.1, costCacheWrite: 0.2, costOutput: 2.4 })
+    expect(decision.cost).toBeCloseTo(4.7, 10)
+  })
+
+  it('T2: keeps provider-disabled when the inherited official provider is switched off', () => {
+    const decision = billUsage(officialWith({ enabled: false }), SYNTHETIC_USAGE, 'deepseek-account', 'deepseek-v4-pro', Date.now())
+    expect(decision).toMatchObject({ billingStatus: 'disabled', billingReason: 'provider-disabled', cost: 0 })
+  })
+
+  it('T3: keeps model-disabled when the inherited model is switched off', () => {
+    const decision = billUsage(officialWith({ modelEnabled: false }), SYNTHETIC_USAGE, 'deepseek-account', 'deepseek-v4-pro', Date.now())
+    expect(decision).toMatchObject({ billingStatus: 'disabled', billingReason: 'model-disabled', cost: 0 })
+  })
+
+  it('T4: gives an explicit account entry precedence over the official rules', () => {
+    const saved = officialWith()
+    const account = { model: 'deepseek-v4-pro', enabled: true, multiplier: 1, mode: 'fixed' as const, fixed: { input: 10, cacheHit: 10, cacheWrite: 10, output: 10 }, peak: { input: 10, cacheHit: 10, output: 10 }, offPeak: { input: 10, cacheHit: 10, output: 10 }, periods: [] }
+    saved.rules.providers.push({ provider: 'deepseek-account', enabled: true, models: [account] })
+    expect(resolveBillingProvider(saved.rules, 'deepseek-account')).toMatchObject({ source: 'explicit' })
+    const decision = billUsage(saved, SYNTHETIC_USAGE, 'deepseek-account', 'deepseek-v4-pro', Date.now())
+    // 显式账号价 10 元/百万，绝不能用官方同名的 2 元价。
+    expect(decision.cost).toBeCloseTo(1 * 10 + 0.2 * 10 + 0.1 * 10 + 0.3 * 10, 10)
+  })
+
+  it('T5: keeps an explicit account entry from falling back per model to the official prices', () => {
+    const saved = officialWith()
+    const officialModels = saved.rules.providers[0]!.models
+    // 官方共享条目确实带有该模型；显式账号条目存在但故意缺它，只留一个官方没有的兄弟模型。
+    expect(officialModels.some(model => model.model === 'deepseek-v4-pro')).toBe(true)
+    const sibling = { ...officialModels[0]!, model: 'deepseek-v4-sibling' }
+    saved.rules.providers.push({ provider: 'deepseek-account', enabled: true, models: [sibling] })
+    expect(resolveBillingProvider(saved.rules, 'deepseek-account')).toMatchObject({ source: 'explicit' })
+    expect(resolveBillingProvider(saved.rules, 'deepseek-account').owner?.provider).toBe('deepseek-account')
+    const decision = billUsage(saved, SYNTHETIC_USAGE, 'deepseek-account', 'deepseek-v4-pro', Date.now())
+    // 账号缺该模型时保持缺规则：绝不逐模型借用官方同名的 2 元/百万价。
+    expect(decision).toMatchObject({ billingStatus: 'unpriced', billingReason: 'rule-missing', cost: 0, modelMultiplier: 1 })
+    expect(decision.billingRule).toBeUndefined()
+  })
+
+  it('T6: leaves a model missing from the inherited owner unpriced instead of guessing a price', () => {
+    const saved = officialWith()
+    const account = billUsage(saved, SYNTHETIC_USAGE, 'deepseek-account', 'deepseek-v4-unknown', Date.now())
+    expect(account).toMatchObject({ billingStatus: 'unpriced', billingReason: 'rule-missing', cost: 0 })
+  })
+
+  it('T7: never inherits official prices by name alone', () => {
+    const saved = officialWith()
+    expect(resolveBillingProvider(saved.rules, 'deepseek-account-eu')).toMatchObject({ source: 'none' })
+    const decision = billUsage(saved, SYNTHETIC_USAGE, 'deepseek-account-eu', 'deepseek-v4-pro', Date.now())
+    expect(decision).toMatchObject({ billingStatus: 'unpriced', billingReason: 'rule-missing', cost: 0 })
   })
 })

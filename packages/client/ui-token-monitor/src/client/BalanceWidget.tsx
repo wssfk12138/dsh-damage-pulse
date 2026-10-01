@@ -84,6 +84,13 @@ const CARD: React.CSSProperties = {
   zIndex: 1000,
 }
 
+/**
+ * 右键菜单固定使用暗色材料：宿主 MenuSurface 的填充变量随主题变化（浅色主题下是近白底），
+ * 而菜单文字、图标和悬停高亮都按暗色卡片设计，浅色主题会出现白底白字。
+ * 覆写宿主填充变量后，两个主题下都保持原来的暗色外观。
+ */
+const CONTEXT_MENU_MATERIAL = { '--dsw-menu-surface-fill': 'rgba(28, 28, 28, 0.96)' }
+
 const RED = '#ff3b30'
 const GREEN = '#30a46c'
 const UNKNOWN_COLOR = '#8a8a8a'
@@ -1311,7 +1318,8 @@ export function BalanceWidget({
             minWidth: 176,
             padding: 6,
             borderRadius: 'var(--dsw-radius-sm, var(--dsh-token-monitor-radius-sm))',
-            color: 'var(--dsh-color-text, #e8e8e8)',
+            ...CONTEXT_MENU_MATERIAL,
+            color: '#e8e8e8',
             boxShadow: '0 6px 20px rgba(0,0,0,0.35)',
             border: '1px solid rgba(255,255,255,0.12)',
             zIndex: 1100,

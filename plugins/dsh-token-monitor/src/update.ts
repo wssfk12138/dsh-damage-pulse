@@ -11,7 +11,7 @@ import { createRouteGuard } from './http-trust.ts'
 export const UPDATE_STATUS_PATH = '/api/token-monitor/update'
 export const UPDATE_INSTALL_PATH = '/api/token-monitor/update/install'
 export const UPDATE_REPOSITORY = 'wssfk12138/dsh-damage-pulse'
-export const CURRENT_RELEASE_VERSION = '4.2.1'
+export const CURRENT_RELEASE_VERSION = '4.2.2'
 const RELEASES_API = `https://api.github.com/repos/${UPDATE_REPOSITORY}/releases/latest`
 const ASSET_HOST = 'github.com'
 const REDIRECT_HOSTS = new Set(['release-assets.githubusercontent.com'])
@@ -23,6 +23,8 @@ const INSTALL_REQUEST_MAX_BYTES = 8 * 1024
 const ASSET_NAME = /^dsh-damage-pulse-v?(\d+\.\d+\.\d+)\.tgz$/
 const SHA256_DIGEST = /^sha256:([0-9a-f]{64})$/i
 const PROFILE_NAME = /^(?!node_modules$)[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+/** Desktop runs the profile from positional arguments; its host entry is not the DSH CLI. */
+const DESKTOP_HOST_ENTRY = /[\\/]dsh-desktop-host[\\/]lib[\\/]index\.js$/u
 
 type ReleaseAsset = { name: string; size: number; digest?: string; browser_download_url: string }
 type ReleaseInfo = { tag_name: string; html_url: string; assets: ReleaseAsset[] }
@@ -35,7 +37,7 @@ type UpdateStatus = {
   asset: { name: string; size: number; digest: string } | null
 }
 
-interface UpdateRuntime {
+export interface UpdateRuntime {
   argv: readonly string[]
   execArgv: readonly string[]
   execPath: string
@@ -164,8 +166,20 @@ async function downloadAsset(asset: ReleaseAsset): Promise<Uint8Array> {
   } finally { clearTimeout(timer) }
 }
 
+/** 桌面宿主把 profile 目录作为位置参数传入（`.../profiles/<name>`）；profile 名就是它的最后一段。 */
+function profileFromDirectory(value: string): string | undefined {
+  if (!path.isAbsolute(value)) return undefined
+  const parts = value.replaceAll('\\', '/').split('/')
+  const name = parts[parts.length - 1]
+  if (parts[parts.length - 2] !== 'profiles' || name === undefined || !PROFILE_NAME.test(name)) return undefined
+  return name
+}
+
 export function inferRunningProfile(argv: readonly string[]): string | undefined {
   const args = argv.slice(2)
+  // 桌面宿主不给 `--profile`，而是把 profile 目录作为位置参数交给宿主入口。
+  const directory = args.map(profileFromDirectory).find(name => name !== undefined)
+  if (directory !== undefined) return directory
   if (args[0] === 'web') return 'web'
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index]!
@@ -198,12 +212,40 @@ function loaderArgs(execArgv: readonly string[], cliEntry: string): string[] {
   return result
 }
 
-function runOfficialInstall(runtime: UpdateRuntime, profile: string, packagePath: string): Promise<void> {
+export interface InstallInvocation {
+  command: string
+  args: string[]
+  env?: NodeJS.ProcessEnv
+}
+
+/**
+ * Build the official install command for the running host.
+ * A CLI-launched profile reuses the CLI entry it already runs. The desktop host
+ * spawns the sibling `cli.js` shim in Electron's Node mode instead, because its own
+ * entry takes positional `runtimeDir`/`profileDir` arguments, not CLI subcommands.
+ */
+export function resolveInstallInvocation(runtime: UpdateRuntime, profile: string, packagePath: string): InstallInvocation {
   const cliEntry = runtime.argv[1]
   if (cliEntry === undefined || !path.isAbsolute(cliEntry)) throw new Error('无法定位当前 DSH CLI 入口')
-  const args = [...loaderArgs(runtime.execArgv, cliEntry), cliEntry, 'plugin', '--profile', profile, 'add', packagePath]
+  if (DESKTOP_HOST_ENTRY.test(cliEntry)) {
+    return {
+      command: runtime.execPath,
+      args: ['--expose-internals', path.join(path.dirname(cliEntry), 'cli.js'), 'plugin', '--profile', profile, 'add', packagePath],
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+    }
+  }
+  return { command: runtime.execPath, args: [...loaderArgs(runtime.execArgv, cliEntry), cliEntry, 'plugin', '--profile', profile, 'add', packagePath] }
+}
+
+function runOfficialInstall(runtime: UpdateRuntime, profile: string, packagePath: string): Promise<void> {
+  const invocation = resolveInstallInvocation(runtime, profile, packagePath)
   return new Promise((resolve, reject) => {
-    const child = spawn(runtime.execPath, args, { shell: false, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn(invocation.command, invocation.args, {
+      shell: false,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      ...(invocation.env === undefined ? {} : { env: invocation.env }),
+    })
     let diagnostics = ''
     const collect = (chunk: Buffer): void => { diagnostics = `${diagnostics}${chunk.toString('utf8')}`.slice(-8192) }
     child.stdout.on('data', collect)

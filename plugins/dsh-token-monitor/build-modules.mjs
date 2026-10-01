@@ -30,7 +30,7 @@ for (const id of ['manager', 'core', ...ids]) {
     // yaml is a plugin-local runtime dependency. The plugin directory is not a
     // workspace package, so leaving it external would make the installed host
     // bundle depend on a node_modules link that the release does not carry.
-    deps: { neverBundle: id => id !== 'yaml' && id !== '@deepseek-ai/dsh-token-monitor-contract' && !id.startsWith('.') && !isAbsolute(id) }, outputOptions: { entryFileNames: '[name].mjs', codeSplitting: false } })
+    deps: { neverBundle: id => id !== 'yaml' && id !== '@deepseek-ai/dsh-token-monitor-contract' && !id.startsWith('@deepseek-ai/dsh-token-monitor-contract/') && !id.startsWith('.') && !isAbsolute(id) }, outputOptions: { entryFileNames: '[name].mjs', codeSplitting: false } })
   await artifact(ids.includes(id) ? id : 'core', 'host', id + '.mjs', resolve(output, 'host', id + '.mjs'))
 }
 

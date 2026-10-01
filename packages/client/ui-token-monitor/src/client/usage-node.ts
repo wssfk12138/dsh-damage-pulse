@@ -45,12 +45,18 @@ export const tokenUsageNodeDefinition: ConversationNodeDefinitionLike<TokenUsage
   publication: () => 'immediate',
   buildViewNode: (context) => {
     if (context.state === undefined) return null
+    const sourceEventSeq = context.state.sourceEventSeq
+    // Usage is appended asynchronously, but describes the originating message.
+    // Anchoring to the appended event would make a completed turn look unfinished.
+    const anchorSeq = typeof sourceEventSeq === 'number' && Number.isSafeInteger(sourceEventSeq) && sourceEventSeq >= 0
+      ? sourceEventSeq
+      : context.start?.event.seq ?? context.matches[0]?.event.seq ?? 0
     return {
       key: context.key,
       kind: 'token-usage',
       id: context.id,
       target: 'chat',
-      anchorSeq: context.start?.event.seq ?? context.matches[0]?.event.seq ?? 0,
+      anchorSeq,
       location: locationOf(context),
       visibility: 'visible',
       data: context.state,

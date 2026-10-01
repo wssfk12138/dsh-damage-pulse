@@ -6,6 +6,8 @@ type Response = StreamChunk[] | (() => StreamChunk[])
 export interface MockAdapterOptions {
   efforts?: readonly { id: ReasoningEffortId; name: string }[]
   defaultEffort?: ReasoningEffortId
+  /** Test hook: awaited after a chunk is delivered and before the stream continues. */
+  onChunk?: (chunk: StreamChunk, index: number) => void | Promise<void>
 }
 
 /** Minimal provider adapter used by the composition test to exercise the real host stack. */
@@ -36,7 +38,11 @@ export class MockAdapter extends LlmAdapter {
     const response = this.responses.shift()
     const chunks = typeof response === 'function' ? response() : response
     if (!chunks) throw new Error('MockAdapter ran out of scripted responses')
-    yield* chunks
+    let index = 0
+    for (const chunk of chunks) {
+      yield chunk
+      await this.options.onChunk?.(chunk, index++)
+    }
   }
 }
 

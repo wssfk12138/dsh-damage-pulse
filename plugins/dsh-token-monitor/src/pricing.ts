@@ -118,15 +118,8 @@ export interface CostBreakdown {
 }
 
 /** DSH 内 DeepSeek 官方供应商的稳定 ID；官方计费路由的身份见 OFFICIAL_PROVIDER_IDS。 */
-export const OFFICIAL_PROVIDER_ID = 'deepseek-official'
-
-/** DeepSeek 官方计费路由的全部 provider id；API key 路由与账号路由价格口径相同。 */
-export const OFFICIAL_PROVIDER_IDS = [OFFICIAL_PROVIDER_ID, 'deepseek-account'] as const
-
-/** provider 是否走 DeepSeek 官方计费路由（含 0.2.0 起的账号路由）。 */
-export function isOfficialProvider(provider: string): boolean {
-  return (OFFICIAL_PROVIDER_IDS as readonly string[]).includes(provider)
-}
+export { OFFICIAL_PROVIDER_ID, OFFICIAL_PROVIDER_IDS, isOfficialProvider } from '@deepseek-ai/dsh-token-monitor-contract/src/billing-rule-resolution.ts'
+import { OFFICIAL_PROVIDER_ID, isOfficialProvider } from '@deepseek-ai/dsh-token-monitor-contract/src/billing-rule-resolution.ts'
 
 /** 两个 provider 是否属于同一计费族（官方 API key 路由与账号路由同族）。
  * @param left - 调用方给出的 provider；缺省或空串表示不按 provider 过滤。

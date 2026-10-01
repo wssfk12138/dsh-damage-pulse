@@ -5,6 +5,7 @@
  */
 
 export const TOKEN_MONITOR_SETTINGS_SCHEMA_VERSION = 3 as const
+export * from './billing-rule-resolution.ts'
 export { validateBillingRules, validateBillingApplied, normalizeMultiplier, emptyBillingRule } from './billing.ts'
 export type { BillingRules, BillingModelRule, BillingPrice, BillingPeriod, BillingTier, BillingSnapshot, BillingSource, BillingApplied } from './billing.ts'
 /** Maximum accepted byte length of a settings request body. */

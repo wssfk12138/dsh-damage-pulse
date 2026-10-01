@@ -1,7 +1,8 @@
 /** Freeze exact model rules and CNY costs at collection time. */
 import { createHash } from 'node:crypto'
 import { emptyBillingRule, type BillingSnapshot, type BillingRules, type BillingModelRule, type BillingApplied } from '@deepseek-ai/dsh-token-monitor-contract'
-import { OFFICIAL_PROVIDER_ID, PRICE_TABLE, isOfficialProvider, isStatutoryHoliday, type CostBreakdown, type PricingTable } from './pricing.ts'
+import { PRICE_TABLE, isOfficialProvider, isStatutoryHoliday, type CostBreakdown, type PricingTable } from './pricing.ts'
+import { resolveBillingProvider } from './billing-rule-resolution.ts'
 
 /** Rule identity and settlement facts stored with each usage ledger record. */
 /**
@@ -76,9 +77,8 @@ export function defaultBillingRules(table: PricingTable = PRICE_TABLE): BillingR
  * @returns Frozen costs and explicit billing state.
  */
 export function billUsage(snapshot: BillingSnapshot, usage: { inputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; outputTokens: number }, provider: string, model: string, timestamp: number): BillingDecision {
-  // 账号路由与 API key 路由共用同一套官方价格；旧快照只有官方条目时按别名回退。
-  const owner = snapshot.rules.providers.find(item => item.provider === provider)
-    ?? (isOfficialProvider(provider) ? snapshot.rules.providers.find(item => item.provider === OFFICIAL_PROVIDER_ID) : undefined)
+  // 规则归属与查询工具同源：显式账号条目整体优先，否则按官方族回退。
+  const { owner } = resolveBillingProvider(snapshot.rules, provider)
   const rule = owner?.models.find(item => item.model === model)
   const result: BillingDecision = { cost: 0, costInput: 0, costCache: 0, costCacheRead: 0, costCacheWrite: 0, costOutput: 0, peak: false, billingStatus: 'unpriced', billingRuleVersion: snapshot.revision, modelMultiplier: rule?.multiplier ?? 1, ...(rule ? { billingRule: structuredClone(rule) } : {}) }
   if (owner?.enabled === false || rule?.enabled === false) return { ...result, billingStatus: 'disabled', billingReason: owner?.enabled === false ? 'provider-disabled' : 'model-disabled' }

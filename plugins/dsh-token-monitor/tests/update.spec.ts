@@ -1,8 +1,9 @@
 import { createServer, type Server } from 'node:http'
 import { AddressInfo } from 'node:net'
 import { createHash } from 'node:crypto'
+import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CURRENT_RELEASE_VERSION, inferRunningProfile, registerUpdateRoutes, UPDATE_INSTALL_PATH, UPDATE_STATUS_PATH } from '../src/update.ts'
+import { CURRENT_RELEASE_VERSION, inferRunningProfile, registerUpdateRoutes, resolveInstallInvocation, UPDATE_INSTALL_PATH, UPDATE_STATUS_PATH } from '../src/update.ts'
 
 /** Release fixtures stay relative to the running build so a version bump cannot silently close the install path. */
 function shiftPatch(version: string, delta: number): string {
@@ -235,6 +236,41 @@ describe('token monitor update Host routes', () => {
     expect(inferRunningProfile(['node', 'bin.ts', '--profile=desktop'])).toBe('desktop')
     expect(inferRunningProfile(['node', 'bin.ts', '--patch', 'file.yml', 'web'])).toBeUndefined()
     expect(inferRunningProfile(['node', 'bin.ts', '--profile', 'node_modules'])).toBeUndefined()
+  })
+
+  it('recognizes the desktop host positional profile directory only', () => {
+    const hostEntry = join('C:', 'app', 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js')
+    expect(inferRunningProfile([
+      'DeepSeek Harness.exe',
+      hostEntry,
+      join('C:', 'app', 'dsh'),
+      join('C:', 'Users', 'x', '.dsh', 'profiles', 'desktop'),
+      join('C:', 'app', 'runtime', 'primary-runtime'),
+      join('C:', 'app', 'runtime', 'pnpm', 'bin', 'pnpm.mjs'),
+    ])).toBe('desktop')
+    expect(inferRunningProfile(['node', 'bin.ts', 'profiles/desktop'])).toBeUndefined()
+    expect(inferRunningProfile(['node', 'bin.ts', join('C:', 'Users', 'x', '.dsh', 'backups', 'desktop')])).toBeUndefined()
+    expect(inferRunningProfile(['node', 'bin.ts', join('C:', 'Users', 'x', '.dsh', 'profiles', 'node_modules')])).toBeUndefined()
+  })
+
+  it('installs through the desktop CLI shim in Node mode', () => {
+    const hostEntry = join('C:', 'Programs', 'DeepSeek Harness', 'resources', 'app.asar', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-desktop-host', 'lib', 'index.js')
+    const staged = join('C:', 'Temp', 'dsh-damage-pulse-updates', `dsh-damage-pulse-v${NEWER_RELEASE}.tgz`)
+    const invocation = resolveInstallInvocation({
+      argv: ['DeepSeek Harness.exe', hostEntry, join('C:', 'Programs', 'DeepSeek Harness', 'resources', 'app.asar', 'dsh'), join('C:', 'Users', 'x', '.dsh', 'profiles', 'desktop')],
+      execArgv: [],
+      execPath: join('C:', 'Programs', 'DeepSeek Harness', 'DeepSeek Harness.exe'),
+    }, 'desktop', staged)
+    expect(invocation.args).toEqual(['--expose-internals', join(dirname(hostEntry), 'cli.js'), 'plugin', '--profile', 'desktop', 'add', staged])
+    expect(invocation.env?.ELECTRON_RUN_AS_NODE).toBe('1')
+  })
+
+  it('keeps the CLI-launched install invocation unchanged', () => {
+    const cliEntry = join('C:', 'dsh', 'apps', 'cli', 'src', 'bin.ts')
+    const staged = join('C:', 'Temp', 'dsh-damage-pulse-updates', `dsh-damage-pulse-v${NEWER_RELEASE}.tgz`)
+    const invocation = resolveInstallInvocation({ argv: ['node', cliEntry, 'web'], execArgv: ['--import', 'tsx/esm'], execPath: 'node' }, 'web', staged)
+    expect(invocation.args).toEqual(['--import', 'tsx/esm', cliEntry, 'plugin', '--profile', 'web', 'add', staged])
+    expect(invocation.env).toBeUndefined()
   })
 
   it('does not invoke installation when profile cannot be identified', async () => {
