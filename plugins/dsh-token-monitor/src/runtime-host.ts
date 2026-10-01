@@ -11,6 +11,7 @@ import type { ArtifactRoots } from './module-files.ts'
 import { ModuleManager, type ModuleLifecycle } from './module-manager.ts'
 import { registerModuleRoutes } from './module-routes.ts'
 import { createTokenMonitorAssetHandler } from './assets.ts'
+import { synchronizeClientEntry } from './client-entry.ts'
 
 export interface RuntimeOptions {
   roots: ArtifactRoots
@@ -28,6 +29,8 @@ export interface RuntimeOptions {
 // ctx.effect / ctx.inject, so the entry point deliberately yields nothing.
 export async function apply(ctx: Context, options: RuntimeOptions): Promise<void> {
   const { roots, stateFile, manifest } = options
+  // Must finish before ModuleManager.open acknowledges the completed restart.
+  await synchronizeClientEntry(roots, manifest)
   const core: typeof Core = options.loadCore ? await options.loadCore() : await import(pathToFileURL(resolve(roots.host, 'core.mjs')).href + `?v=${manifest.version}`)
   const services = options.services !== undefined
     ? await options.services(ctx)

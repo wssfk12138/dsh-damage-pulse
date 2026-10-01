@@ -41,6 +41,11 @@ check('runtime client exists', exists(join(runtime, 'client', 'client.js')))
 
 const host = ['manager', 'core', 'pet', 'overview', 'notify', 'billing', 'wechat'].map(id => readText(join(runtime, 'host', id + '.mjs'))).join('\n')
 const client = readText(join(runtime, 'client', 'client.js'))
+check('desktop client entry matches verified runtime bundle', packageJson.exports?.['./client'] === './lib/client.js'
+  && readFileSync(join(repo, 'lib/client.js')).equals(readFileSync(join(runtime, 'client/client.js'))))
+check('client entry is a single self-contained bundle',
+  !/require(?:\.async)?\(["']\.\//.test(client)
+  && [...owners.keys()].filter(key => key.startsWith('client/') && key.endsWith('.js')).join(',') === 'client/client.js')
 const sourceClient = (() => {
   const root = join(repo, 'packages/client/ui-token-monitor/src')
   const files = []
