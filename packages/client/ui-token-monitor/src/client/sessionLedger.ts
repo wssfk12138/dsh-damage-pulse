@@ -12,6 +12,7 @@ export interface LedgerSessionSummary {
   /** 归一化会话 id（Host 同时回传 sessionId，两者取其一）。 */
   id: string
   sessionId?: string
+  status?: 'priced'
   cost: number
   calls: number
   inputTokens: number
@@ -33,70 +34,142 @@ export function normalizeSessionId(id: SessionId | string): string {
   return value.startsWith('session-') ? value.slice('session-'.length) : value
 }
 
-/** 同时登记原始键与归一化键，两种写法都能命中且互不覆盖。 */
-export function indexLedgerSessions(sessions: readonly LedgerSessionSummary[]): Map<string, LedgerSessionSummary> {
-  const map = new Map<string, LedgerSessionSummary>()
+/** Conflict evidence mirrors the host wire contract; no aggregate is trusted. */
+export interface SessionIdentityConflict {
+  normalizedId: string
+  rawSessionIds: string[]
+  reasons: Array<'normalized-id-collision' | 'duplicate-summary' | 'metadata-id-collision'>
+}
+export interface LedgerSessionConflict {
+  id: string
+  sessionId: string
+  status: 'conflict'
+  cost: null
+  lastActivity: number
+  conflicts: SessionIdentityConflict[]
+}
+export type LedgerSessionRow = LedgerSessionSummary | LedgerSessionConflict
+export type ResolvedSessionCost = { cost: number; fromLedger: boolean; status?: 'priced' } | LedgerSessionConflict
+
+/** Parse only at the HTTP boundary. Reject the whole malformed snapshot, not just a warning row. */
+function record(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+function nonnegative(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+}
+function identityConflict(value: unknown): value is SessionIdentityConflict {
+  return record(value) && typeof value.normalizedId === 'string' && value.normalizedId.length > 0
+    && Array.isArray(value.rawSessionIds) && value.rawSessionIds.length > 0
+    && value.rawSessionIds.every(id => typeof id === 'string' && id.length > 0)
+    && Array.isArray(value.reasons) && value.reasons.length > 0
+    && value.reasons.every(reason => reason === 'normalized-id-collision' || reason === 'duplicate-summary' || reason === 'metadata-id-collision')
+}
+function ledgerRow(value: unknown): value is LedgerSessionRow {
+  if (!record(value) || typeof value.id !== 'string' || !value.id
+    || (value.sessionId !== undefined && (typeof value.sessionId !== 'string' || value.sessionId !== value.id))
+    || !nonnegative(value.lastActivity)) return false
+  if (value.status === 'conflict') {
+    return value.cost === null && typeof value.sessionId === 'string'
+      && Array.isArray(value.conflicts) && value.conflicts.length > 0 && value.conflicts.every(identityConflict)
+      && ['calls', 'inputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens', 'totalTokens'].every(key => value[key] === undefined)
+  }
+  return (value.status === undefined || value.status === 'priced')
+    && ['cost', 'calls', 'inputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens', 'totalTokens'].every(key => nonnegative(value[key]))
+}
+function parseLedgerSnapshot(value: unknown): LedgerSessionRow[] {
+  if (!record(value) || !Array.isArray(value.sessions) || !value.sessions.every(ledgerRow)) {
+    throw new Error('Invalid session ledger snapshot')
+  }
+  return value.sessions
+}
+
+/** Index a unique identity. Defensive collisions from an older/skewed host never last-win. */
+export function indexLedgerSessions(sessions: readonly LedgerSessionRow[]): Map<string, LedgerSessionRow> {
+  const groups = new Map<string, LedgerSessionRow[]>()
   for (const session of sessions) {
-    if (!Number.isFinite(session.cost) || session.cost <= 0) continue
     const id = session.id || session.sessionId
     if (typeof id !== 'string' || id === '') continue
-    map.set(id, session)
-    map.set(normalizeSessionId(id), session)
+    const key = normalizeSessionId(id)
+    const group = groups.get(key) ?? []
+    group.push(session)
+    groups.set(key, group)
+  }
+  const map = new Map<string, LedgerSessionRow>()
+  for (const [id, rows] of groups) {
+    let entry = rows[0]!
+    if (rows.length > 1) {
+      const conflicts = new Map<string, SessionIdentityConflict>()
+      for (const row of rows) if (row.status === 'conflict') {
+        for (const conflict of row.conflicts) conflicts.set(conflict.normalizedId, conflict)
+      }
+      const rawSessionIds = [...new Set(rows.map(row => row.id || row.sessionId!))].sort()
+      const existing = conflicts.get(id)
+      conflicts.set(id, { normalizedId: id,
+        rawSessionIds: [...new Set([...rawSessionIds, ...(existing?.rawSessionIds ?? [])])].sort(),
+        reasons: [...new Set<SessionIdentityConflict['reasons'][number]>([...(existing?.reasons ?? []), rawSessionIds.length > 1 ? 'normalized-id-collision' : 'duplicate-summary'])] })
+      entry = { id, sessionId: id, status: 'conflict', cost: null,
+        lastActivity: Math.max(...rows.map(row => row.lastActivity)), conflicts: [...conflicts.values()].sort((a, b) => a.normalizedId.localeCompare(b.normalizedId)) }
+    }
+    if (entry.status !== 'conflict' && (!Number.isFinite(entry.cost) || entry.cost <= 0)) continue
+    map.set(id, entry)
+    for (const row of rows) map.set(row.id || row.sessionId!, entry)
   }
   return map
 }
 
-/** 取兜底行；缺失或非正金额返回 undefined。 */
+/** Conflicts are always returned, including zero-cost collisions; absent/nonpositive normal rows are omitted. */
 export function ledgerSessionEntry(
-  map: ReadonlyMap<string, LedgerSessionSummary> | undefined,
+  map: ReadonlyMap<string, LedgerSessionRow> | undefined,
   sessionId: SessionId | string | undefined,
-): LedgerSessionSummary | undefined {
+): LedgerSessionRow | undefined {
   if (map === undefined || sessionId === undefined) return undefined
   const entry = map.get(String(sessionId)) ?? map.get(normalizeSessionId(sessionId))
+  if (entry?.status === 'conflict') return entry
   return entry !== undefined && Number.isFinite(entry.cost) && entry.cost > 0 ? entry : undefined
 }
 
-/** 取兜底金额；供会话行徽标使用。 */
+/** Numeric compatibility helper; display consumers must resolve the entry to preserve conflict state. */
 export function ledgerSessionCost(
-  map: ReadonlyMap<string, LedgerSessionSummary> | undefined,
+  map: ReadonlyMap<string, LedgerSessionRow> | undefined,
   sessionId: SessionId | string | undefined,
 ): number | undefined {
-  return ledgerSessionEntry(map, sessionId)?.cost
+  const entry = ledgerSessionEntry(map, sessionId)
+  return entry?.status === 'conflict' ? undefined : entry?.cost
 }
 
-/**
- * 展示金额的来源选择：持久账本是消费的权威记录，而日志折叠可能因事件缺失而少算，
- * 因此两者都可用时取较大值；只有一个来源时用该来源。
- */
+/** Conflict overrides projection. For a trusted identity retain the existing maximum-source rule. */
 export function resolveSessionCost(
   projectionCost: number | undefined,
-  ledgerCost: number | undefined,
-): { cost: number; fromLedger: boolean } | undefined {
+  ledger: number | LedgerSessionRow | undefined,
+): ResolvedSessionCost | undefined {
+  if (typeof ledger === 'object' && ledger.status === 'conflict') return ledger
+  const ledgerCost = typeof ledger === 'object' ? ledger.cost : ledger
   if (projectionCost === undefined) return ledgerCost === undefined ? undefined : { cost: ledgerCost, fromLedger: true }
   if (ledgerCost === undefined) return { cost: projectionCost, fromLedger: false }
   return ledgerCost > projectionCost ? { cost: ledgerCost, fromLedger: true } : { cost: projectionCost, fromLedger: false }
 }
 
-let loaded: { at: number; map: Map<string, LedgerSessionSummary> } | undefined
-let inflight: Promise<Map<string, LedgerSessionSummary>> | undefined
+let loaded: { at: number; map: Map<string, LedgerSessionRow> } | undefined
+let inflight: Promise<Map<string, LedgerSessionRow>> | undefined
 const listeners = new Set<() => void>()
 
 /** 拉取账本快照：一个刷新窗口内复用结果，失败时保留上一次成功的值。 */
-export function loadSessionLedger(options: { force?: boolean } = {}): Promise<Map<string, LedgerSessionSummary>> {
+export function loadSessionLedger(options: { force?: boolean } = {}): Promise<Map<string, LedgerSessionRow>> {
   const now = Date.now()
   if (options.force !== true && loaded !== undefined && now - loaded.at < REFRESH_MS) return Promise.resolve(loaded.map)
   if (inflight !== undefined) return inflight
   inflight = (async () => {
     try {
       const response = await fetch(SESSION_LEDGER_ROUTE, { headers: { accept: 'application/json' }, credentials: 'same-origin' })
-      if (!response.ok) return loaded?.map ?? new Map<string, LedgerSessionSummary>()
-      const body = await response.json() as { sessions?: LedgerSessionSummary[] }
-      const map = indexLedgerSessions(Array.isArray(body.sessions) ? body.sessions : [])
+      if (!response.ok) return loaded?.map ?? new Map<string, LedgerSessionRow>()
+      const body: unknown = await response.json()
+      const map = indexLedgerSessions(parseLedgerSnapshot(body))
       loaded = { at: Date.now(), map }
       for (const listener of listeners) listener()
       return map
     } catch {
-      return loaded?.map ?? new Map<string, LedgerSessionSummary>()
+      return loaded?.map ?? new Map<string, LedgerSessionRow>()
     } finally {
       inflight = undefined
     }
@@ -105,7 +178,7 @@ export function loadSessionLedger(options: { force?: boolean } = {}): Promise<Ma
 }
 
 /** 组件订阅：挂载时拉取一次，窗口重新可见时按需刷新。 */
-export function useSessionLedger(): Map<string, LedgerSessionSummary> | undefined {
+export function useSessionLedger(): Map<string, LedgerSessionRow> | undefined {
   const [value, setValue] = useState(() => loaded?.map)
   useEffect(() => {
     let active = true

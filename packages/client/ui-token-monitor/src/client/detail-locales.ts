@@ -6,6 +6,8 @@ import { moduleEn, moduleZh } from './module-locales.ts'
 export const zh = {
   ...billingZh,
   ...moduleZh,
+  sessionIdentityConflict: '会话标识冲突／金额待核对',
+  sessionIdentityConflictHint: '原始会话标识存在冲突，无法可靠归属消费。该会话及依赖它的汇总暂不显示金额或计数；账本未被修改。',
   overviewTitle: '数据概览', overviewRefresh: '刷新概览', overviewExpand: '展开概览', overviewCollapse: '收起概览', overviewRange: '概览时间范围',
   overviewCustom: '自定义：{from} ~ {to}',
   overviewScope: '与下方明细共用时间与供应商筛选 · 北京时间',
@@ -43,6 +45,8 @@ export type DetailTranslate = Translate<DetailKey>
 export const en: Record<DetailKey, string> = {
   ...billingEn,
   ...moduleEn,
+  sessionIdentityConflict: 'Session identity conflict / cost pending review',
+  sessionIdentityConflictHint: 'Conflicting raw session identities prevent reliable attribution. Amounts and counters for this session and dependent totals are withheld; the ledger is unchanged.',
   overviewTitle: 'Usage overview', overviewRefresh: 'Refresh overview', overviewExpand: 'Expand overview', overviewCollapse: 'Collapse overview', overviewRange: 'Overview time range',
   overviewCustom: 'Custom: {from} — {to}',
   overviewScope: 'Shares time and provider filters with the list below · Beijing time',

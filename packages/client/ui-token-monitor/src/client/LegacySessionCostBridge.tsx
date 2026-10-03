@@ -27,7 +27,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId, SessionSummaryLike } from './host-contracts.ts'
-import { LEDGER_COST_TITLE, ledgerSessionCost, resolveSessionCost, useSessionLedger, type LedgerSessionSummary } from './sessionLedger.ts'
+import { LEDGER_COST_TITLE, ledgerSessionEntry, resolveSessionCost, useSessionLedger, type LedgerSessionRow, type ResolvedSessionCost } from './sessionLedger.ts'
 import {
   formatSessionCost,
   asSessionCostProjection,
@@ -37,7 +37,9 @@ import {
   SESSION_COST_TITLE,
 } from './sessionCost.ts'
 
-type LegacyBridgeProps = PropsRuntime<'shell.overlay'>
+import { zh, type DetailTranslate } from './detail-locales.ts'
+
+type LegacyBridgeProps = PropsRuntime<'shell.overlay'> & { t?: DetailTranslate }
 
 /** 本桥注入节点的专属标记（用于幂等与清理，绝不能与正式席位 marker 混用）。 */
 const BRIDGE_MARKER = 'data-dsh-token-monitor-legacy-session-cost'
@@ -68,6 +70,7 @@ const STYLE_TEXT = [
   '  color: #4176e6;',
   '  font-variant-numeric: tabular-nums;',
   '}',
+  `[${BRIDGE_MARKER}][data-dsh-token-monitor-cost-source="conflict"] { flex: 0 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--dsh-color-text-secondary, #888); }`,
   `[role="treeitem"]:not([data-session-id]):hover [${SESSION_COST_MARKER}],`,
   `[role="treeitem"]:not([data-session-id])[class*="menuOpen"] [${SESSION_COST_MARKER}] {`,
   '  display: none;',
@@ -76,18 +79,18 @@ const STYLE_TEXT = [
 
 /** 会话金额索引：按会话 id 直读 + 按唯一 displayTitle 查会话（重名标题互斥）。 */
 interface SessionCostIndex {
-  bySessionId: Map<SessionId, { cost: number; fromLedger: boolean }>
+  bySessionId: Map<SessionId, ResolvedSessionCost>
   byUniqueTitle: Map<string, SessionSummaryLike>
   /** 出现重名的标题集合：匹配到这些标题的行结构可信但无法归属，按 fail-closed 跳过。 */
   ambiguousTitles: ReadonlySet<string>
 }
 
-function buildCostIndex(byId: Record<SessionId, SessionSummaryLike>, ledger?: ReadonlyMap<string, LedgerSessionSummary>): SessionCostIndex {
-  const bySessionId = new Map<SessionId, { cost: number; fromLedger: boolean }>()
+function buildCostIndex(byId: Record<SessionId, SessionSummaryLike>, ledger?: ReadonlyMap<string, LedgerSessionRow>): SessionCostIndex {
+  const bySessionId = new Map<SessionId, ResolvedSessionCost>()
   const titleCounts = new Map<string, number>()
   const ambiguousTitles = new Set<string>()
   for (const summary of Object.values(byId)) {
-    const cost = resolveSessionCost(readSessionCost(asSessionCostProjection(summary.projectionValues)), ledgerSessionCost(ledger, summary.id))
+    const cost = resolveSessionCost(readSessionCost(asSessionCostProjection(summary.projectionValues)), ledgerSessionEntry(ledger, summary.id))
     if (cost !== undefined) bySessionId.set(summary.id, cost)
     titleCounts.set(summary.displayTitle, (titleCounts.get(summary.displayTitle) ?? 0) + 1)
   }
@@ -140,11 +143,25 @@ function timeAnchorAfter(row: Element, span: Element): HTMLElement | undefined {
   return directChildren.slice(order + 1).find(child => child.tagName === 'SPAN') as HTMLElement | undefined
 }
 
+/** Update all display state idempotently so the observer cannot loop on our own writes. */
+function writeCost(node: Element, cost: ResolvedSessionCost, t?: DetailTranslate): void {
+  const conflict = cost.status === 'conflict'
+  const text = conflict ? (t?.('sessionIdentityConflict') ?? zh.sessionIdentityConflict) : formatSessionCost(cost.cost)
+  const title = conflict ? (t?.('sessionIdentityConflictHint') ?? zh.sessionIdentityConflictHint)
+    : cost.fromLedger ? LEDGER_COST_TITLE : SESSION_COST_TITLE
+  if (node.textContent !== text) node.textContent = text
+  if (node.getAttribute('title') !== title) node.setAttribute('title', title)
+  const source = conflict ? 'conflict' : cost.fromLedger ? 'ledger' : undefined
+  const attr = 'data-dsh-token-monitor-cost-source'
+  if (source === undefined) { if (node.hasAttribute(attr)) node.removeAttribute(attr) }
+  else if (node.getAttribute(attr) !== source) node.setAttribute(attr, source)
+}
+
 /**
  * 向一行已通过结构判定的旧会话行注入金额节点。判定失败返回 'noop'
  * （无金额）或 'blocked'（结构不可信，触发单次告警），绝不写坏既有 DOM。
  */
-function injectIntoRow(row: Element, index: SessionCostIndex, resolution: Extract<TitleResolution, { kind: 'ok' }>): 'injected' | 'noop' | 'blocked' {
+function injectIntoRow(row: Element, index: SessionCostIndex, resolution: Extract<TitleResolution, { kind: 'ok' }>, t?: DetailTranslate): 'injected' | 'noop' | 'blocked' {
   const summary = index.byUniqueTitle.get(resolution.title)
   if (summary === undefined) return 'noop'
   const cost = index.bySessionId.get(summary.id)
@@ -156,8 +173,7 @@ function injectIntoRow(row: Element, index: SessionCostIndex, resolution: Extrac
   span.setAttribute(SESSION_COST_MARKER, '')
   span.setAttribute(BRIDGE_MARKER, '')
   span.setAttribute(SESSION_ID_ATTR, summary.id)
-  span.setAttribute('title', cost.fromLedger ? LEDGER_COST_TITLE : SESSION_COST_TITLE)
-  span.textContent = formatSessionCost(cost.cost)
+  writeCost(span, cost, t)
   row.insertBefore(span, timeNode)
   return 'injected'
 }
@@ -168,7 +184,7 @@ function injectIntoRow(row: Element, index: SessionCostIndex, resolution: Extrac
  * @param props - 全局 kit（useSessions）。
  * @returns 恒为 null。
  */
-export function LegacySessionCostBridge({ useSessions }: LegacyBridgeProps) {
+export function LegacySessionCostBridge({ useSessions, t }: LegacyBridgeProps) {
   const byId = useSessions(state => state.byId)
   const ledger = useSessionLedger()
   const costIndex = useMemo(() => buildCostIndex(byId, ledger), [byId, ledger])
@@ -207,7 +223,7 @@ export function LegacySessionCostBridge({ useSessions }: LegacyBridgeProps) {
   useEffect(() => {
     if (stoppedRef.current) return
     scanRef.current()
-  }, [costIndex])
+  }, [costIndex, t])
 
   // 组件级扫描：仅经由 ref 调用（观察回调与索引刷新共用），停用后不再动作。
   scanRef.current = (): void => {
@@ -257,10 +273,7 @@ export function LegacySessionCostBridge({ useSessions }: LegacyBridgeProps) {
           && existing.getAttribute(SESSION_ID_ATTR) === current.id
           && timeAnchorAfter(entry.row, entry.resolution.span) !== undefined
         if (valid) {
-          const text = formatSessionCost(cost.cost)
-          if (existing.textContent !== text) existing.textContent = text
-          const title = cost.fromLedger ? LEDGER_COST_TITLE : SESSION_COST_TITLE
-          if (existing.getAttribute('title') !== title) existing.setAttribute('title', title)
+          writeCost(existing, cost, t)
           continue
         }
         existing.remove()
@@ -275,7 +288,7 @@ export function LegacySessionCostBridge({ useSessions }: LegacyBridgeProps) {
         blocked = true
         continue
       }
-      const outcome = injectIntoRow(entry.row, index, entry.resolution)
+      const outcome = injectIntoRow(entry.row, index, entry.resolution, t)
       if (outcome === 'injected') injectedAny = true
       if (outcome === 'blocked') blocked = true
     }

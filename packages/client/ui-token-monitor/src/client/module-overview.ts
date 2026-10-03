@@ -15,6 +15,6 @@ export function activate(ctx: ClientContextLike, modules: ReturnType<typeof crea
     if (typeof remove === 'function') dispose.push(remove as () => void)
     dispose.push(ctx.slots.inject('conversation.chat.node', () => ctx.slots.register({ name: 'conversation.chat.node', key: 'token-usage', inject }, UsageNodeView)))
   }
-  dispose.push(ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({ name: 'conversation.composer.dock', id: 'token-monitor-stats', order: 0, inject }, SessionStatsBar)))
+  dispose.push(ctx.slots.inject('conversation.composer.dock', () => ctx.slots.register({ name: 'conversation.composer.dock', id: 'token-monitor-stats', order: 0, inject, locale: 'token-monitor.details' }, SessionStatsBar)))
   return () => { for (const remove of dispose.reverse()) remove() }
 }

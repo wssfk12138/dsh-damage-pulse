@@ -1,4 +1,5 @@
 import type { InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
+import { zh, type DetailTranslate } from './detail-locales.ts'
 import { moduleInstalled, type createModuleState } from './moduleApi.ts'
 import { LEDGER_COST_TITLE, ledgerSessionEntry, useSessionLedger } from './sessionLedger.ts'
 /**
@@ -9,7 +10,7 @@ import { LEDGER_COST_TITLE, ledgerSessionEntry, useSessionLedger } from './sessi
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { TokenCostProjection } from './types.ts'
 
-type SessionStatsBarProps = PropsRuntime<'conversation.composer.dock'> & Partial<InjectFace<{ hooks: { modules: ReturnType<typeof createModuleState> } }>>
+type SessionStatsBarProps = { t?: DetailTranslate } & PropsRuntime<'conversation.composer.dock'> & Partial<InjectFace<{ hooks: { modules: ReturnType<typeof createModuleState> } }>>
 
 const BAR: React.CSSProperties = {
   display: 'inline-flex',
@@ -39,15 +40,22 @@ function fmtCost(n: number): string {
   return `¥${n.toFixed(4)}`
 }
 
-export function SessionStatsBar({ useProjection, useModules, sessionId }: SessionStatsBarProps) {
+export function SessionStatsBar({ useProjection, useModules, sessionId, t }: SessionStatsBarProps) {
   const billing = useModules?.(state => moduleInstalled(state, 'billing')) ?? true
   const projection = useProjection('tokenCost')
   const ledger = useSessionLedger()
+  const fallback = ledgerSessionEntry(ledger, sessionId)
+  if (fallback?.status === 'conflict') return (
+    <div style={{ ...BAR, display: 'flex', flexWrap: 'wrap', minWidth: 0, overflowWrap: 'anywhere' }}
+      data-token-monitor-stats="" data-dsh-token-monitor-stats-source="conflict"
+      title={t?.('sessionIdentityConflictHint') ?? zh.sessionIdentityConflictHint}>
+      <span>{t?.('sessionIdentityConflict') ?? zh.sessionIdentityConflict}</span>
+    </div>
+  )
   // undefined = 能力缺失或加载中；null 或 0 次调用 = 暂无数据。
   if (projection === undefined || projection === null) return null
   const p = projection as TokenCostProjection
   // 账本是消费的权威记录：日志折叠可能因事件缺失而少算甚至为零，因此金额更大的一方胜出。
-  const fallback = ledgerSessionEntry(ledger, sessionId)
   const ledgerWins = fallback !== undefined && fallback.cost > p.cost
   if (!ledgerWins && p.calls === 0) return null
   const view = ledgerWins && fallback !== undefined

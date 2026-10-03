@@ -9,7 +9,7 @@
  */
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId, SessionListStateLike } from './host-contracts.ts'
-import { LEDGER_COST_TITLE, ledgerSessionCost, resolveSessionCost, useSessionLedger } from './sessionLedger.ts'
+import { LEDGER_COST_TITLE, ledgerSessionEntry, resolveSessionCost, useSessionLedger } from './sessionLedger.ts'
 import {
   formatSessionCost,
   asSessionCostProjection,
@@ -18,8 +18,11 @@ import {
   SESSION_COST_TITLE,
 } from './sessionCost.ts'
 
+import { zh, type DetailTranslate } from './detail-locales.ts'
+
 /** 宿主 owner share（{ sessionId }）与全局 kit（useSessions）的局部结构。 */
 export interface SessionCostBadgeProps {
+  t?: DetailTranslate
   /** 行的稳定会话 id（宿主行元素同时镜像为 data-session-id）。 */
   sessionId: SessionId
   /** 全局会话列表选择器钩子。 */
@@ -40,11 +43,18 @@ const BADGE: React.CSSProperties = {
  * @param props - 席位 owner 与全局钩子。
  * @returns 金额节点，或 null。
  */
-export function SessionCostBadge({ sessionId, useSessions }: SessionCostBadgeProps) {
+export function SessionCostBadge({ sessionId, useSessions, t }: SessionCostBadgeProps) {
   const projectionCost = useSessions(state => readSessionCost(asSessionCostProjection(state.byId[sessionId]?.projectionValues)))
   const ledger = useSessionLedger()
-  const resolved = resolveSessionCost(projectionCost, ledgerSessionCost(ledger, sessionId))
+  const resolved = resolveSessionCost(projectionCost, ledgerSessionEntry(ledger, sessionId))
   if (resolved === undefined) return null
+  if (resolved.status === 'conflict') return (
+    <span style={{ ...BADGE, flex: '0 1 auto', minWidth: 0, overflowWrap: 'anywhere', color: 'var(--dsh-color-text-secondary, #888)' }}
+      {...{ [SESSION_COST_MARKER]: '' }} data-dsh-token-monitor-cost-source="conflict"
+      title={t?.('sessionIdentityConflictHint') ?? zh.sessionIdentityConflictHint}>
+      {t?.('sessionIdentityConflict') ?? zh.sessionIdentityConflict}
+    </span>
+  )
   return (
     <span
       style={BADGE}
