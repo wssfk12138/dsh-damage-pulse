@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { ComponentProps } from 'react'
+import type { ModuleSnapshot } from '../../../util/token-monitor-contract/src/index.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('../src/client/settingsApi.ts', async (importOriginal) => {
@@ -45,6 +46,58 @@ async function openMenu(balanceAvailable = true) {
 }
 
 describe('BalanceWidget context menu (issue #28)', () => {
+  it('opens the management-only gear without starting a card drag or changing preferences', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 503 }))
+    const snapshot: ModuleSnapshot = {
+      schemaVersion: 1, revision: 4, version: '4.2.3', pluginRemoved: false, restartRequired: false,
+      modules: ['pet', 'overview', 'notify', 'billing', 'wechat'].map(id => ({
+        id, status: id === 'wechat' ? 'installed' : 'removed', autoInstallBlocked: id !== 'wechat',
+      })),
+    }
+    const gearTranslations: Record<string, string> = { modulesAnchor: '插件管理', modulesTitle: '卸载与更新', modulesClose: '关闭', modulesRestore: '恢复' }
+    localStorage.setItem('dsh-token-monitor-balance-pos', JSON.stringify({ left: 100, top: 100 }))
+    const props: ComponentProps<typeof BalanceWidget> = {
+      useSessions: selector => selector({ ids: [], byId: {}, phase: 'ready', projectionsBySession: {} }),
+      usePanelInfo: selector => selector({ activePanelId: null }),
+      useSessionStatus: selector => selector(new Map()),
+      useSessionRetainInfo: () => { throw new Error('unused retain hook') },
+      useWorkspaces: () => { throw new Error('unused workspace hook') },
+      useResource: () => { throw new Error('unused resource hook') },
+      useModules: selector => selector(snapshot),
+      refreshModules: vi.fn().mockResolvedValue(undefined),
+      loadDisplayScope: async () => ({ provider: 'deepseek-official', model: 'deepseek-v4-flash' }),
+      t: key => gearTranslations[key] ?? key,
+    }
+    const view = render(<BalanceWidget {...props} />)
+    const card = view.baseElement.querySelector('[data-token-monitor-balance]') as HTMLElement
+    const capture = vi.fn()
+    Object.assign(card, { setPointerCapture: capture, hasPointerCapture: () => false })
+    const gear = screen.getByRole('button', { name: '插件管理' })
+    const before = { ...localStorage }
+    // MouseEvent supplies button/coordinates even when jsdom has no PointerEvent constructor.
+    fireEvent(gear, Object.assign(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 20, clientY: 20 }), { pointerId: 1 }))
+    expect(capture).not.toHaveBeenCalled()
+    fireEvent(gear, Object.assign(new MouseEvent('pointerup', { bubbles: true, button: 0 }), { pointerId: 1 }))
+    fireEvent.click(gear)
+    const panel = await screen.findByRole('dialog', { name: '卸载与更新' })
+    expect(within(panel).getAllByRole('button', { name: /^恢复 / })).toHaveLength(4)
+    fireEvent.click(within(panel).getByRole('button', { name: '关闭' }))
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect({ ...localStorage }).toEqual(before)
+
+    const initialPosition = { left: Number.parseFloat(card!.style.left), top: Number.parseFloat(card!.style.top) }
+    fireEvent(card!, Object.assign(new MouseEvent('pointerdown', { bubbles: true, button: 0, clientX: 20, clientY: 20 }), { pointerId: 2 }))
+    expect(capture).toHaveBeenCalledTimes(1)
+    expect(capture).toHaveBeenCalledWith(2)
+    fireEvent(card!, Object.assign(new MouseEvent('pointermove', { bubbles: true, button: 0, clientX: 50, clientY: 60 }), { pointerId: 2 }))
+    const expectedPosition = { left: initialPosition.left + 30, top: initialPosition.top + 40 }
+    expect(card!.style.left).toBe(expectedPosition.left + 'px')
+    expect(card!.style.top).toBe(expectedPosition.top + 'px')
+    fireEvent(card!, Object.assign(new MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 50, clientY: 60 }), { pointerId: 2 }))
+    expect(localStorage.getItem('dsh-token-monitor-balance-pos')).toBe(JSON.stringify(expectedPosition))
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
   it.each(labels.slice(2))('opens only the %s panel and closes the menu', async (label) => {
     const { item } = await openMenu()
     fireEvent.click(item(label))

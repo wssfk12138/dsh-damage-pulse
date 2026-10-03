@@ -1319,7 +1319,7 @@ export function BalanceWidget({
         }}
         t={t}
       />}
-      {!balanceAvailable && !usageVisible && <button type="button" className={moduleCss.anchor} onClick={() => setManagerOpen(true)} aria-label={t('modulesAnchor')}>⚙</button>}
+      {!balanceAvailable && !usageVisible && <button type="button" className={moduleCss.anchor} onPointerDown={event => event.stopPropagation()} onClick={() => setManagerOpen(true)} aria-label={t('modulesAnchor')}>⚙</button>}
       {contextMenu !== null && (
         <MenuSurface
           ref={contextMenuRef}
