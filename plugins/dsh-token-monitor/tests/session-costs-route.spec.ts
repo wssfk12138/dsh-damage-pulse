@@ -15,8 +15,8 @@ function response(): ServerResponse & { status: number; body: string } {
   return {
     status: 0,
     body: '',
-    writeHead(status: number) { this.status = status; return this },
-    end(value?: string) { this.body = value ?? ''; return this },
+    writeHead(this: { status: number }, status: number) { this.status = status; return this },
+    end(this: { body: string }, value?: string) { this.body = value ?? ''; return this },
   } as unknown as ServerResponse & { status: number; body: string }
 }
 
@@ -34,6 +34,45 @@ function handlerFor(rejection: (() => 401 | 403 | undefined) | undefined, summar
 }
 
 describe('session cost fallback route', () => {
+  it('F2/F3 aggregates original nested spend once, including a grandchild-only root', () => {
+    const sessions = new Map([
+      ['root', { id: 'root', title: 'Root', project: 'one', child: false }],
+      ['child', { id: 'child', title: 'Child', project: 'one', child: true, parent: 'root' }],
+      ['grandchild', { id: 'grandchild', title: 'Grandchild', project: 'one', child: true, parent: 'child' }],
+    ])
+    const source = [summary({ sessionId: 'root', cost: 1 }), summary({ sessionId: 'child', cost: 2 }), summary({ sessionId: 'grandchild', cost: 3 })]
+    const before = structuredClone(source)
+    const rows = summarizeLedgerSessions(source, sessions)
+    expect(Object.fromEntries(rows.map(row => [row.id, row.cost]))).toEqual({ root: 6, child: 2, grandchild: 3 })
+    expect(source).toEqual(before)
+    expect(Object.fromEntries(summarizeLedgerSessions(source, sessions).map(row => [row.id, row.cost]))).toEqual({ root: 6, child: 2, grandchild: 3 })
+    const nestedOnly = summarizeLedgerSessions([source[2]!], sessions)
+    expect(Object.fromEntries(nestedOnly.map(row => [row.id, row.cost]))).toEqual({ root: 3, grandchild: 3 })
+  })
+
+  it('includes nested and child-only spend in the root without replaying inherited history', () => {
+    const sessions = new Map([
+      ['root', { id: 'root', title: 'Root', project: 'one', child: false }],
+      ['child', { id: 'child', title: 'Child', project: 'one', child: true, parent: 'session-root' }],
+      ['nested', { id: 'nested', title: 'Nested', project: 'one', child: true, parent: 'child' }],
+    ])
+    const source = [summary({ sessionId: 'child', cost: 2 }), summary({ sessionId: 'nested', cost: 3 })]
+    const rows = summarizeLedgerSessions(source, sessions)
+    expect(rows.find(row => row.id === 'root')).toMatchObject({ cost: 5, calls: 2, totalTokens: 4 })
+    expect(rows.find(row => row.id === 'child')?.cost).toBe(2)
+    expect(rows.find(row => row.id === 'nested')?.cost).toBe(3)
+    expect(source).toHaveLength(2)
+  })
+
+  it('does not aggregate cyclic or broken child lineage', () => {
+    const sessions = new Map([
+      ['a', { id: 'a', title: 'A', project: '', child: true, parent: 'b' }],
+      ['b', { id: 'b', title: 'B', project: '', child: true, parent: 'a' }],
+      ['orphan', { id: 'orphan', title: 'Orphan', project: '', child: true, parent: 'missing' }],
+    ])
+    const rows = summarizeLedgerSessions([summary({ sessionId: 'a', cost: 2 }), summary({ sessionId: 'orphan', cost: 3 })], sessions)
+    expect(rows.map(row => [row.id, row.cost])).toEqual([['a', 2], ['orphan', 3]])
+  })
   it('normalizes ids and exposes only sessions that carry spend', () => {
     const rows = summarizeLedgerSessions([
       summary({ sessionId: 'session-a', cost: 0.5, lastActivity: 2 }),

@@ -15,9 +15,9 @@ const inspection = {
 
 function migrationContext(
   coldSnapshot: Function,
-  inspect = vi.fn(async () => inspection),
+  inspect: (id: unknown) => Promise<unknown> = vi.fn(async () => inspection),
   cachedSnapshot: Function = vi.fn(() => undefined),
-  list = vi.fn(async () => [header]),
+  list: () => Promise<unknown[]> = vi.fn(async () => [header]),
 ): Context {
   return {
     sessionPersistence: {

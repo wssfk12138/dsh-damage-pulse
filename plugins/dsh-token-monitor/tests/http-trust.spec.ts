@@ -7,8 +7,8 @@ function response(): ServerResponse & { status: number; body: string } {
   return {
     status: 0,
     body: '',
-    writeHead(status: number) { this.status = status; return this },
-    end(value?: string) { this.body = value ?? ''; return this },
+    writeHead(this: { status: number }, status: number) { this.status = status; return this },
+    end(this: { body: string }, value?: string) { this.body = value ?? ''; return this },
   } as unknown as ServerResponse & { status: number; body: string }
 }
 

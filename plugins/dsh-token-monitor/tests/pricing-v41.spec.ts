@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionLogOffset, SessionSeq, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { sessionHeader } from './session-header.ts'
 import { attachCollector } from '../src/collector.ts'
 import { appendUsageRecord } from './collector-appender.ts'
 import { createTokenCostProjectionDefinition } from '../src/projection.ts'
@@ -69,9 +70,9 @@ describe('official V4.1 Flash pricing', () => {
     try {
       const def = createTokenCostProjectionDefinition(PRICE_TABLE)
       ctx.sessionProjections.register(def)
-      const obsolete = { tokenCost: { ver: 4, seq: 3, val: { ...def.init(), calls: 1, cost: 999 } } }
+      const obsolete = { tokenCost: { ver: 4, seq: SessionSeq(3), val: { ...def.init(), calls: 1, cost: 999 } } }
       const frozenEvents = storage.add.mock.calls.map((call, seq) => ({ type: 'token-usage/record', seq, time: valley, data: { record: call[0] } }))
-      const restored = ctx.sessionProjections.restore(obsolete, frozenEvents as unknown as SessionEvent[], 0)
+      const restored = ctx.sessionProjections.restore(obsolete, frozenEvents as unknown as SessionEvent[], SessionLogOffset(0), sessionHeader('v41-pricing'), SessionLogOffset(0))
       expect(restored.snapshot.values.tokenCost?.calls).toBe(4)
       expect(restored.snapshot.values.tokenCost?.cost).toBeCloseTo(40.71, 10)
       expect(restored.checkpoint.tokenCost?.ver).toBe(7)

@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { afterEach, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
+import Loader, { EntryTree } from '@deepseek-ai/cordis-plugin-loader'
 import Include from '@deepseek-ai/cordis-plugin-include'
 import ConfigEditor from '@deepseek-ai/dsh-config-editor'
 import Settings from '@deepseek-ai/dsh-settings'
@@ -27,11 +27,13 @@ let context: Context | undefined
 let root: string | undefined
 const createdRoots: string[] = []
 let stream: ReadableStreamDefaultReader<Uint8Array> | undefined
+let restoreImports: (() => void) | undefined
 
 /** 释放当前组合：先停 SSE 读取，再销毁 cordis 上下文；目录留给调用方检查。 */
 async function shutdown() {
   await stream?.cancel().catch(() => {}); stream = undefined
   await context?.fiber.dispose(); context = undefined
+  restoreImports?.(); restoreImports = undefined
 }
 
 afterEach(async () => {
@@ -67,7 +69,7 @@ async function boot(adapter: BillingAdapter, options: { fresh?: boolean } = {}) 
   // A repeated boot in one test must release the previous loader/app tree before
   // replacing the shared context reference, otherwise the old web server and
   // plugin effects remain alive against its temporary home.
-  if (context) await shutdown()
+  if (context || restoreImports) await shutdown()
   if (options.fresh === true || root === undefined) {
     root = await mkdtemp(join(tmpdir(), 'dsh-billing-loader-'))
     createdRoots.push(root)
@@ -113,12 +115,31 @@ async function boot(adapter: BillingAdapter, options: { fresh?: boolean } = {}) 
     ['monitor', { name: 'dsh-token-monitor', inject: ['sessions', 'credentials', 'settings'], apply: (scope: Context) => applyRuntime(scope, {
       roots, stateFile: join(runtime, 'state.json'), manifest, dataDir,
     } as RuntimeOptions) }],
-    ['adapter', { name: 'billing-test-adapter', inject: ['llm'], apply(ctx: Context) { ctx.llm.registerAdapter(['billing-test', 'deepseek-official', 'deepseek-account'], adapter) } }],
+    ['adapter', { name: 'billing-test-adapter', inject: ['llm'], apply(ctx: Context) {
+      ctx.llm.registerAdapter(['billing-test', 'deepseek-official', 'deepseek-account'], adapter)
+      // The balance API intentionally accepts only providers declared in the
+      // configurable-provider directory. Keep this composition harness honest
+      // by declaring the synthetic providers the same way the production
+      // DeepSeek adapter does; registering an adapter route alone is not enough
+      // to make a provider user-configurable.
+      ctx.llm.registerConfigurableProviders([
+        { provider: 'billing-test', displayName: 'Billing test', settingsNs: 'billing-test', settingsPath: ['billing-test'] },
+        { provider: 'deepseek-official', displayName: 'DeepSeek official', settingsNs: 'llm-deepseek', settingsPath: ['llm-deepseek'] },
+        { provider: 'deepseek-account', displayName: 'DeepSeek account', settingsNs: 'llm-deepseek', settingsPath: ['llm-deepseek'] },
+      ])
+    } }],
     ['trust', { name: 'billing-test-trust', apply(ctx: Context) { ctx.provide('connection', { requestRejection: () => undefined }) } }],
   ])
-  ctx.loader.internal = { version: 'v2', async import(name: string) {    if (!modules.has(name)) throw new Error('Unexpected module: ' + name)
+  // Includes create their own EntryTree, so intercept the shared import seam
+  // while retaining the real builtin path instead of faking Node's internal loader.
+  const originalImport = EntryTree.prototype.import
+  const importSpy = vi.spyOn(EntryTree.prototype, 'import').mockImplementation(function (this: EntryTree, name, getOuterStack) {
+    if (name.startsWith('cordis:')) return originalImport.call(this, name, getOuterStack)
+    if (!modules.has(name)) throw new Error('Unexpected module: ' + name)
     return modules.get(name)
-  } } as NonNullable<typeof ctx.loader.internal>
+  })
+  restoreImports = () => importSpy.mockRestore()
+  expect(ctx.loader.import('cordis:include')).toBe(Include)
   const config = [
     { name: 'credentials', config: { path: join(root, 'credentials.yaml'), watch: false } },
     { name: 'llm' }, { name: 'tools', config: { mode: 'native' } }, { name: 'sessions' },
@@ -130,7 +151,7 @@ async function boot(adapter: BillingAdapter, options: { fresh?: boolean } = {}) 
   await writeFile(path, JSON.stringify(config))
   ctx.provide('profileContext', profile)
   ctx.provide('appReady', { onReady: (listener: () => void) => { listener(); return () => {} } })
-  await ctx.loader.create({ id: 'include', name: 'cordis:include',
+  await ctx.loader.create({ name: 'cordis:include',
     config: { path: pathToFileURL(path).href, patches: readProfilePatches('test', profile) } })
   await ctx.loader.await()
   const url = 'http://127.0.0.1:' + ctx.webServer.port
@@ -140,6 +161,27 @@ async function boot(adapter: BillingAdapter, options: { fresh?: boolean } = {}) 
 
 const updateName = 'token_monitor_billing_update'
 const getName = 'token_monitor_billing_get'
+
+it('native balance tools persist pause/resume, reject script edits and preserve pauses on restart', async () => {
+  const { ctx, url } = await boot(new BillingAdapter([], undefined, deepseekCatalogs))
+  const get = 'token_monitor_balance_get', update = 'token_monitor_balance_update'
+  const updateSchema = ctx.tools.schemas().find(tool => tool.name === update)!
+  expect(updateSchema.description).toContain('source native-account')
+  expect(updateSchema.description).toContain('without script')
+  expect(updateSchema.parameters).toMatchObject({
+    properties: { enabled: { type: 'boolean' }, script: { type: 'string' } },
+    required: ['provider', 'expectedRevision'],
+  })
+  const initial = await (await fetch(url + '/api/token-monitor/balance-script?provider=deepseek-account')).json()
+  expect(initial).toMatchObject({ source: 'native-account', enabled: true, script: '' })
+  expect((await call(ctx, get, { provider: 'deepseek-account' })).isError).not.toBe(true)
+  expect((await call(ctx, update, { provider: 'deepseek-account', enabled: false, expectedRevision: initial.revision })).isError).not.toBe(true)
+  expect((await call(ctx, update, { provider: 'deepseek-account', script: 'nonempty', expectedRevision: 1 })).isError).toBe(true)
+  expect((await call(ctx, update, { provider: 'deepseek-account', script: '', enabled: true, expectedRevision: 1 })).isError).toBe(true)
+  const restarted = await boot(new BillingAdapter([], undefined, deepseekCatalogs))
+  expect(await (await fetch(restarted.url + '/api/token-monitor/balance-script?provider=deepseek-account')).json()).toMatchObject({ enabled: false, revision: 1 })
+  expect((await call(restarted.ctx, update, { provider: 'deepseek-account', enabled: true, expectedRevision: 1 })).isError).not.toBe(true)
+})
 async function call(ctx: Context, name: string, args: Record<string, unknown>) {
   return ctx.tools.execute({ name, arguments: args, callId: ToolCallId('test'), signal: new AbortController().signal })
 }

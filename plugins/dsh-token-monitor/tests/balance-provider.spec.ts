@@ -3,18 +3,18 @@ import { describe, expect, it, vi } from 'vitest'
 import { resolveBalanceIdentity } from '../src/balance-provider.ts'
 import { validateBalanceProviders } from '../src/balance-storage.ts'
 
-function context(): Context {
+function context() {
   return {
     credentials: { resolve: vi.fn().mockResolvedValue({ value: 'balance-key' }) },
     llm: { listConfigurableProviders: vi.fn(() => [{ provider: 'fast', settingsNs: 'llm-pi-ai', settingsPath: ['providers', 'fast'] }]) },
     settings: { get: vi.fn(() => ({ providers: { fast: { baseURL: 'http://127.0.0.1:10100/v1' } } })) },
-  } as unknown as Context
+  }
 }
 
 describe('balance provider identity', () => {
   it('uses an independent HTTPS endpoint and credential when the model route is a local proxy', async () => {
     const ctx = context()
-    await expect(resolveBalanceIdentity(ctx, 'fast', {
+    await expect(resolveBalanceIdentity(ctx as unknown as Context, 'fast', {
       baseURL: 'https://www.fastaitoken.com', apiKeyEnv: 'FASTAI_BALANCE_API_KEY',
     })).resolves.toEqual({ apiKey: 'balance-key', baseURL: 'https://www.fastaitoken.com' })
     expect(ctx.credentials.resolve).toHaveBeenCalledWith('FASTAI_BALANCE_API_KEY')

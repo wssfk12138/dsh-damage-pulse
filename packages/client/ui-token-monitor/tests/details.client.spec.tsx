@@ -149,14 +149,14 @@ it('renders keyless visible output with two-line tokens, timings, exact fee and 
   fireEvent.change(screen.getByLabelText('background chat'), { target: { value: 'still usable' } })
   expect((screen.getByLabelText('background chat') as HTMLInputElement).value).toBe('still usable')
 })
-it('applies explicit dates only on click and keeps snapshot across filtering/paging until refresh', async () => {
+it('applies explicit dates only on click and discards the snapshot when filters change or refresh', async () => {
   const { fetcher } = mount(); await screen.findByText('¥0.012345')
   const initialCalls = fetcher.mock.calls.length
   fireEvent.change(screen.getByLabelText('开始时间'), { target: { value: '2026-09-01T00:00:00' } })
   expect(fetcher).toHaveBeenCalledTimes(initialCalls)
   fireEvent.click(screen.getByText('应用时间'))
   await waitFor(() => expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain('range=custom'))
-  expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain('snapshot=snapshot-1')
+  expect(String(fetcher.mock.calls.at(-1)?.[0])).not.toContain('snapshot=')
   await screen.findByText('¥0.012345'); fireEvent.change(screen.getByLabelText('对话'), { target: { value: '同名' } })
   await waitFor(() => expect(String(fetcher.mock.calls.at(-1)?.[0])).toContain('sessionText='))
   await screen.findByText('¥0.012345'); fireEvent.click(screen.getByText('刷新'))
@@ -176,7 +176,7 @@ it('requires confirmation to reset filters and only reads records after acceptan
   expect((screen.getByLabelText('模型') as HTMLInputElement).value).toBe('deepseek-v4-pro')
   confirm.mockReturnValue(true)
   fireEvent.click(screen.getByText('重置筛选'))
-  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(calls + 1))
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(calls + 2))
   expect((screen.getByLabelText('模型') as HTMLInputElement).value).toBe('')
   const [url, options] = fetcher.mock.calls.at(-1)!
   expect(String(url)).toContain('range=today')

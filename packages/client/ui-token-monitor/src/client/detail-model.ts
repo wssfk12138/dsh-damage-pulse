@@ -10,18 +10,19 @@ export type ResizeEdge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
  * @param dy - Vertical pointer delta in pixels.
  * @param width - Available viewport width in pixels.
  * @param height - Available viewport height in pixels.
+ * @param topInset - Reserved host title-bar space in pixels; defaults to 8.
  * @returns The resized rectangle constrained to the viewport.
  */
-export function resizeWindow(rect: WindowRect, edge: ResizeEdge, dx: number, dy: number, width: number, height: number): WindowRect {
+export function resizeWindow(rect: WindowRect, edge: ResizeEdge, dx: number, dy: number, width: number, height: number, topInset = 8): WindowRect {
   let { x, y, width: w, height: h } = rect
-  const minWidth = Math.min(320, width - 16), minHeight = Math.min(280, height - 16)
+  const minWidth = Math.min(320, Math.max(0, width - 16)), minHeight = Math.min(280, Math.max(0, height - topInset - 8))
   if (edge.includes('w')) {
     x = Math.max(8, Math.min(rect.x + dx, rect.x + rect.width - minWidth))
     w = rect.x + rect.width - x
   }
   if (edge.includes('e')) w = Math.max(minWidth, Math.min(rect.width + dx, width - rect.x - 8))
   if (edge.includes('n')) {
-    y = Math.max(8, Math.min(rect.y + dy, rect.y + rect.height - minHeight))
+    y = Math.max(topInset, Math.min(rect.y + dy, rect.y + rect.height - minHeight))
     h = rect.y + rect.height - y
   }
   if (edge.includes('s')) h = Math.max(minHeight, Math.min(rect.height + dy, height - rect.y - 8))
@@ -32,12 +33,13 @@ export function resizeWindow(rect: WindowRect, edge: ResizeEdge, dx: number, dy:
  * @param rect - Current window rectangle.
  * @param width - Available viewport width in pixels.
  * @param height - Available viewport height in pixels.
+ * @param topInset - Reserved host title-bar space; small viewports shrink below the preferred minimum size.
  * @returns The nearest supported rectangle inside the viewport.
  */
-export function clampWindow(rect: WindowRect, width: number, height: number): WindowRect {
-  const w = Math.min(Math.max(320, rect.width), Math.max(240, width - 16))
-  const h = Math.min(Math.max(280, rect.height), Math.max(200, height - 16))
-  return { x: Math.max(8, Math.min(rect.x, width - w - 8)), y: Math.max(8, Math.min(rect.y, height - h - 8)), width: w, height: h }
+export function clampWindow(rect: WindowRect, width: number, height: number, topInset = 8): WindowRect {
+  const w = Math.min(Math.max(320, rect.width), Math.max(0, width - 16))
+  const h = Math.min(Math.max(280, rect.height), Math.max(0, height - topInset - 8))
+  return { x: Math.max(8, Math.min(rect.x, width - w - 8)), y: Math.max(topInset, Math.min(rect.y, height - h - 8)), width: w, height: h }
 }
 /**
  * Format a token count with K or M suffixes for the detail view.

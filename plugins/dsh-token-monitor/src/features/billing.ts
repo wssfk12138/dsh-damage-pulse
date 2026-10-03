@@ -4,6 +4,7 @@ import type { ModuleServices } from '../module-services.ts'
 import { BalanceScriptConfig } from '../balance-config.ts'
 import { builtInBalanceAdapter } from '../balance-adapters.ts'
 import { BalanceRegistry } from '../balance-registry.ts'
+import { attachAccountBalance } from '../balance-account.ts'
 import { resolveBalanceIdentity } from '../balance-provider.ts'
 import { requestBalanceJson } from '../balance-network.ts'
 import { registerBalanceApi, registerBalanceTools } from '../balance-api.ts'
@@ -45,11 +46,13 @@ export function apply(ctx: Context, services: ModuleServices): void {
     settingsCtx.inject(['webServer', 'connection'], web => registerBillingSettingsRoutes(web, services.store, services.settings))
     settingsCtx.inject(['llm'], balanceCtx => {
       const scripts = new BalanceScriptConfig(services.store, async provider => {
+        if (provider === 'deepseek-account') return undefined
         const identity = await resolveBalanceIdentity(balanceCtx, provider, services.store.get().balanceProviders?.[provider])
         return identity === undefined ? undefined : builtInBalanceAdapter(identity.baseURL)
       })
       const registry = new BalanceRegistry({ readScript: provider => scripts.read(provider),
         resolveIdentity: provider => resolveBalanceIdentity(balanceCtx, provider, services.store.get().balanceProviders?.[provider]), request: requestBalanceJson })
+      attachAccountBalance(balanceCtx, source => registry.setAccountSource(source))
       balanceCtx.effect(() => () => registry.stop(), 'token-monitor: balance requests')
       balanceCtx.inject(['webServer', 'connection'], web => registerBalanceApi(web, scripts, registry))
       balanceCtx.inject(['tools'], tools => registerBalanceTools(tools, scripts, registry))

@@ -13,7 +13,7 @@ export interface BalanceScriptSnapshot extends BalanceScriptEntry {
   error?: string
   request?: BalanceRequest
   /** Present when the source is a Host-shipped adapter instead of saved text. */
-  source?: 'built-in'
+  source?: 'built-in' | 'native-account'
   /** Vendor label of that adapter. */
   adapter?: string
 }
@@ -61,6 +61,17 @@ export class BalanceScriptConfig {
    * @returns Keyless state of the currently saved script.
    */
   async read(provider: string): Promise<BalanceScriptSnapshot> {
+    if (provider !== 'deepseek-account') return this.readScript(provider)
+    const saved = this.store.get().balanceScripts?.[provider]
+    // No migration write: preserve legacy pauses until the owner explicitly
+    // enables the native query. Saved legacy text is never a native adapter.
+    const legacy = saved !== undefined && saved.enabled === undefined ? await this.readScript(provider) : undefined
+    const enabled = saved?.enabled ?? (legacy === undefined || legacy.status === 'valid')
+    return { provider, revision: saved?.revision ?? 0, script: '', source: 'native-account', enabled,
+      status: enabled ? 'valid' : legacy?.status ?? 'unconfigured' }
+  }
+
+  private async readScript(provider: string): Promise<BalanceScriptSnapshot> {
     const saved = this.store.get().balanceScripts?.[provider]
     // A saved script is the owner's explicit choice and always wins; only a
     // provider that never saved one can fall back to a Host-shipped adapter.
@@ -100,6 +111,7 @@ export class BalanceScriptConfig {
    * @returns Saved and automatically revalidated state.
    */
   async approve(provider: string, endpoint: unknown): Promise<BalanceScriptSnapshot> {
+    if (provider === 'deepseek-account') throw new BalanceEndpointMismatchError()
     const target = validateBalanceEndpoint(endpoint)
     const snapshot = await this.read(provider)
     if (snapshot.status !== 'unapproved' || snapshot.request === undefined
@@ -128,6 +140,10 @@ export class BalanceScriptConfig {
    * @returns Saved and automatically validated state.
    */
   async update(provider: string, script: string, expectedRevision: number): Promise<BalanceScriptSnapshot> {
+    if (provider === 'deepseek-account') {
+      if (script.trim()) throw new TypeError('Use the native account query switch, not a script')
+      return this.updateNative(provider, false, expectedRevision)
+    }
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new TypeError('Invalid balance revision')
     assertKeylessBalanceScript(script)
     const next = { revision: expectedRevision + 1, script }
@@ -137,6 +153,29 @@ export class BalanceScriptConfig {
       const current = state.balanceScripts?.[provider]
       if ((current?.revision ?? 0) !== expectedRevision) throw new BalanceScriptConflictError()
       if (current?.script === script) return this.read(provider)
+      try {
+        await this.store.update({ balanceScripts: { [provider]: next } }, state.revision)
+        return this.read(provider)
+      } catch (error) {
+        if (error instanceof PluginStoreConflictError && attempt < 3) continue
+        throw error
+      }
+    }
+    throw new BalanceScriptConflictError()
+  }
+
+  /** Persist a native-account query switch using the same provider-local revision. */
+  async updateNative(provider: string, enabled: boolean, expectedRevision: number): Promise<BalanceScriptSnapshot> {
+    if (provider !== 'deepseek-account' || typeof enabled !== 'boolean'
+      || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new TypeError('Invalid native balance settings')
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const state = this.store.get()
+      const current = state.balanceScripts?.[provider]
+      if ((current?.revision ?? 0) !== expectedRevision) throw new BalanceScriptConflictError()
+      if (current?.enabled === enabled) return this.read(provider)
+      // Keep legacy source for rollback, but never expose or execute it as a
+      // native query. The explicit boolean is the sole activation setting.
+      const next = { revision: expectedRevision + 1, script: current?.script ?? '', enabled }
       try {
         await this.store.update({ balanceScripts: { [provider]: next } }, state.revision)
         return this.read(provider)

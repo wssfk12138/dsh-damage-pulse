@@ -37,8 +37,10 @@ const viewSchema = z.object({
 
 type TokenCostProjectionDefinition = Omit<
   ProjectionDefinition<'tokenCost', TokenCostState>,
-  'wire'
+  'wire' | 'init'
 > & {
+  /** This fold has no header-dependent initial state on either host generation. */
+  init: () => TokenCostState
   wire: NonNullable<ProjectionDefinition<'tokenCost', TokenCostState>['wire']>
   /**
    * 旧 DSH 宿主字段（0.1.0-rc.6/rc.7/rc.8 的 schema/view 单表形态）。

@@ -1,7 +1,7 @@
 import { validateBalancePath } from './balance-path.ts'
 
 /** Persisted provider script fields; validation does not execute scripts. */
-export interface BalanceScriptEntry { revision: number; script: string }
+export interface BalanceScriptEntry { revision: number; script: string; enabled?: boolean }
 
 /** Host-owned endpoint and credential reference for one provider's balance API. */
 export interface BalanceProviderEntry { baseURL: string; apiKeyEnv: string }
@@ -81,7 +81,8 @@ export function validateBalanceScripts(value: unknown): asserts value is Record<
     const entry = raw as BalanceScriptEntry
     if (!Number.isSafeInteger(entry.revision) || entry.revision < 1 || typeof entry.script !== 'string'
       || Buffer.byteLength(entry.script) > 32_768
-      || Object.keys(entry).some(key => !['revision', 'script'].includes(key))) throw new TypeError('Invalid balance script entry')
+      || (entry.enabled !== undefined && (provider !== 'deepseek-account' || typeof entry.enabled !== 'boolean'))
+      || Object.keys(entry).some(key => !['revision', 'script', 'enabled'].includes(key))) throw new TypeError('Invalid balance script entry')
   }
 }
 

@@ -87,7 +87,8 @@ describe('notification event route', () => {
     const ctx = { webServer: { register }, effect: (setup: () => () => void) => { effects.push(setup()) } }
     expect(register).not.toHaveBeenCalled()
     registerNotificationEventsRoute(
-      ctx as Parameters<typeof registerNotificationEventsRoute>[0],
+      // This registration fixture supplies only the services used by the route.
+      ctx as unknown as Parameters<typeof registerNotificationEventsRoute>[0],
       new NotificationEventBuffer({ streamId: 'boot-route' }),
     )
     expect(register).toHaveBeenCalledOnce()

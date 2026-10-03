@@ -64,7 +64,7 @@ interface HostHandle {
     trailingCount: number
   }
   teardown(): Promise<void>
-  upgradeTrailing(): Promise<{ dispose(): Promise<unknown> }>
+  upgradeTrailing(): PromiseLike<{ dispose(): Promise<unknown> }>
 }
 
 const { runtime: runtimeFactory, plugin: pluginFactory } = loadModuleLoaderBundles()

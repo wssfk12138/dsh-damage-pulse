@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { BalanceScriptSnapshot } from './balance-config.ts'
 import { evaluateBalanceScript, validateScriptBalance, type BalanceRequest } from './balance-script.ts'
 import type { BalanceInfo } from './types.ts'
+import type { AccountBalanceSource } from './balance-account.ts'
 
 export interface BalanceIdentity { apiKey: string; baseURL: string }
 export interface ProviderBalance extends BalanceInfo { provider: string; scriptRevision: number; credentialGeneration: string }
@@ -22,7 +23,11 @@ export class BalanceRegistry {
   private inspections = new Map<string, Promise<void>>()
   private generations = new Map<string, number>()
   private pendingRequests = new Set<Promise<ProviderBalance | undefined>>()
+  private accountSource: AccountBalanceSource | undefined
   constructor(private dependencies: Dependencies) {}
+
+  /** Native accounts must never fall back to an unrelated API-key balance. */
+  setAccountSource(source: AccountBalanceSource | undefined): void { this.accountSource = source }
 
   /** Read current credentials before serving cached data; never return an older generation.
    * @param provider Exact configured provider identifier.
@@ -30,6 +35,14 @@ export class BalanceRegistry {
    */
   async get(provider: string): Promise<ProviderBalance | undefined> {
     if (this.stopped) return undefined
+    if (provider === 'deepseek-account') {
+      // Teardown also waits for configuration reads before/after native I/O.
+      const pending = this.getAccount(provider)
+      this.pendingRequests.add(pending)
+      const release = () => { this.pendingRequests.delete(pending) }
+      void pending.then(release, release)
+      return pending
+    }
     const preceding = this.inspections.get(provider)
     let release!: () => void
     const lock = new Promise<void>(resolve => { release = resolve })
@@ -42,6 +55,18 @@ export class BalanceRegistry {
       release()
       if (this.inspections.get(provider) === lock) this.inspections.delete(provider)
     }
+  }
+
+  private async getAccount(provider: string): Promise<ProviderBalance | undefined> {
+    const generation = this.generations.get(provider) ?? 0
+    const script = await this.dependencies.readScript(provider)
+    if (this.stopped || generation !== (this.generations.get(provider) ?? 0)) return undefined
+    if (script.status !== 'valid') { this.invalidate(provider); return undefined }
+    const value = await this.accountSource?.get()
+    const latest = await this.dependencies.readScript(provider)
+    if (this.stopped || generation !== (this.generations.get(provider) ?? 0)
+      || latest.revision !== script.revision || latest.status !== 'valid') return undefined
+    return value === undefined ? undefined : { ...value, scriptRevision: script.revision }
   }
 
   private async prepare(provider: string): Promise<{ result?: ProviderBalance | Promise<ProviderBalance | undefined> }> {
@@ -91,6 +116,7 @@ export class BalanceRegistry {
    * @param provider Exact provider identifier.
    */
   invalidate(provider: string): void {
+    if (provider === 'deepseek-account') this.accountSource?.invalidate()
     this.generations.set(provider, (this.generations.get(provider) ?? 0) + 1)
     this.entries.get(provider)?.controller.abort()
     this.entries.delete(provider)
@@ -100,6 +126,7 @@ export class BalanceRegistry {
   async stop(): Promise<void> {
     this.stopped = true
     for (const provider of this.entries.keys()) this.invalidate(provider)
-    await Promise.allSettled([...this.inspections.values(), ...this.pendingRequests])
+    const accountStop = this.accountSource?.stop()
+    await Promise.allSettled([...this.inspections.values(), ...this.pendingRequests, ...(accountStop ? [accountStop] : [])])
   }
 }

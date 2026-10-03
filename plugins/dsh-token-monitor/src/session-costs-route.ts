@@ -32,12 +32,27 @@ export function summarizeLedgerSessions(
   for (const summary of summaries) {
     const child = sessions.get(normalizeSessionId(summary.sessionId)) ?? sessions.get(summary.sessionId)
     if (child?.child !== true || !child.parent) continue
-    const parentId = normalizeSessionId(child.parent)
-    if (parentId === normalizeSessionId(summary.sessionId)) continue
-    const parent = sessions.get(parentId) ?? sessions.get(child.parent)
-    if (parent === undefined || parent.child === true || (child.project && parent.project && child.project !== parent.project)) continue
-    const aggregate = byId.get(parentId)
-    if (aggregate === undefined) continue
+    // Follow durable lineage to the root; only raw ledger rows contribute.
+    // A child row remains its own spend, so descendant totals cannot be counted twice.
+    const visited = new Set([normalizeSessionId(summary.sessionId)])
+    let current = child
+    let rootId: string | undefined
+    while (current.child === true && current.parent) {
+      const parentId = normalizeSessionId(current.parent)
+      if (visited.has(parentId)) break
+      visited.add(parentId)
+      const parent = sessions.get(parentId) ?? sessions.get(current.parent)
+      if (parent === undefined || (current.project && parent.project && current.project !== parent.project)) break
+      if (parent.child !== true) { rootId = parentId; break }
+      current = parent
+    }
+    if (rootId === undefined) continue
+    let aggregate = byId.get(rootId)
+    if (aggregate === undefined) {
+      aggregate = { sessionId: rootId, calls: 0, inputTokens: 0, cacheReadTokens: 0,
+        cacheWriteTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0, lastActivity: 0 }
+      byId.set(rootId, aggregate)
+    }
     for (const key of ['calls', 'inputTokens', 'cacheReadTokens', 'cacheWriteTokens', 'outputTokens', 'totalTokens', 'cost'] as const) {
       aggregate[key] += summary[key]
     }

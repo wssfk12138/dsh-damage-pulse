@@ -85,7 +85,7 @@ describe('today spend aggregation', () => {
       record(now - 1_000, 0.25),
       { ...record(now - 750, 0, 'other-provider'), billingStatus: 'unpriced' },
       { ...record(now - 500, 0, 'deepseek-official', 'unsupported-model'), billingStatus: 'unpriced' },
-    ].map(JSON.stringify).join('\n') + '\n')
+    ].map(record => JSON.stringify(record)).join('\n') + '\n')
     const storage = new UsageStorage(
       (item) => item.provider === 'deepseek-official' && item.model === 'deepseek-chat',
       dataDir,
@@ -140,7 +140,7 @@ describe('today spend aggregation', () => {
     const now = Date.parse('2026-08-23T05:00:00.000Z')
     const today = Array.from({ length: 5_000 }, (_, index) => record(now - index * 1_000, 0.01))
     const previousDay = Array.from({ length: 5_000 }, (_, index) => record(now - 24 * 60 * 60 * 1_000 - index * 1_000, 0.02))
-    writeFileSync(join(dataDir, 'usage.jsonl'), [...today, ...previousDay].map(JSON.stringify).join('\n') + '\n')
+    writeFileSync(join(dataDir, 'usage.jsonl'), [...today, ...previousDay].map(record => JSON.stringify(record)).join('\n') + '\n')
     const storage = new UsageStorage(() => true, dataDir)
     expect(storage.todaySpend(now).calls).toBe(5_000)
     expect(storage.todaySpend(now).cost).toBeCloseTo(50, 10)

@@ -91,6 +91,16 @@ const CARD: React.CSSProperties = {
  */
 const CONTEXT_MENU_MATERIAL = { '--dsw-menu-surface-fill': 'rgba(28, 28, 28, 0.96)' }
 
+/** All enabled menu items share the same hover feedback; disabled switches stay inactive. */
+const CONTEXT_MENU_HOVER = {
+  onMouseEnter(event: React.MouseEvent<HTMLButtonElement>) {
+    if (!event.currentTarget.disabled) event.currentTarget.style.background = 'rgba(255,255,255,0.10)'
+  },
+  onMouseLeave(event: React.MouseEvent<HTMLButtonElement>) {
+    event.currentTarget.style.background = 'transparent'
+  },
+}
+
 const RED = '#ff3b30'
 const GREEN = '#30a46c'
 const UNKNOWN_COLOR = '#8a8a8a'
@@ -687,9 +697,10 @@ export function BalanceWidget({
     const rect = cardRef.current?.getBoundingClientRect()
     const width = rect?.width ?? 180
     const height = rect?.height ?? 34
+    const minTop = overlayTopMargin(0)
     return {
       left: clamp(next.left, 0, Math.max(0, window.innerWidth - width)),
-      top: clamp(next.top, 0, Math.max(0, window.innerHeight - height)),
+      top: clamp(next.top, minTop, Math.max(minTop, window.innerHeight - height)),
     }
   }, [])
 
@@ -698,7 +709,7 @@ export function BalanceWidget({
     if (!autoAnchorRef.current || width <= 0 || height <= 0) return false
     const next = {
       left: Math.max(ANCHOR_MARGIN_PX, window.innerWidth - width - ANCHOR_MARGIN_PX),
-      top: Math.max(ANCHOR_MARGIN_PX, window.innerHeight - height - ANCHOR_MARGIN_PX),
+      top: Math.max(overlayTopMargin(ANCHOR_MARGIN_PX), window.innerHeight - height - ANCHOR_MARGIN_PX),
     }
     setPos(current => (current.left === next.left && current.top === next.top ? current : next))
     return true
@@ -1107,8 +1118,12 @@ export function BalanceWidget({
     if (!shouldPoll || !billingInstalled) return
     let cancelled = false
     const controller = new AbortController()
+    let inFlight = false
+    const nativeAccount = scope?.provider === 'deepseek-account'
     let timer: ReturnType<typeof setTimeout> | undefined
     const poll = async () => {
+      if (cancelled || inFlight) return
+      inFlight = true
       try {
         const res = await fetch(balanceUrl, { cache: 'no-store', signal: controller.signal })
         if (!res.ok) {
@@ -1164,13 +1179,19 @@ export function BalanceWidget({
       } catch {
         if (!cancelled) setError(true)
       } finally {
-        if (!cancelled) timer = setTimeout(() => { void poll() }, BALANCE_POLL_MS)
+        inFlight = false
+        // API-key cache expires 15s after completion; schedule its next read
+        // from completion too, keeping the existing cache and failure backoff.
+        if (!cancelled && !nativeAccount) timer = setTimeout(() => { void poll() }, BALANCE_POLL_MS)
       }
     }
     void poll()
+    // Fixed start cadence; request latency does not add another 15 seconds.
+    if (nativeAccount) timer = setInterval(() => { void poll() }, BALANCE_POLL_MS)
     return () => {
       cancelled = true
       controller.abort()
+      clearInterval(timer)
       clearTimeout(timer)
     }
   }, [shouldPoll, billingInstalled, trigger, balanceUrl, scopeKey])
@@ -1279,7 +1300,7 @@ export function BalanceWidget({
       data-token-monitor-balance=""
       data-showcase-instance={previewOverride?.instanceId}
       data-showcase-peak={isPeak ? 'peak' : 'valley'}
-      title="DeepSeek 账户余额（扣费实时、余额 60s 校准；可拖动）"
+      title="DeepSeek 账户余额（扣费实时、余额 15s 校准；可拖动）"
       tabIndex={0}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
@@ -1304,6 +1325,8 @@ export function BalanceWidget({
           ref={contextMenuRef}
           role="menu"
           aria-label="余额显示设置"
+          // An empty title blocks the balance card's inherited native tooltip.
+          title=""
           onPointerDown={event => event.stopPropagation()}
           onKeyDown={(event) => {
             if (event.key === 'Escape') {
@@ -1337,14 +1360,13 @@ export function BalanceWidget({
               border: 0, borderRadius: 4, background: 'transparent', color: 'inherit',
               textAlign: 'left', cursor: 'pointer', font: 'inherit',
             }}
-            onMouseEnter={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.10)' }}
-            onMouseLeave={(event) => { event.currentTarget.style.background = 'transparent' }}
+            {...CONTEXT_MENU_HOVER}
           >
             <span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>{showWhaleGirl ? '✓' : ''}</span>
             <span>显示鲸鱼娘</span>
           </button>}
           {overviewInstalled && <>
-            <button type="button" role="menuitemcheckbox" aria-checked={usageVisible} disabled={!balanceAvailable} onClick={toggleUsageOverview} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: balanceAvailable ? 'pointer' : 'not-allowed', font: 'inherit' }}>
+            <button type="button" role="menuitemcheckbox" aria-checked={usageVisible} disabled={!balanceAvailable} onClick={toggleUsageOverview} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: balanceAvailable ? 'pointer' : 'not-allowed', font: 'inherit' }}>
               <span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>{usageVisible ? '✓' : ''}</span>
               <span>显示用量概览</span>
             </button>
@@ -1357,8 +1379,7 @@ export function BalanceWidget({
                 border: 0, borderRadius: 4, background: 'transparent', color: 'inherit',
                 textAlign: 'left', cursor: 'pointer', font: 'inherit',
               }}
-              onMouseEnter={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.10)' }}
-              onMouseLeave={(event) => { event.currentTarget.style.background = 'transparent' }}
+              {...CONTEXT_MENU_HOVER}
             >
               <span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>≡</span>
               <span>{t('usage')}</span>
@@ -1373,14 +1394,13 @@ export function BalanceWidget({
               border: 0, borderRadius: 4, background: 'transparent', color: 'inherit',
               textAlign: 'left', cursor: 'pointer', font: 'inherit',
             }}
-            onMouseEnter={(event) => { event.currentTarget.style.background = 'rgba(255,255,255,0.10)' }}
-            onMouseLeave={(event) => { event.currentTarget.style.background = 'transparent' }}
+            {...CONTEXT_MENU_HOVER}
           >
             <span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>⚙</span>
             <span>{t('notificationSettings')}</span>
           </button>}
-          {billingInstalled && <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setBillingOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>¥</span><span>计费规则</span></button>}
-          <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setManagerOpen(true) }} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>↻</span><span>{t('modulesTitle')}</span></button>
+          {billingInstalled && <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setBillingOpen(true) }} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>¥</span><span>计费规则</span></button>}
+          <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setManagerOpen(true) }} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>↻</span><span>{t('modulesTitle')}</span></button>
         </MenuSurface>
       )}
       {overviewInstalled && detailsOpen && <Suspense fallback={null}><UsageDetailsWindow

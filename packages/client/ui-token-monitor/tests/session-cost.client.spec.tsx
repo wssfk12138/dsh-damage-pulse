@@ -54,15 +54,13 @@ function hookFor(state: SessionListStateLike): SnapshotSelectorHook<SessionListS
 function kitFor(state: SessionListStateLike) {
   const usePanelInfo: GlobalStandardProps['usePanelInfo'] = selector => selector({ activePanelId: null })
   const useResource: GlobalStandardProps['useResource'] = () => { throw new Error('unused resource hook') }
-  const useSessionStatus: GlobalStandardProps['useSessionStatus'] = selector => selector(new Map())
-  const useSessionRetainInfo = (() => undefined) as GlobalStandardProps['useSessionRetainInfo']
+  const useSessionPendingInteraction: GlobalStandardProps['useSessionPendingInteraction'] = selector => selector(new Map())
   return {
     usePanelInfo,
     useResource,
     // 金额组件只读取 byId；其余新版 SessionListState 字段不影响这些测试。
     useSessions: hookFor(state) as unknown as UseSessions,
-    useSessionStatus,
-    useSessionRetainInfo,
+    useSessionPendingInteraction,
     useWorkspaces: (() => undefined) as SnapshotSelectorHook<never>,
   }
 }

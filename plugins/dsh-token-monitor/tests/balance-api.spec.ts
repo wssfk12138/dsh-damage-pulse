@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { registerBalanceApi } from '../src/balance-api.ts'
 import { BalanceEndpointMismatchError, SensitiveBalanceScriptError, type BalanceScriptConfig } from '../src/balance-config.ts'
 import type { BalanceRegistry } from '../src/balance-registry.ts'
+import { BalanceScriptConflictError } from '../src/balance-storage.ts'
 
 type Handler = (request: IncomingMessage, response: ServerResponse) => Promise<void> | void
 
@@ -21,8 +22,8 @@ function response(): ServerResponse & { status: number; body: string } {
   return {
     status: 0,
     body: '',
-    writeHead(status: number) { this.status = status; return this },
-    end(value?: string) { this.body = value ?? ''; return this },
+    writeHead(this: { status: number }, status: number) { this.status = status; return this },
+    end(this: { body: string }, value?: string) { this.body = value ?? ''; return this },
   } as unknown as ServerResponse & { status: number; body: string }
 }
 
@@ -33,7 +34,7 @@ function setup(rejection: 401 | 403 | undefined, scripts: Pick<BalanceScriptConf
     effect: (register: () => unknown) => register(),
     webServer: { register: vi.fn((route: { path: string; handler: Handler }) => { routes.set(route.path, route.handler); return () => {} }) },
     connection: { requestRejection: vi.fn(() => rejection) },
-    llm: { listConfigurableProviders: vi.fn(() => [{ provider: 'fast' }]) },
+    llm: { listConfigurableProviders: vi.fn(() => [{ provider: 'fast' }, { provider: 'deepseek-account' }]) },
   } as unknown as Context
   registerBalanceApi(ctx, scripts as BalanceScriptConfig, registry)
   return {
@@ -45,6 +46,45 @@ function setup(rejection: 401 | 403 | undefined, scripts: Pick<BalanceScriptConf
 }
 
 describe('balance HTTP security boundary', () => {
+  it('routes native switch edits, preserves compatibility pauses and rejects ambiguous bodies', async () => {
+    const scripts = { read: vi.fn(), approve: vi.fn(), update: vi.fn().mockResolvedValue({ enabled: false }), updateNative: vi.fn().mockResolvedValue({ enabled: false, revision: 2 }) }
+    const { handler, registry } = setup(undefined, scripts)
+    const url = '/api/token-monitor/balance-script?provider=deepseek-account'
+    const accepted = response()
+    await handler(request('PUT', url, { enabled: false, expectedRevision: 1 }), accepted)
+    expect(accepted.status).toBe(200)
+    expect(scripts.updateNative).toHaveBeenCalledWith('deepseek-account', false, 1)
+    expect(registry.invalidate).toHaveBeenCalledWith('deepseek-account')
+    const compatibility = response()
+    await handler(request('PUT', url, { script: '', expectedRevision: 2 }), compatibility)
+    expect(compatibility.status).toBe(200)
+    expect(scripts.update).toHaveBeenCalledWith('deepseek-account', '', 2)
+    for (const body of [{ enabled: false, script: '', expectedRevision: 1 }, { enabled: 'false', expectedRevision: 1 }, { enabled: false, expectedRevision: 1, extra: true }, { expectedRevision: 1 }]) {
+      const rejected = response()
+      await handler(request('PUT', url, body), rejected)
+      expect(rejected.status).toBe(400)
+    }
+    const nonNative = response()
+    await handler(request('PUT', '/api/token-monitor/balance-script?provider=fast', { enabled: false, expectedRevision: 1 }), nonNative)
+    expect(nonNative.status).toBe(400)
+    expect(scripts.updateNative).toHaveBeenCalledOnce()
+  })
+  it('rejects unauthorized native writes and reports native conflicts and invalid script edits', async () => {
+    const scripts = { read: vi.fn(), approve: vi.fn(), update: vi.fn().mockRejectedValue(new TypeError()), updateNative: vi.fn().mockRejectedValue(new BalanceScriptConflictError()) }
+    const url = '/api/token-monitor/balance-script?provider=deepseek-account'
+    const denied = response()
+    await setup(403, scripts).handler(request('PUT', url, { enabled: true, expectedRevision: 0 }), denied)
+    expect(denied.status).toBe(403)
+    expect(scripts.updateNative).not.toHaveBeenCalled()
+    const { handler, registry } = setup(undefined, scripts)
+    const conflict = response()
+    await handler(request('PUT', url, { enabled: true, expectedRevision: 0 }), conflict)
+    expect(conflict.status).toBe(409)
+    const invalid = response()
+    await handler(request('PUT', url, { script: 'nonempty', expectedRevision: 0 }), invalid)
+    expect(invalid.status).toBe(400)
+    expect(registry.invalidate).not.toHaveBeenCalled()
+  })
   it('rejects unauthenticated requests before reading provider configuration', async () => {
     const scripts = { read: vi.fn(), update: vi.fn() }
     const { ctx, handler } = setup(401, scripts as unknown as BalanceScriptConfig)

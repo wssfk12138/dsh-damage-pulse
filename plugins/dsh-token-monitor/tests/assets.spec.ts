@@ -41,7 +41,7 @@ async function serve(root: string): Promise<string> {
 
 describe('token monitor asset routes', () => {
   it('registers the whale-girl and cute settings prefixes', () => {
-    const register = vi.fn(() => vi.fn())
+    const register = vi.fn((_route: Parameters<import('@deepseek-ai/dsh-host-webserver').WebServer['register']>[0]) => vi.fn())
     registerTokenMonitorAssetRoutes({ webServer: { register } } as never, 'C:/assets')
 
     expect(register).toHaveBeenCalledTimes(2)

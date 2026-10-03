@@ -8,26 +8,30 @@
 
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionLogOffset, SessionSeq, type Session, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { sessionHeader } from './session-header.ts'
 import SessionProjectionRegistry from '@deepseek-ai/dsh-session-projection'
 import { OFFICIAL_PROVIDER_ID, PRICE_TABLE, priceUsage } from '../src/pricing.ts'
 import type { UsageRecord } from '../src/types.ts'
 import { createTokenCostProjectionDefinition } from '../src/projection.ts'
 
 /** 直接构造 session 事件现场，不依赖 SessionStore 及其 peer 插件。 */
-function makeSession(): Session {
+type SyntheticSession = Session & { events: SessionEvent[] }
+function makeSession(): SyntheticSession {
   const events: SessionEvent[] = []
   return {
     id: 's1',
     seq: 0,
     events,
+    header: sessionHeader(),
+    inheritedEventCount: SessionLogOffset(0),
     snapshotEvents: (fromSeq = 0, toSeqExclusive = events.length) =>
       events.slice(Number(fromSeq), Number(toSeqExclusive)),
-  } as unknown as Session
+  } as unknown as SyntheticSession
 }
 
 /** 向 session 提交一个事件并推入 registry 的 session/event 订阅。 */
-function emit(ctx: Context, session: Session, type: string, data: unknown, time: number): SessionEvent {
+function emit(ctx: Context, session: SyntheticSession, type: string, data: unknown, time: number): SessionEvent {
   const event = { type, seq: session.events.length, time, data } as unknown as SessionEvent
   session.events.push(event)
   ;(session as { seq: number }).seq = event.seq + 1
@@ -53,7 +57,7 @@ const frozenRecord = (time: number, seq: number, overrides: Partial<UsageRecord>
   billingStatus: 'priced', billingRuleVersion: 1, modelMultiplier: 1, ...overrides,
 })
 
-async function harness(): Promise<{ ctx: Context; session: Session }> {
+async function harness(): Promise<{ ctx: Context; session: SyntheticSession }> {
   const ctx = new Context()
   await ctx.plugin(SessionProjectionRegistry)
   return { ctx, session: makeSession() }
@@ -114,14 +118,14 @@ describe('tokenCost hybrid projection compatibility', () => {
     expect('totalTokens' in (checkpoint.tokenCost!.val as Record<string, unknown>)).toBe(false)
 
     // restore：同一 checkpoint + 全量日志 → 服务一致的 cut
-    const restored = ctx.sessionProjections.restore(checkpoint, session.events as SessionEvent[], 0)
+    const restored = ctx.sessionProjections.restore(checkpoint, session.events, SessionLogOffset(0), session.header, session.inheritedEventCount)
     expect(restored.snapshot.values.tokenCost).toEqual(snapshot.values.tokenCost)
     expect(restored.checkpoint.tokenCost).toEqual({ ver: 7, seq: 1, val: checkpoint.tokenCost!.val })
 
     // viewCheckpoint：版本匹配的行直接出值；版本不匹配的行缺席
     const viewed = ctx.sessionProjections.viewCheckpoint(checkpoint)
     expect(viewed.tokenCost).toEqual(snapshot.values.tokenCost)
-    expect(ctx.sessionProjections.viewCheckpoint({ tokenCost: { ver: 99, seq: 2, val: checkpoint.tokenCost!.val } })).toEqual({})
+    expect(ctx.sessionProjections.viewCheckpoint({ tokenCost: { ver: 99, seq: SessionSeq(2), val: checkpoint.tokenCost!.val } })).toEqual({})
   })
 
   it('rebuilds a zero-valued v5 checkpoint instead of trusting the stale row', async () => {
@@ -136,10 +140,10 @@ describe('tokenCost hybrid projection compatibility', () => {
       { type: 'token-usage/record', seq: 1, time: t + 1, data: { record: second } },
     ] as unknown as SessionEvent[]
     const stale = {
-      tokenCost: { ver: 5, seq: 1, val: def.init() },
+      tokenCost: { ver: 5, seq: SessionSeq(1), val: def.init() },
     }
 
-    const restored = ctx.sessionProjections.restore(stale, events, 0)
+    const restored = ctx.sessionProjections.restore(stale, events, SessionLogOffset(0), sessionHeader(), SessionLogOffset(0))
     expect(restored.snapshot.values.tokenCost).toMatchObject({ calls: 2, cost: first.cost + second.cost })
     expect(restored.checkpoint.tokenCost?.ver).toBe(7)
     expect(restored.checkpoint.tokenCost?.seq).toBe(1)
@@ -162,9 +166,9 @@ describe('tokenCost hybrid projection compatibility', () => {
       { type: 'plugin:token-usage/record', seq: 0, time: t, data: { record: first } },
       { type: 'plugin:token-usage/record', seq: 1, time: t + 1, data: { record: second } },
     ] as unknown as SessionEvent[]
-    const stale = { tokenCost: { ver: 6, seq: 1, val: def.init() } }
+    const stale = { tokenCost: { ver: 6, seq: SessionSeq(1), val: def.init() } }
 
-    const restored = ctx.sessionProjections.restore(stale, events, 0)
+    const restored = ctx.sessionProjections.restore(stale, events, SessionLogOffset(0), sessionHeader(), SessionLogOffset(0))
     expect(restored.snapshot.values.tokenCost).toMatchObject({ calls: 2, cost: first.cost + second.cost })
     expect(restored.checkpoint.tokenCost?.ver).toBe(7)
     expect(restored.checkpoint.tokenCost?.seq).toBe(1)

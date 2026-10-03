@@ -67,10 +67,10 @@ function storedRect(key: string, fallback: WindowRect): WindowRect {
     if (value && typeof value === 'object' && 'x' in value && 'y' in value && 'width' in value && 'height' in value) {
       const { x, y, width, height } = value
       if (typeof x === 'number' && typeof y === 'number' && typeof width === 'number' && typeof height === 'number'
-        && [x, y, width, height].every(Number.isFinite)) return clampWindow({ x, y, width, height }, innerWidth, innerHeight)
+        && [x, y, width, height].every(Number.isFinite)) return clampWindow({ x, y, width, height }, innerWidth, innerHeight, overlayTopMargin(overlayMargin))
     }
   } catch { /* A disabled storage backend should not block the window. */ }
-  return clampWindow(fallback, innerWidth, innerHeight)
+  return clampWindow(fallback, innerWidth, innerHeight, overlayTopMargin(overlayMargin))
 }
 
 /**
@@ -87,7 +87,7 @@ export function useFloatingWindow(storageKey: string, fallback: WindowRect): Flo
   useEffect(() => {
     const resize = () => {
       setViewport({ width: innerWidth, height: innerHeight })
-      setRect(value => clampWindow(value, innerWidth, innerHeight))
+      setRect(value => clampWindow(value, innerWidth, innerHeight, overlayTopMargin(overlayMargin)))
     }
     window.addEventListener('resize', resize)
     return () => { window.removeEventListener('resize', resize) }
@@ -116,12 +116,12 @@ export function useFloatingWindow(storageKey: string, fallback: WindowRect): Flo
       if (!start) return
       const dx = event.clientX - start.x, dy = event.clientY - start.y
       const next = start.edge
-        ? resizeWindow(start.rect, start.edge, dx, dy, innerWidth, innerHeight)
+        ? resizeWindow(start.rect, start.edge, dx, dy, innerWidth, innerHeight, topInset)
         : { ...start.rect, x: start.rect.x + dx, y: start.rect.y + dy }
-      setRect(clampWindow(next, innerWidth, innerHeight))
+      setRect(clampWindow(next, innerWidth, innerHeight, topInset))
     },
     endDrag: () => { drag.current = undefined },
-    nudge: (edge, dx, dy) => { setRect(value => resizeWindow(value, edge, dx, dy, innerWidth, innerHeight)) },
+    nudge: (edge, dx, dy) => { setRect(value => clampWindow(resizeWindow(value, edge, dx, dy, innerWidth, innerHeight, topInset), innerWidth, innerHeight, topInset)) },
   }
 }
 

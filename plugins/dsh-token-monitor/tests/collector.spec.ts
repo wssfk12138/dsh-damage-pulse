@@ -39,7 +39,7 @@ describe('usage collector', () => {
       usage: { inputTokens: 100, outputTokens: 20 },
     }, { surfaceOp: 'append' })
     await new Promise<void>(resolve => queueMicrotask(resolve))
-    const events = structuredClone(session.snapshotEvents())
+    const events = [...structuredClone(session.snapshotEvents())]
     expect(events.at(-1)).toMatchObject({ type: 'token-usage/record', ignorable: true })
     expect(() => validateStoredEvents({ id: session.id } as never, events)).not.toThrow()
     const restored = ctx.sessions.create(SessionId('collector-restored'), { seed: events })

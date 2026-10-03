@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.bundle.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "plugins/dsh-token-monitor/src",
+    "plugins/wechat-notify/src",
+    "packages/util/token-monitor-contract/src",
+    "packages/client/ui-token-monitor/src",
+    "plugins/dsh-token-monitor/tests",
+    "plugins/wechat-notify/tests",
+    "packages/util/token-monitor-contract/tests",
+    "packages/client/ui-token-monitor/tests",
+    "tests"
+  ]
+}

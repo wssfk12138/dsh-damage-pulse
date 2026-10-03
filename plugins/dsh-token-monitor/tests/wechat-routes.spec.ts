@@ -155,10 +155,11 @@ describe('wechat connection Host routes', () => {
 
   it('registers six additive seams without touching the public entry', () => {
     const dispose = vi.fn()
-    const register = vi.fn(() => dispose)
+    const register = vi.fn((_route: Parameters<import('@deepseek-ai/dsh-host-webserver').WebServer['register']>[0]) => dispose)
     const effects: Array<() => void> = []
     const ctx = { webServer: { register }, logger: { warn: vi.fn() }, effect: (setup: () => () => void) => { effects.push(setup()) } }
-    registerWechatRoutes(ctx as Parameters<typeof registerWechatRoutes>[0], service())
+    // This fixture models route registration, not a complete Cordis Context.
+    registerWechatRoutes(ctx as unknown as Parameters<typeof registerWechatRoutes>[0], service())
     expect(register.mock.calls.map(call => call[0].path)).toEqual([
       WECHAT_STATUS_PATH, WECHAT_LOGIN_PATH, WECHAT_LOGIN_CONFIRM_PATH, WECHAT_RECONNECT_PATH, WECHAT_DISCONNECT_PATH, WECHAT_TEST_PATH,
     ])
