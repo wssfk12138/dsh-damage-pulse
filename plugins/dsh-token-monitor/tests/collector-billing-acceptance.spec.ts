@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import SessionStore from '@deepseek-ai/dsh-session'
+import SessionStore, { SessionId, type SessionEvent } from '@deepseek-ai/dsh-session'
 import { createMessage } from '@deepseek-ai/dsh-llm'
 import { emptyBillingRule, type BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
-import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { attachCollector } from '../src/collector.ts'
@@ -58,6 +58,110 @@ const rules: BillingSnapshot = { revision: 7, rules: { version: 1, providers: [
 ] } }
 
 describe('B07-B08 collector uses model-source provider and durable required identities', () => {
+
+  it('validates file-decoded seeds before publication and never replays historical billing', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'billing-json-seed-'))
+    fileAccess.allowedDirectory = directory
+    const ctx = new Context()
+    const sessions = ctx.plugin(SessionStore)
+    let collector: ReturnType<Context['plugin']> | undefined
+    const created = vi.fn()
+    const published = vi.fn()
+    const offCreated = ctx.on('session/created', created)
+    const offEvent = ctx.on('session/event', published)
+    const ledgerPath = join(directory, 'usage.jsonl')
+    // Mutations happen in raw JSON records, before Session performs validation.
+    const rawSeed = (location?: 'header' | 'message', key?: 'provider' | 'model', value?: unknown) => {
+      const config: Record<string, unknown> = { provider: 'deepseek-official', model: 'header-only-model' }
+      const source: Record<string, unknown> = { kind: 'model', provider: 'deepseek-account', model: 'deepseek-v4-flash' }
+      if (location !== undefined && key !== undefined) {
+        const target = location === 'header' ? config : source
+        if (value === undefined) delete target[key]
+        else target[key] = value
+      }
+      return [
+        { type: 'request/header', seq: 0, time: 1, data: { header: { config }, reason: 'initial' } },
+        { type: 'assistant/message', seq: 1, time: 2, surfaceOp: 'append', data: {
+          stream: [], turn: 1, step: 1,
+          message: { ...createMessage({ role: 'assistant', content: [{ type: 'text', text: 'synthetic JSON seed' }],
+            source: { kind: 'model', provider: 'deepseek-account', model: 'deepseek-v4-flash' } }), source },
+          usage: { inputTokens: 100_000, outputTokens: 70_000 },
+        } },
+      ]
+    }
+    try {
+      await sessions
+      const storage = new UsageStorage(() => true, directory)
+      collector = ctx.plugin({ apply(scope: Context) {
+        attachCollector(scope, storage, PRICE_TABLE, { readBilling: () => rules })
+      } })
+      await collector
+      const validPath = join(directory, 'valid-seed.json')
+      writeFileSync(validPath, JSON.stringify(rawSeed()), { encoding: 'utf8', flag: 'wx' })
+      const validBytes = readFileSync(validPath, 'utf8')
+      // JSON.parse decodes external bytes; sessions.create validates every seed event.
+      const seed: SessionEvent[] = JSON.parse(validBytes)
+      const validId = SessionId('billing-json-valid')
+      const session = ctx.sessions.create(validId, { seed })
+      await new Promise<void>(resolve => queueMicrotask(resolve))
+      expect(ctx.sessions.get(validId)).toBe(session)
+      expect(created).toHaveBeenCalledTimes(1)
+      expect(published).not.toHaveBeenCalled()
+      expect(storage.history()).toEqual([])
+      expect(fileAccess.attempts.filter(attempt => attempt.operation === 'append')).toEqual([])
+      expect(readFileSync(validPath, 'utf8')).toBe(validBytes)
+      const decodedAssistant = seed[1]
+      if (decodedAssistant?.type !== 'assistant/message') throw new Error('Expected decoded assistant event')
+      session.append('assistant/message', { ...decodedAssistant.data, step: 2 }, { surfaceOp: 'append' })
+      await new Promise<void>(resolve => queueMicrotask(resolve))
+      expect(published).toHaveBeenCalledTimes(1)
+      expect(storage.history()).toHaveLength(1)
+      expect(storage.history()[0]).toMatchObject({ provider: 'deepseek-account', model: 'deepseek-v4-flash',
+        billingStatus: 'priced', inputTokens: 100_000, outputTokens: 70_000 })
+      expect(storage.history()[0]!.cost).toBeCloseTo(0.48, 12)
+      expect(storage.list()[0]).toMatchObject({ calls: 1, totalTokens: 170_000 })
+      const history = storage.history().slice()
+      const durable = readFileSync(ledgerPath, 'utf8')
+      created.mockClear()
+      published.mockClear()
+      for (const location of ['header', 'message'] as const) {
+        for (const key of ['provider', 'model'] as const) {
+          for (const [invalidKind, value] of [['missing', undefined], ['empty', ''], ['number', 7], ['null', null]] as const) {
+            const label = location + '-' + key + '-' + invalidKind
+            const seedPath = join(directory, label + '.json')
+            writeFileSync(seedPath, JSON.stringify(rawSeed(location, key, value)), { encoding: 'utf8', flag: 'wx' })
+            const original = readFileSync(seedPath, 'utf8')
+            const invalidSeed: SessionEvent[] = JSON.parse(original)
+            const id = SessionId('billing-json-' + label)
+            const accessOffset = fileAccess.attempts.length
+            expect(() => ctx.sessions.create(id, { seed: invalidSeed }), label).toThrow(location === 'header'
+              ? 'seed request/header at index 0 lacks provider/model'
+              : 'seed assistant/message at index 1 message must have model source')
+            await new Promise<void>(resolve => queueMicrotask(resolve))
+            expect(ctx.sessions.get(id), label).toBeUndefined()
+            expect(created, label).not.toHaveBeenCalled()
+            expect(published, label).not.toHaveBeenCalled()
+            expect(storage.history(), label).toEqual(history)
+            expect(fileAccess.attempts.slice(accessOffset), label).toEqual([])
+            expect(readFileSync(seedPath, 'utf8'), label).toBe(original)
+            expect(readFileSync(ledgerPath, 'utf8'), label).toBe(durable)
+          }
+        }
+      }
+      expect(fileAccess.attempts.every(attempt => attempt.allowed)).toBe(true)
+    } finally {
+      try {
+        offEvent()
+        offCreated()
+        await collector?.dispose()
+        await sessions.dispose()
+      } finally {
+        resetCharges()
+        rmSync(directory, { recursive: true, force: true })
+        fileAccess.allowedDirectory = ''
+      }
+    }
+  })
   it('denies a missing data-directory argument before any default storage read or write', () => {
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
