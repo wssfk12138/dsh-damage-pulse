@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import { attachCollector } from '../src/collector.ts'
 import { UsageStorage } from '../src/storage.ts'
 import { PRICE_TABLE } from '../src/pricing.ts'
-import { normalizeUsageRecord, isValidUsageRecord } from '../src/types.ts'
+import { summarizeUsage } from '../src/usage-summary.ts'
 import { resetCharges } from '../src/charge.ts'
 
 const fileAccess = vi.hoisted(() => ({
@@ -98,17 +98,21 @@ describe('B07-B08 collector uses model-source provider and durable required iden
       const record = storage.history()[0]!
       expect(record).toMatchObject({ provider: 'deepseek-account', model: 'deepseek-v4-flash', billingStatus: 'priced', outputTokens: 70_000, reasoningTokens: 30_000 })
       expect(record.cost * 1_000_000).toBeCloseTo(780_000, 6)
+      expect(record).toMatchObject({ billingRuleVersion: 7, modelMultiplier: 1,
+        billingRule: { model: 'deepseek-v4-flash', enabled: true, mode: 'fixed', multiplier: 1, fixed: { input: 2, cacheHit: 1, cacheWrite: 2, output: 4 } },
+        billingApplied: { mode: 'fixed', rate: { input: 2, cacheHit: 1, cacheWrite: 2, output: 4 } },
+      })
+      expect(record.billingApplied?.ruleId).toMatch(/^[a-f0-9]{64}$/)
+      expect(record.billingRule).not.toBe(rules.rules.providers[1]!.models[0])
       expect(storage.list()[0]).toMatchObject({ calls: 1, totalTokens: 420_000 })
+      expect(summarizeUsage(storage.history(), 'all', record.timestamp)).toMatchObject({ requestCount: 1, totalTokens: 420_000, spendCny: 0.78 })
       const durable = readFileSync(join(directory, 'usage.jsonl'), 'utf8')
       expect(durable.trim().split('\n')).toHaveLength(1)
       expect(JSON.parse(durable)).toEqual(record)
+      const reloaded = new UsageStorage(() => true, directory)
+      expect(reloaded.history()).toEqual([record])
+      expect(reloaded.list()[0]).toMatchObject({ calls: 1, totalTokens: 420_000, cost: 0.78 })
       expect(fileAccess.attempts.every(attempt => attempt.allowed)).toBe(true)
-      for (const key of ['provider', 'model']) {
-        const invalid: Record<string, unknown> = JSON.parse(JSON.stringify(record))
-        delete invalid[key]
-        const normalized = normalizeUsageRecord(invalid)
-        expect(normalized !== undefined && isValidUsageRecord(normalized)).toBe(false)
-      }
       await collector.dispose()
       collector = undefined
       session.append('assistant/message', { stream: [], turn: 1, step: 2,
@@ -118,6 +122,76 @@ describe('B07-B08 collector uses model-source provider and durable required iden
       await new Promise<void>(resolve => queueMicrotask(resolve))
       expect(storage.history()).toHaveLength(1)
       expect(readFileSync(join(directory, 'usage.jsonl'), 'utf8')).toBe(durable)
+    } finally {
+      try {
+        await collector?.dispose()
+        await sessions.dispose()
+      } finally {
+        resetCharges()
+        rmSync(directory, { recursive: true, force: true })
+        fileAccess.allowedDirectory = ''
+      }
+    }
+  })
+  it('skips absent usage, defaults optional counts, and keeps the actual model-source identities', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'billing-caller-optional-'))
+    fileAccess.allowedDirectory = directory
+    const ctx = new Context()
+    const sessions = ctx.plugin(SessionStore)
+    let collector: ReturnType<Context['plugin']> | undefined
+    try {
+      await sessions
+      const storage = new UsageStorage(() => true, directory)
+      collector = ctx.plugin({ apply(scope: Context) {
+        attachCollector(scope, storage, PRICE_TABLE, { readBilling: () => rules })
+      } })
+      await collector
+      const session = ctx.sessions.create()
+      const message = (provider: string, model: string) => createMessage({ role: 'assistant', content: [{ type: 'text', text: 'synthetic optional accounting' }], source: { kind: 'model', provider, model } })
+      session.append('assistant/message', { stream: [], turn: 1, step: 1,
+        message: message('deepseek-account', 'deepseek-v4-flash'),
+      }, { surfaceOp: 'append' })
+      await new Promise<void>(resolve => queueMicrotask(resolve))
+      expect(storage.history()).toEqual([])
+      expect(fileAccess.attempts.filter(attempt => attempt.operation === 'append')).toEqual([])
+      const cases = [
+        { provider: 'deepseek-account', model: 'deepseek-v4-flash', status: 'priced', cost: 0.48 },
+        { provider: 'deepseek-official', model: 'deepseek-v4-flash', status: 'priced', cost: 16.83 },
+        { provider: 'unknown-provider', model: 'deepseek-v4-flash', status: 'unpriced', cost: 0 },
+        { provider: 'deepseek-account', model: 'unknown-model', status: 'unpriced', cost: 0 },
+      ]
+      for (const [index, test] of cases.entries()) {
+        session.append('assistant/message', { stream: [], turn: 1, step: index + 2,
+          message: message(test.provider, test.model), usage: { inputTokens: 100_000, outputTokens: 70_000 },
+        }, { surfaceOp: 'append' })
+        await new Promise<void>(resolve => queueMicrotask(resolve))
+        const record = storage.history()[index]!
+        expect(record).toMatchObject({ provider: test.provider, model: test.model, billingStatus: test.status,
+          inputTokens: 100_000, outputTokens: 70_000, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0 })
+        expect(record.cost).toBeCloseTo(test.cost, 12)
+        if (test.status === 'unpriced') expect(record.billingReason).toBe('rule-missing')
+      }
+      expect(storage.list()[0]).toMatchObject({ calls: 4, totalTokens: 680_000 })
+      const durable = readFileSync(join(directory, 'usage.jsonl'), 'utf8')
+      expect(durable.trim().split('\n').map(line => JSON.parse(line))).toEqual(storage.history())
+      expect(new UsageStorage(() => true, directory).list()[0]).toMatchObject({ calls: 4, totalTokens: 680_000 })
+      // Missing required identities belong to the durable JSON parser, not the typed Session caller.
+      for (const key of ['provider', 'model']) {
+        const invalid: Record<string, unknown> = JSON.parse(JSON.stringify(storage.history()[0]))
+        delete invalid[key]
+        appendFileSync(join(directory, 'usage.jsonl'), JSON.stringify(invalid) + '\n', 'utf8')
+      }
+      const withInvalidRows = readFileSync(join(directory, 'usage.jsonl'), 'utf8')
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      try {
+        const reloaded = new UsageStorage(() => true, directory)
+        expect(reloaded.history()).toEqual(storage.history())
+        expect(reloaded.list()[0]).toMatchObject({ calls: 4, totalTokens: 680_000 })
+        expect(readFileSync(join(directory, 'usage.jsonl'), 'utf8')).toBe(withInvalidRows)
+      } finally {
+        warning.mockRestore()
+      }
+      expect(fileAccess.attempts.every(attempt => attempt.allowed)).toBe(true)
     } finally {
       try {
         await collector?.dispose()
