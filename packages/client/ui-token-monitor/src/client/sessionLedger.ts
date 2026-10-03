@@ -97,23 +97,27 @@ export function indexLedgerSessions(sessions: readonly LedgerSessionRow[]): Map<
   }
   const map = new Map<string, LedgerSessionRow>()
   for (const [id, rows] of groups) {
-    let entry = rows[0]!
+    let entry = rows[0]
+    if (entry === undefined) continue
     if (rows.length > 1) {
       const conflicts = new Map<string, SessionIdentityConflict>()
       for (const row of rows) if (row.status === 'conflict') {
         for (const conflict of row.conflicts) conflicts.set(conflict.normalizedId, conflict)
       }
-      const rawSessionIds = [...new Set(rows.map(row => row.id || row.sessionId!))].sort()
+      const rawSessionIds = [...new Set(rows.map(row => row.id || row.sessionId || id))].sort()
       const existing = conflicts.get(id)
       conflicts.set(id, { normalizedId: id,
         rawSessionIds: [...new Set([...rawSessionIds, ...(existing?.rawSessionIds ?? [])])].sort(),
-        reasons: [...new Set<SessionIdentityConflict['reasons'][number]>([...(existing?.reasons ?? []), rawSessionIds.length > 1 ? 'normalized-id-collision' : 'duplicate-summary'])] })
+        reasons: [...new Set<SessionIdentityConflict['reasons'][number]>([
+          ...(existing?.reasons ?? []), rawSessionIds.length > 1 ? 'normalized-id-collision' : 'duplicate-summary',
+        ])] })
       entry = { id, sessionId: id, status: 'conflict', cost: null,
-        lastActivity: Math.max(...rows.map(row => row.lastActivity)), conflicts: [...conflicts.values()].sort((a, b) => a.normalizedId.localeCompare(b.normalizedId)) }
+        lastActivity: Math.max(...rows.map(row => row.lastActivity)),
+        conflicts: [...conflicts.values()].sort((a, b) => a.normalizedId.localeCompare(b.normalizedId)) }
     }
     if (entry.status !== 'conflict' && (!Number.isFinite(entry.cost) || entry.cost <= 0)) continue
     map.set(id, entry)
-    for (const row of rows) map.set(row.id || row.sessionId!, entry)
+    for (const row of rows) map.set(row.id || row.sessionId || id, entry)
   }
   return map
 }

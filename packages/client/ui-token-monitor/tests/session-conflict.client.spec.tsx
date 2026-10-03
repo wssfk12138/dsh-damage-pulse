@@ -16,9 +16,11 @@ const conflict = { id: 'a', sessionId: 'a', status: 'conflict' as const, cost: n
   conflicts: [{ normalizedId: 'a', rawSessionIds: ['a', 'session-a'], reasons: ['normalized-id-collision' as const] }] }
 const priced: LedgerSessionSummary = { id: 'a', cost: 2, calls: 1, inputTokens: 2, cacheReadTokens: 0, cacheWriteTokens: 0, outputTokens: 3, totalTokens: 5, lastActivity: 3 }
 const sessionId = 'session-a' as SessionId
-const projection: TokenCostProjection = { cost: 9, calls: 1, totalTokens: 5, inputTokens: 2, outputTokens: 3, cacheReadTokens: 0, cacheWriteTokens: 0, lastActivity: 3 }
+const projection: TokenCostProjection = { cost: 9, calls: 1, totalTokens: 5, inputTokens: 2, outputTokens: 3,
+  cacheReadTokens: 0, cacheWriteTokens: 0, lastActivity: 3 }
 const state: SessionListState = { ids: [sessionId], phase: 'ready', projectionsBySession: {},
-  byId: { [sessionId]: { id: sessionId, displayTitle: 'One', running: false, blank: false, updatedAt: 3, retainedBy: {}, projectionValues: { tokenCost: projection } } } }
+  byId: { [sessionId]: { id: sessionId, displayTitle: 'One', running: false, blank: false, updatedAt: 3,
+    retainedBy: {}, projectionValues: { tokenCost: projection } } } }
 const useSessions: GlobalStandardProps['useSessions'] = selector => selector(state)
 const t: NonNullable<ComponentProps<typeof SessionCostBadge>['t']> = key => en[key]
 // Unrelated slot hooks/actions are fully typed and fail loudly if accidentally consumed.
@@ -68,7 +70,9 @@ describe('session identity conflict display', () => {
   })
   it('updates badge and stats through numeric / conflict / numeric and hides untrusted counters', async () => {
     fetchRows([priced]); await loadSessionLedger({ force: true })
-    const view = render(<><SessionCostBadge sessionId={sessionId} useSessions={useSessions} t={t} /><SessionStatsBar {...statsProps(projection)} /></>)
+    const view = render(<>
+      <SessionCostBadge sessionId={sessionId} useSessions={useSessions} t={t} /><SessionStatsBar {...statsProps(projection)} />
+    </>)
     expect(view.container.textContent).toContain('¥9')
     fetchRows([conflict]); await act(async () => { await loadSessionLedger({ force: true }) })
     expect(view.container.textContent).not.toContain('¥')
