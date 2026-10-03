@@ -7,7 +7,7 @@ interface WhaleGirlStageProps {
   pose: WhalePose
   /** 每一条新扣费递增；只追加瞬时冲击，不重置整段受击表情。 */
   impactPulse?: number
-  /** 由 Canvas 自己的时间轴报告结束，外层不猜测固定时长。 */
+  /** 由 Canvas 自己的时间轴报告结束，外层不猜测固定时长；卸载后不触发。 */
   onPoseComplete?: (pose: WhalePose) => void
   /** 发布展示模式共用的绝对时间轴；让双实例在同一帧呈现同一动作。 */
   syncEpoch?: number
@@ -402,7 +402,9 @@ export function WhaleGirlStage({ pose, impactPulse = 0, onPoseComplete, syncEpoc
       draw(get(key), motion)
       if (elapsed >= 3_350 && !reviveCompleted) {
         reviveCompleted = true
-        queueMicrotask(() => onPoseCompleteRef.current?.('revive-recharge'))
+        queueMicrotask(() => {
+          if (!disposed) onPoseCompleteRef.current?.('revive-recharge')
+        })
       }
     }
 
