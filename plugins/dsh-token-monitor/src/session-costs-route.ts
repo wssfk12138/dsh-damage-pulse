@@ -31,7 +31,12 @@ export function normalizeSessionId(id: string): string {
   return id.startsWith('session-') ? id.slice('session-'.length) : id
 }
 
-/** 只暴露有金额的会话，避免把整本账本塞进响应；按最近活动排序。 */
+/**
+ * 只读聚合显式子代理祖先；整条链上已知 project 必须一致，缺失值不清除已知约束。
+ * @param summaries - 原始持久账本的会话汇总，不包含合成根汇总。
+ * @param sessions - 宿主的子代理分类、父会话与可选项目元数据。
+ * @returns 按最近活动排序的正金额或身份冲突行，不修改输入或账本。
+ */
 export function summarizeLedgerSessions(
   summaries: readonly SessionSummary[],
   sessions: ReadonlyMap<string, DetailSession> = new Map(),
@@ -80,21 +85,23 @@ export function summarizeLedgerSessions(
     const conflicts = new Map<string, SessionIdentityConflict>()
     const addCollision = (key: string): void => { const conflict = collisions.get(key); if (conflict) conflicts.set(key, conflict) }
     addCollision(id)
-    const queue = [...(metadata.get(id) ?? [])]
-    const visited = new Set<DetailSession>()
+    const queue = (metadata.get(id) ?? []).map(session => ({ session, project: session.project }))
+    const visited = new Map<DetailSession, Set<string>>()
     for (let index = 0; index < queue.length; index++) {
-      const current = queue[index]!
-      if (visited.has(current)) continue
-      visited.add(current)
+      const { session: current, project } = queue[index]!
+      const constraints = visited.get(current) ?? new Set<string>()
+      if (constraints.has(project)) continue
+      constraints.add(project)
+      visited.set(current, constraints)
       if (current.child !== true || !current.parent) continue
       const parentId = normalizeSessionId(current.parent)
       const parents = metadata.get(parentId) ?? []
       for (const parent of parents) {
-        if (current.project && parent.project && current.project !== parent.project) continue
+        if (project && parent.project && project !== parent.project) continue
         addCollision(parentId)
         if (parent.child !== true) {
           if (parentId !== id) roots.add(parentId)
-        } else if (!visited.has(parent)) queue.push(parent)
+        } else queue.push({ session: parent, project: project || parent.project })
       }
     }
     const activity = Math.max(...rows.map(row => row.lastActivity))

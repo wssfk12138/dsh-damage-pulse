@@ -1,0 +1,9 @@
+{
+  "unassigned": [
+    { "id": "leaf", "sessionId": "leaf", "calls": 1, "inputTokens": 11, "cacheReadTokens": 13, "cacheWriteTokens": 17, "outputTokens": 19, "totalTokens": 60, "cost": 3, "lastActivity": 31 }
+  ],
+  "merged": [
+    { "id": "leaf", "sessionId": "leaf", "calls": 1, "inputTokens": 11, "cacheReadTokens": 13, "cacheWriteTokens": 17, "outputTokens": 19, "totalTokens": 60, "cost": 3, "lastActivity": 31 },
+    { "id": "root", "sessionId": "root", "calls": 1, "inputTokens": 11, "cacheReadTokens": 13, "cacheWriteTokens": 17, "outputTokens": 19, "totalTokens": 60, "cost": 3, "lastActivity": 31 }
+  ]
+}
