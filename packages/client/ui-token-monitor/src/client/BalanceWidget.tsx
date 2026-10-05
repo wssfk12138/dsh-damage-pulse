@@ -1300,7 +1300,7 @@ export function BalanceWidget({
       data-token-monitor-balance=""
       data-showcase-instance={previewOverride?.instanceId}
       data-showcase-peak={isPeak ? 'peak' : 'valley'}
-      title="DeepSeek 账户余额（扣费实时、余额 15s 校准；可拖动）"
+      title="" aria-label="DeepSeek 账户余额（扣费实时、余额 15s 校准；可拖动）"
       tabIndex={0}
       onContextMenu={onContextMenu}
       onKeyDown={onKeyDown}
@@ -1592,15 +1592,15 @@ export function BalanceWidget({
         </span>}
         {usageVisible && <div
           style={{ display: 'grid', gridAutoFlow: 'column', alignItems: 'center', columnGap: DISPLAY_GAP, fontSize: DATA_FONT_SIZE, lineHeight: DATA_LINE_HEIGHT, color: 'rgba(255,255,255,0.92)' }}
-          title={'最近一次成功请求：未缓存输入 ' + fmtTokens(usageOverview?.inputTokens ?? null) + '；输出 ' + fmtTokens(usageOverview?.outputTokens ?? null) + '；缓存命中 ' + fmtTokens(usageOverview?.cacheReadTokens ?? null) + '；首字延迟 ' + fmtLatency(usageOverview?.firstMs ?? null) + '；总耗时 ' + fmtLatency(usageOverview?.totalMs ?? null) + usageRecordNote}
+          aria-label={'最近一次成功请求：未缓存输入 ' + fmtTokens(usageOverview?.inputTokens ?? null) + '；输出 ' + fmtTokens(usageOverview?.outputTokens ?? null) + '；缓存命中 ' + fmtTokens(usageOverview?.cacheReadTokens ?? null) + '；首字延迟 ' + fmtLatency(usageOverview?.firstMs ?? null) + '；总耗时 ' + fmtLatency(usageOverview?.totalMs ?? null) + usageRecordNote}
         >
           <div data-token-monitor-token-layout={balanceAvailable ? 'stacked' : 'inline'} style={{ display: balanceAvailable ? 'grid' : 'flex', gridTemplateRows: balanceAvailable ? DATA_ROWS : undefined, gap: balanceAvailable ? 0 : DISPLAY_GAP, alignItems: 'center', justifyItems: 'center' }}>
             <div style={{ whiteSpace: 'nowrap' }}><span style={{ color: tokenColor(usageOverview?.inputTokens ?? null, '#30c878') }}>↓ {fmtTokens(usageOverview?.inputTokens ?? null)}</span>　<span style={{ color: tokenColor(usageOverview?.outputTokens ?? null, '#9b73ff') }}>↑ {fmtTokens(usageOverview?.outputTokens ?? null)}</span></div>
             <div style={{ color: tokenColor(usageOverview?.cacheReadTokens ?? null, '#16a8f5'), whiteSpace: 'nowrap' }}>◉ {fmtTokens(usageOverview?.cacheReadTokens ?? null)}</div>
           </div>
           <div style={{ display: 'grid', gridTemplateRows: DATA_ROWS, alignItems: 'center', justifyItems: 'start' }}>
-            <div title={'首字延迟 ' + fmtLatency(usageOverview?.firstMs ?? null)} style={{ color: latencyColor(usageOverview?.firstMs ?? null, false), borderLeft: '3px solid currentColor', paddingLeft: 7, whiteSpace: 'nowrap' }}>{fmtLatency(usageOverview?.firstMs ?? null)}</div>
-            <div title={'总耗时 ' + fmtLatency(usageOverview?.totalMs ?? null)} style={{ color: latencyColor(usageOverview?.totalMs ?? null, true), borderLeft: '3px solid currentColor', paddingLeft: 7, whiteSpace: 'nowrap' }}>{fmtLatency(usageOverview?.totalMs ?? null)}</div>
+            <div aria-label={'首字延迟 ' + fmtLatency(usageOverview?.firstMs ?? null)} style={{ color: latencyColor(usageOverview?.firstMs ?? null, false), borderLeft: '3px solid currentColor', paddingLeft: 7, whiteSpace: 'nowrap' }}>{fmtLatency(usageOverview?.firstMs ?? null)}</div>
+            <div aria-label={'总耗时 ' + fmtLatency(usageOverview?.totalMs ?? null)} style={{ color: latencyColor(usageOverview?.totalMs ?? null, true), borderLeft: '3px solid currentColor', paddingLeft: 7, whiteSpace: 'nowrap' }}>{fmtLatency(usageOverview?.totalMs ?? null)}</div>
           </div>
         </div>}
         {billingInstalled && (previewOverride !== undefined || isOfficialRoute(scope?.provider)) && <span
