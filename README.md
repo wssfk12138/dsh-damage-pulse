@@ -195,7 +195,9 @@
 
 ## 安装
 
-本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。当前版本为 **4.2.3**，修复通过插件内置更新升级后，版本号已更新、桌面却仍加载旧界面的问题；升级后完整退出桌面程序再启动，即可加载新的右键菜单与前端修复。设置、用量账本和已卸载模块状态保留。
+本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。当前版本为 **4.2.4**：修复余额卡右键菜单继承卡片悬停说明、菜单标记不统一的问题；拖动后的卡片使用窗口内相对位置记忆，窗口和卡片尺寸变化后继续保持位置；修复整体卸载后完整重装仍被旧卸载记录阻止恢复的问题。新增子会话用量聚合与显示修复，移除卡片悬停说明，鲸鱼娘动画默认缩放为 80%（保留已有自定义值）。右键菜单不新增恢复默认位置入口。
+
+`4.2.3` 修复通过插件内置更新升级后，版本号已更新、桌面却仍加载旧界面的问题；升级后完整退出桌面程序再启动，即可加载新的右键菜单与前端修复。设置、用量账本和已卸载模块状态保留；`4.2.4` 的完整重装恢复仅适用于显式重新安装完整插件，普通重启或部分模块恢复不会自动撤销整体卸载。
 
 `4.2.2` 修复晚到用量记录导致已完成回复无法分支的问题，并统一实际计费、工具查询与计费规则界面的规则来源；继承官方价格的账号条目会明确显示共享规则及编辑入口，已有独立账号规则保持优先。亮色主题下的右键菜单使用深色底与高对比度文字，桌面更新入口也已修正。GitHub Release 与 npm 使用同一份预编译包。`4.2.1` 包含设置兼容、模块卸载与桌面资源加载修复。`4.2.0` 让 DeepSeek 账号路由（`deepseek-account`）与官方 API key 路由共用同一套官方计价与资格判定：账号路由下的调用不再落成「未计价」，悬浮卡片的用量概览与用量明细不再显示「未记录」，计费规则面板不再预置账号独立条目：默认快照只保存官方条目，账号路由按规则继承共用官方计价（已保存的旧快照只有官方条目时同样按官方规则回退计价，客户端扣费门禁同口径回退，账号路由的扣费事件不再被丢弃，飘字与鲸鱼娘受击动画恢复）；显式保存的账号条目整体优先，某个模型在账号条目里缺失时保持缺规则，不会逐模型混合继承官方价格；同一版按当日决定隐藏设置页的「已停止写入会话日志」提示，并把 `ipaddr.js` 移入运行时依赖。`4.1.3` 修掉本插件写入的会话用量记录会让历史对话打不开的问题：宿主读取端只接受「不在已知类型表内但带 `ignorable` 标记」的事件，而 0.1.7 早期构建的 `Session.append` 不会把该标记落盘，没有标记的未知事件会让**整份**会话日志被拒绝解释。现在插件先探测宿主实现是否转发 `ignorable` 再写入，并在任何一次写入后发现标记丢失时永久停写（会话金额退回本地账本与兜底路由），设置页会给出对应提示。`4.1.2` 把安装入口收敛到 npm 发布包：README 过去推荐的 `github:` 源地址装法拿不到只在打包阶段生成的 `runtime/` 预编译产物，插件加载时会直接失败（加载器现已补上前置检查，payload 缺失时点名修复方式，而不是抛出无法定位的 ENOENT）。`4.1.1` 修复 DSH `0.1.7` 把会话节点注册表改名为 `uiConversation.events` 之后、对话流内「单次用量行」不再注册的问题（旧宿主继续走顶层 `conversationEvents`，两代行为一致）。`4.1.0` 把插件拆成五个可独立卸载的功能模块（模块管理器内置检查更新与 SHA-256 校验安装），加入可视化计费规则编辑器（含第三方供应商余额查询脚本）、可拖动缩放的用量明细与计费规则窗口，并把法定节假日并入 DeepSeek 峰谷计价的空闲时段（官方 2026-09-25 生效）；宿主兼容范围保留 `0.1.0-rc.5` 之后的全部旧版，并扩展到 DSH `0.1.7-rc.2`。
 
@@ -212,13 +214,13 @@ dsh plugin --profile web add dsh-damage-pulse
 dsh plugin --profile desktop add dsh-damage-pulse
 ```
 
-需要锁定具体版本时改用 GitHub Release 的预编译 tgz（4.2.3 的两通道使用同一份包）。先分清四种「地址」：npm 包名 `dsh-damage-pulse`、Release 里打包好的 `.tgz` 文件、GitHub 仓库页地址、Release 页的 `Source code` 压缩包——后两种是源码，不含打包阶段才生成的 `runtime/`，装出来无法启动：
+需要锁定具体版本时改用 GitHub Release 的预编译 tgz（4.2.4 的两通道使用同一份包）。先分清四种「地址」：npm 包名 `dsh-damage-pulse`、Release 里打包好的 `.tgz` 文件、GitHub 仓库页地址、Release 页的 `Source code` 压缩包——后两种是源码，不含打包阶段才生成的 `runtime/`，装出来无法启动：
 
 ```powershell
 # web 端：
-dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.3/dsh-damage-pulse-4.2.3.tgz
+dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.4/dsh-damage-pulse-4.2.4.tgz
 # 桌面端：
-dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.3/dsh-damage-pulse-4.2.3.tgz
+dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.2.4/dsh-damage-pulse-4.2.4.tgz
 ```
 
 > 不要用源码地址安装。`runtime/` 是包内的预编译产物，只在打包阶段由 `scripts/prepare-package-runtime.mjs` 生成且不入库（`.gitignore`），所以 `dsh plugin add github:wssfk12138/dsh-damage-pulse`、GitHub 仓库页地址、Release 页的 `Source code` 压缩包，以及本地 clone 出来的源码目录，装出来的包都只有 `lib/` 没有 `runtime/`，插件启动时会直接失败（现在的报错会点名修复方式，而不是抛出无法定位的 ENOENT），还可能被宿主侧的启动失败隔离直接停用该行。如果你确实要从源码安装，请先在源码目录完成构建与 `runtime/` 生成，再挂载这个构建产物；正确构建过的源码可以正常运行，不能说源码方式绝对不可用。
