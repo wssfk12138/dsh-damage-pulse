@@ -58,7 +58,7 @@ export function createTokenMonitorSettingsController(
       if (provider === 'deepseek-official') {
         await writeUserConfig(ctx, request.patch, request.expectedRevision, ns)
       } else {
-        if (Object.keys(request.patch).some(key => key === 'showWhaleGirl' || key === 'displayMode')) {
+        if (Object.keys(request.patch).some(key => key === 'showWhaleGirl' || key === 'displayMode' || key === 'animationScale')) {
           throw new TypeError('Display preferences are global')
         }
         const current = handle.user().providerNotifications ?? {}

@@ -90,6 +90,20 @@ async function serve(handler: ReturnType<typeof createTokenMonitorSettingsRouteH
 }
 
 describe('Token Monitor settings Host API', () => {
+  it('persists a global animation ratio in the profile and retains it after reload', async () => {
+    const initial = await boot()
+    expect(initial.controller().read().settings.animationScale).toBe(0.8)
+    await initial.controller().patch({ patch: { animationScale: 0.65 } })
+    const patch = parse(await readFile(initial.patchPath, 'utf8')) as Array<{ id: string; config: Record<string, unknown> }>
+    const persisted = patch.find(row => row.id === NS)!.config
+    expect(persisted.animationScale).toBe(0.65)
+    const reloaded = await boot(persisted)
+    expect(reloaded.controller().read().settings.animationScale).toBe(0.65)
+    expect(reloaded.controller('provider-a').read().settings.animationScale).toBe(0.65)
+    await expect(reloaded.controller('provider-a').patch({ patch: { animationScale: 0.9 } })).rejects.toThrow('global')
+    await reloaded.controller().patch({ patch: { animationScale: 0.8 } })
+    expect(reloaded.controller().read().settings.animationScale).toBe(0.8)
+  })
   it('isolates provider reminders while preserving global display preferences', async () => {
     const booted = await boot({ showWhaleGirl: false, dailyBudgetCny: 42 })
     const official = booted.controller()

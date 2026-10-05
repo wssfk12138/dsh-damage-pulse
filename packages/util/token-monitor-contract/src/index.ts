@@ -36,6 +36,8 @@ export type TokenMonitorDisplayMode = 'balance' | 'spend'
 export interface TokenMonitorSettings {
   displayMode: TokenMonitorDisplayMode
   showWhaleGirl: boolean
+  /** Global whale/damage size relative to card width; inclusive 0.5..1. */
+  animationScale: number
   dailyBudgetEnabled: boolean
   dailyBudgetCny: number
   budgetExceededNotificationEnabled: boolean
@@ -97,6 +99,7 @@ export type ParseResult<T> =
 export const DEFAULT_TOKEN_MONITOR_SETTINGS: Readonly<TokenMonitorSettings> = Object.freeze({
   displayMode: 'balance',
   showWhaleGirl: true,
+  animationScale: 0.8,
   dailyBudgetEnabled: true,
   dailyBudgetCny: 10,
   budgetExceededNotificationEnabled: false,
@@ -115,6 +118,7 @@ export const DEFAULT_TOKEN_MONITOR_SETTINGS: Readonly<TokenMonitorSettings> = Ob
 export const TOKEN_MONITOR_SETTING_KEYS = Object.freeze([
   'displayMode',
   'showWhaleGirl',
+  'animationScale',
   'dailyBudgetEnabled',
   'dailyBudgetCny',
   'budgetExceededNotificationEnabled',
@@ -159,6 +163,9 @@ function validateSettingValue(key: keyof TokenMonitorSettings, value: unknown): 
   if (key === 'displayMode') return value === 'balance' || value === 'spend'
     ? undefined
     : '只能是 balance 或 spend'
+  if (key === 'animationScale') {
+    if (typeof value !== 'number' || !Number.isFinite(value) || value < 0.5 || value > 1) return '必须是 0.5 到 1 之间的有限数字'
+  }
   if (key === 'dailyBudgetCny') {
     if (typeof value !== 'number' || !Number.isFinite(value)) return '必须是有限数字'
     if (value <= 0 || value > TOKEN_MONITOR_MAX_DAILY_BUDGET_CNY) {
@@ -203,7 +210,11 @@ function parseSettingsObject(
   }
   if (!partial) {
     for (const key of TOKEN_MONITOR_SETTING_KEYS) {
-      if (!(key in value)) fields[`${prefix}.${key}`] = '缺少必填字段'
+      if (!(key in value)) {
+        // This additive preference did not exist when sizing was hard-coded.
+        if (key === 'animationScale') output[key] = DEFAULT_TOKEN_MONITOR_SETTINGS.animationScale
+        else fields[`${prefix}.${key}`] = '缺少必填字段'
+      }
     }
   }
   return Object.keys(fields).length > 0
@@ -287,7 +298,10 @@ export function parseTokenMonitorSettingsSnapshot(value: unknown): ParseResult<T
  */
 export function pickPublicTokenMonitorSettings(value: Record<string, unknown>): TokenMonitorSettings {
   const picked: Record<string, unknown> = {}
-  for (const key of TOKEN_MONITOR_SETTING_KEYS) picked[key] = value[key]
+  for (const key of TOKEN_MONITOR_SETTING_KEYS) {
+    if (key === 'animationScale' && !(key in value)) continue
+    picked[key] = value[key]
+  }
   const parsed = parseTokenMonitorSettings(picked)
   if (!parsed.ok) throw new TypeError(`invalid resolved token monitor settings: ${JSON.stringify(parsed.fields)}`)
   return parsed.value

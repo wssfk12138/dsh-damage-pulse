@@ -35,6 +35,7 @@ const providerOverrides: z<ProviderNotificationOverrides> = z.dict(z.any()) as u
 export const Config = z.object({
   displayMode: z.union(['balance', 'spend'] as const).default(DEFAULT_TOKEN_MONITOR_SETTINGS.displayMode).volatile(),
   showWhaleGirl: z.boolean().default(DEFAULT_TOKEN_MONITOR_SETTINGS.showWhaleGirl).volatile(),
+  animationScale: z.number().min(0.5).max(1).default(DEFAULT_TOKEN_MONITOR_SETTINGS.animationScale).hidden().volatile(),
   dailyBudgetEnabled: z.boolean().default(DEFAULT_TOKEN_MONITOR_SETTINGS.dailyBudgetEnabled).volatile(),
   dailyBudgetCny: z.number()
     .min(Number.MIN_VALUE)
@@ -57,7 +58,7 @@ export const Config = z.object({
 
 /** 设置面板分组用的字段归属；客户端与擦除路径共用同一份清单。 */
 export const TOKEN_MONITOR_OWNED_FIELDS: Readonly<Record<string, readonly string[]>> = Object.freeze({
-  pet: Object.freeze(['showWhaleGirl']),
+  pet: Object.freeze(['showWhaleGirl', 'animationScale']),
   overview: Object.freeze(['displayMode']),
   billing: Object.freeze(['billing', 'balanceScripts', 'balanceProviders', 'balanceEndpoints', 'balanceEndpointPolicyVersion']),
   notify: Object.freeze([
@@ -70,7 +71,7 @@ export const TOKEN_MONITOR_OWNED_FIELDS: Readonly<Record<string, readonly string
 
 /** 面板字段的完整清单：写入设置面板用，也是「未安装模块」门禁的白名单来源。 */
 export const TOKEN_MONITOR_VOLATILE_FIELDS: readonly string[] = Object.freeze([
-  'displayMode', 'showWhaleGirl', 'dailyBudgetEnabled', 'dailyBudgetCny', 'budgetExceededNotificationEnabled',
+  'displayMode', 'showWhaleGirl', 'animationScale', 'dailyBudgetEnabled', 'dailyBudgetCny', 'budgetExceededNotificationEnabled',
   'peakReminderEnabled', 'peakReminderEnterPeak', 'peakReminderEnterValley', 'notifyOncePerTransition',
   'whaleBubbleEnabled', 'wechatNotificationsEnabled', 'cacheHitAnomalyNotificationEnabled',
   'cacheHitAnomalyThreshold', 'cacheHitAnomalyConsecutiveCalls', 'providerNotifications',

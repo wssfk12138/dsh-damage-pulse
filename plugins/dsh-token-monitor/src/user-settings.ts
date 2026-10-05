@@ -152,7 +152,7 @@ export function readProviderSettings(stored: TokenMonitorUserConfig, provider: s
   if (provider === 'deepseek-official') return pickPublicTokenMonitorSettings(stored as unknown as Record<string, unknown>)
   return {
     ...DEFAULT_TOKEN_MONITOR_SETTINGS, peakReminderEnabled: false, wechatNotificationsEnabled: false,
-    ...stored.providerNotifications?.[provider], displayMode: stored.displayMode, showWhaleGirl: stored.showWhaleGirl,
+    ...stored.providerNotifications?.[provider], displayMode: stored.displayMode, showWhaleGirl: stored.showWhaleGirl, animationScale: stored.animationScale,
   }
 }
 

@@ -18,7 +18,7 @@ import moduleCss from './module-effects.module.css'
 import type { PropsLocale, InjectFace } from '@deepseek-ai/dsh-client-ui-slots'
 import type { createBillingEvents } from './billingEvents.ts'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import { type BillingSnapshot, type TokenMonitorSettingsSnapshot, type TokenMonitorSettingsPatchRequest } from '@deepseek-ai/dsh-token-monitor-contract'
+import { DEFAULT_TOKEN_MONITOR_SETTINGS, type BillingSnapshot, type TokenMonitorSettingsSnapshot, type TokenMonitorSettingsPatchRequest } from '@deepseek-ai/dsh-token-monitor-contract'
 import { TOKEN_MONITOR_WHALE_ASSET_BASE } from '@deepseek-ai/dsh-token-monitor-contract'
 import { PRODUCT_NAME } from './branding.ts'
 import type { RouteEligibilityLoader } from './routeEligibility.ts'
@@ -105,26 +105,19 @@ const RED = '#ff3b30'
 const GREEN = '#30a46c'
 const UNKNOWN_COLOR = '#8a8a8a'
 const WHALE_ASSET_ROOT = TOKEN_MONITOR_WHALE_ASSET_BASE
-/** 鲸鱼娘宽度按卡片宽度取比例：显示用量概览时卡片更宽，用较小比例维持角色视觉尺寸。 */
-/** 鲸鱼娘宽度：无论悬浮卡片多宽，都取卡片宽度的 90%。 */
-const WHALE_WIDTH = '90%'
-/**
- * 扣血反馈（飘字字号、飘字起点与余额受击位移）跟随鲸鱼娘等比缩放：这些尺寸是按约 200px 宽的
- * 悬浮卡片调定的，卡片更宽则整体放大、更窄则整体缩小。鲸鱼娘始终是卡片宽度的 90%，因此两者同比
- * 例变化；鲸鱼娘自身的关键帧与冲击标记画在 512 画布内，随画布一起缩放。
- */
+/** 鲸鱼娘与扣血反馈共用后台比例；保留各自宽高比，随卡片实际宽度同比调整。 */
 const DAMAGE_REFERENCE_WIDTH_PX = 200
-const DAMAGE_SCALE_MIN = 0.75
-const DAMAGE_SCALE_MAX = 1.8
+/** 原扣血字号/位移按 200px 卡片、90% 角色宽度调定，不改变动画节奏。 */
+const DAMAGE_REFERENCE_RATIO = 0.9
 const DAMAGE_FONT_SIZE = 18
 const DAMAGE_MISS_FONT_SIZE = 23
 const DAMAGE_LABEL_FONT_SIZE = 11
 const DAMAGE_ORIGIN_WITH_WHALE_PX = 42
 const DAMAGE_ORIGIN_PLAIN_PX = 8
 /** 由悬浮卡片实测宽度换算扣血反馈的缩放系数。 */
-function damageScaleFor(cardWidthPx: number): number {
-  if (!Number.isFinite(cardWidthPx) || cardWidthPx <= 0) return 1
-  return Math.min(DAMAGE_SCALE_MAX, Math.max(DAMAGE_SCALE_MIN, cardWidthPx / DAMAGE_REFERENCE_WIDTH_PX))
+function damageScaleFor(cardWidthPx: number, ratio: number): number {
+  const width = Number.isFinite(cardWidthPx) && cardWidthPx > 0 ? cardWidthPx : DAMAGE_REFERENCE_WIDTH_PX
+  return width / DAMAGE_REFERENCE_WIDTH_PX * ratio / DAMAGE_REFERENCE_RATIO
 }
 /**
  * 用量数据排版：两行取同一行高，↓/↑ 与 ◉、首字与总耗时因此逐行对齐；
@@ -427,6 +420,7 @@ export function BalanceWidget({
   /** 正在显示的是“上一个可用模型快照”：当前模型没有自己的用量记录，且该供应商没有可用余额脚本。 */
   const usageShowsFallback = balanceScriptAvailable === false && usageSnapshot === null && usageOverview !== null
   const [settingsSnapshot, setSettingsSnapshot] = useState<TokenMonitorSettingsSnapshot>()
+  const [animationScale, setAnimationScale] = useState(DEFAULT_TOKEN_MONITOR_SETTINGS.animationScale)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsProviders, setSettingsProviders] = useState<string[]>([])
   const [billingOpen, setBillingOpen] = useState(false)
@@ -471,13 +465,13 @@ export function BalanceWidget({
     const node = cardRef.current
     if (node === null || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width
+      const width = entries[0]?.borderBoxSize?.[0]?.inlineSize ?? entries[0]?.contentRect.width
       if (typeof width === 'number' && width > 0) setCardWidthPx(width)
     })
     observer.observe(node)
     return () => { observer.disconnect() }
   }, [])
-  const damageScale = damageScaleFor(cardWidthPx)
+  const damageScale = damageScaleFor(cardWidthPx, animationScale)
   const notificationSettingsRef = useRef<{ provider: string; snapshot: TokenMonitorSettingsSnapshot }>()
   const notificationQueueRef = useRef(createNotificationQueueState())
   const notificationSeeded = useRef(false)
@@ -617,11 +611,31 @@ export function BalanceWidget({
 
   const applySettingsSnapshot = useCallback((snapshot: TokenMonitorSettingsSnapshot) => {
     setSettingsSnapshot(snapshot)
+    setAnimationScale(snapshot.settings.animationScale)
     if (whaleVisibilityChoice.current === undefined) {
       showWhaleGirlRef.current = snapshot.settings.showWhaleGirl && petInstalled
       setShowWhaleGirl(snapshot.settings.showWhaleGirl)
     }
   }, [petInstalled])
+
+  // 后台/模型修改沿现有设置接口读取；没有活动会话时也能更新角色尺寸。
+  useEffect(() => {
+    const controller = new AbortController()
+    let loading = false
+    const refresh = async () => {
+      if (loading) return
+      loading = true
+      try {
+        const snapshot = await settingsApi.get(controller.signal)
+        if (!controller.signal.aborted) setAnimationScale(snapshot.settings.animationScale)
+      } catch (_error) { /* Keep the last valid size during temporary settings failures. */ }
+      finally { loading = false }
+    }
+    void refresh()
+    const timer = setInterval(() => void refresh(), 5_000)
+    window.addEventListener('focus', refresh)
+    return () => { controller.abort(); clearInterval(timer); window.removeEventListener('focus', refresh) }
+  }, [])
 
   const openSettings = useCallback(async () => {
     setContextMenu(null)
@@ -1281,7 +1295,7 @@ export function BalanceWidget({
 
   const amountColor = flash === 'red' ? RED : flash === 'green' ? GREEN : 'var(--dsh-color-accent, #4c8dff)'
   const shownBalance = display ?? balanceInfo?.totalBalance ?? 0
-  const whaleWidth = WHALE_WIDTH
+  const whaleWidth = `${String(animationScale * 100)}%`
   const depleted = balanceAvailable && shownBalance <= 0
   const onWhalePoseComplete = (completedPose: WhalePose) => {
     if (completedPose !== 'revive-recharge' || !revivingRef.current) return
@@ -1530,7 +1544,7 @@ export function BalanceWidget({
                 display: 'flex',
                 alignItems: 'baseline',
                 justifyContent: 'center',
-                gap: anim.damageKind === 'miss' ? 5 : 4,
+                gap: (anim.damageKind === 'miss' ? 5 : 4) * damageScale,
                 fontSize: (anim.damageKind === 'miss' ? DAMAGE_MISS_FONT_SIZE : DAMAGE_FONT_SIZE) * damageScale,
                 fontWeight: 800,
                 animation: FLOAT.animation,
