@@ -214,7 +214,9 @@ dsh plugin --profile web add dsh-damage-pulse
 dsh plugin --profile desktop add dsh-damage-pulse
 ```
 
-需要锁定具体版本时改用 GitHub Release 的预编译 tgz（4.2.4 的两通道使用同一份包）。先分清四种「地址」：npm 包名 `dsh-damage-pulse`、Release 里打包好的 `.tgz` 文件、GitHub 仓库页地址、Release 页的 `Source code` 压缩包——后两种是源码，不含打包阶段才生成的 `runtime/`，装出来无法启动：
+**4.2.4 本次仅发布到 GitHub Release，npm 暂未更新。** 上面的 npm 包名安装目前获取 4.2.3；安装 4.2.4 请使用下面的 GitHub Release 预编译 tgz，或通过插件内的 GitHub 更新入口升级。
+
+需要锁定具体版本时改用 GitHub Release 的预编译 tgz。先分清四种「地址」：npm 包名 `dsh-damage-pulse`、Release 里打包好的 `.tgz` 文件、GitHub 仓库页地址、Release 页的 `Source code` 压缩包——后两种是源码，不含打包阶段才生成的 `runtime/`，装出来无法启动：
 
 ```powershell
 # web 端：
