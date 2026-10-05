@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
-import type { SessionEvent } from '@deepseek-ai/dsh-session'
+import { SessionLogOffset, type SessionEvent } from '@deepseek-ai/dsh-session'
+import { sessionHeader } from '../plugins/dsh-token-monitor/tests/session-header.ts'
 import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import { OFFICIAL_PROVIDER_ID, PRICE_TABLE } from '../plugins/dsh-token-monitor/src/pricing.ts'
 import { createTokenCostProjectionDefinition } from '../plugins/dsh-token-monitor/src/projection.ts'
@@ -106,7 +107,7 @@ test('serves tokenCost through the real DSH 0.1.1 projection registry', () => {
   const registry = new SessionProjectionRegistry(context)
   registry.register(createTokenCostProjectionDefinition(PRICE_TABLE))
 
-  const restored = registry.restore({}, [], 0)
+  const restored = registry.restore({}, [], SessionLogOffset(0), sessionHeader(), SessionLogOffset(0))
 
   assert.deepEqual(restored.snapshot.values.tokenCost, {
     calls: 0,

@@ -7,7 +7,56 @@ import { zh, type DetailTranslate } from '../src/client/detail-locales.ts'
 const t: DetailTranslate = key => zh[key]
 const snapshot = (provider: string, script = '', revision = 0, status = 'unconfigured') => ({ provider, script, revision, status })
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status })
+const nativeSnapshot = (enabled: boolean, revision = 0) => ({ provider: 'deepseek-account', script: '', source: 'native-account', enabled, revision, status: enabled ? 'valid' : 'unconfigured' })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals() })
+
+it('shows the native source and autosaves pause/resume without a script editor', async () => {
+  vi.useFakeTimers()
+  const writes: unknown[] = []
+  vi.stubGlobal('fetch', vi.fn(async (_url: string, init?: RequestInit) => {
+    if (!init) return response(nativeSnapshot(true))
+    const body = JSON.parse(init.body as string)
+    writes.push(body)
+    return response(nativeSnapshot(body.enabled, body.expectedRevision + 1))
+  }))
+  render(<BalanceScriptEditor provider="deepseek-account" t={t} onBusyChange={vi.fn()} />)
+  await act(async () => {})
+  expect(screen.queryByRole('textbox')).toBeNull()
+  expect(screen.getByText(zh.balanceNativeSource)).toBeTruthy()
+  const toggle = screen.getByRole<HTMLInputElement>('checkbox')
+  expect(toggle.checked).toBe(true)
+  fireEvent.click(toggle)
+  await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+  expect(screen.getByText(zh.balanceNativePaused)).toBeTruthy()
+  fireEvent.click(toggle)
+  await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+  expect(screen.getByText(zh.balanceNativeActive)).toBeTruthy()
+  expect(writes).toEqual([{ enabled: false, expectedRevision: 0 }, { enabled: true, expectedRevision: 1 }])
+})
+
+it.each([409, 500])('retains native switch drafts on HTTP %i without blind retries', async status => {
+  vi.useFakeTimers()
+  const fetcher = vi.fn(async (_url: string, init?: RequestInit) => init ? response({}, status) : response(nativeSnapshot(true)))
+  vi.stubGlobal('fetch', fetcher)
+  render(<BalanceScriptEditor provider="deepseek-account" t={t} onBusyChange={vi.fn()} />)
+  await act(async () => {})
+  fireEvent.click(screen.getByRole('checkbox'))
+  await act(async () => { await vi.advanceTimersByTimeAsync(500) })
+  expect(screen.getByRole<HTMLInputElement>('checkbox').checked).toBe(false)
+  expect(screen.getByRole('alert').textContent).toContain(status === 409 ? zh.balanceConflict : zh.billingSaveFailed)
+  await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+  expect(fetcher).toHaveBeenCalledTimes(2)
+  if (status === 409) {
+    expect(screen.getByRole<HTMLInputElement>('checkbox').disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: zh.billingLoadLatest }))
+    await act(async () => {})
+    expect(screen.getByRole<HTMLInputElement>('checkbox').checked).toBe(true)
+  } else {
+    fireEvent.click(screen.getByRole('button', { name: zh.balanceRetry }))
+    await act(async () => {})
+    expect(fetcher).toHaveBeenCalledTimes(3)
+  }
+})
 
 it('saves each provider independently and retains edits made during an outstanding save', async () => {
   vi.useFakeTimers()

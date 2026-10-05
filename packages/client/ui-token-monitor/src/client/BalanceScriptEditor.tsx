@@ -12,11 +12,12 @@ type Snapshot = {
   error?: string
   request?: Endpoint
   /** Set when the Host shipped the adapter for this provider's endpoint. */
-  source?: 'built-in'
+  source?: 'built-in' | 'native-account'
+  enabled?: boolean
   /** Vendor label of that shipped adapter. */
   adapter?: string
 }
-type Draft = { snapshot?: Snapshot; text: string; version: number; dirty: boolean; pending: boolean; error?: 'load' | 'save' | 'conflict' | 'approve' }
+type Draft = { snapshot?: Snapshot; text: string; enabled?: boolean; version: number; dirty: boolean; pending: boolean; error?: 'load' | 'save' | 'conflict' | 'approve' }
 
 function readEndpoint(value: unknown): Endpoint | undefined {
   if (!value || typeof value !== 'object') return undefined
@@ -32,6 +33,7 @@ function readSnapshot(value: unknown, provider: string): Snapshot {
   if (result.provider !== provider || !Number.isSafeInteger(result.revision) || result.revision < 0
     || typeof result.script !== 'string' || !['unconfigured', 'valid', 'invalid', 'unapproved'].includes(result.status)) throw new Error('Invalid script response')
   const request = readEndpoint(result.request)
+  if (result.source === 'native-account' && (provider !== 'deepseek-account' || typeof result.enabled !== 'boolean')) throw new Error('Invalid native response')
   return { ...result, ...(request === undefined ? {} : { request }) }
 }
 
@@ -54,6 +56,7 @@ export function BalanceScriptEditor({ provider, t, onBusyChange }: {
       if (!response.ok) throw new Error('Script load failed')
       draft.snapshot = readSnapshot(await response.json(), id)
       draft.text = draft.snapshot.script
+      if (draft.snapshot.enabled !== undefined) draft.enabled = draft.snapshot.enabled
     } catch { draft.error = 'load' }
     finally { draft.pending = false; refresh() }
   }
@@ -66,7 +69,7 @@ export function BalanceScriptEditor({ provider, t, onBusyChange }: {
     try {
       const response = await fetch('/api/token-monitor/balance-script?provider=' + encodeURIComponent(id), {
         method: 'PUT', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ expectedRevision: draft.snapshot.revision, script }),
+        body: JSON.stringify({ expectedRevision: draft.snapshot.revision, ...(draft.snapshot.source === 'native-account' ? { enabled: draft.enabled } : { script }) }),
       })
       if (!response.ok) { draft.error = response.status === 409 ? 'conflict' : 'save'; return }
       draft.snapshot = readSnapshot(await response.json(), id)
@@ -104,7 +107,12 @@ export function BalanceScriptEditor({ provider, t, onBusyChange }: {
   return <section className={css.stack} aria-label={t('balanceScriptTab')}>
     <h3>{provider}</h3>
     <p role="status">{draft.pending ? t(draft.snapshot ? 'billingSaving' : 'loading') : draft.dirty ? t('balancePending') : draft.snapshot ? t('balanceSaved') : ''}</p>
-    {draft.snapshot && <>
+    {draft.snapshot?.source === 'native-account' ? <>
+      <p>{t('balanceNativeSource')}</p>
+      <label><input type="checkbox" checked={draft.enabled ?? false} disabled={draft.pending || draft.error === 'conflict'}
+        onChange={event => { draft.enabled = event.target.checked; draft.version++; draft.dirty = true; delete draft.error; refresh() }} />{t('balanceNativeEnabled')}</label>
+      {!draft.dirty && <p role="status">{t(draft.snapshot.enabled ? 'balanceNativeActive' : 'balanceNativePaused')}</p>}
+    </> : draft.snapshot && <>
       <label htmlFor="token-monitor-balance-script">{t('balanceScriptLabel')}</label>
       <textarea id="token-monitor-balance-script" className={css.scriptEditor} spellCheck={false}
         value={draft.text} placeholder={t('balanceUnconfigured')}

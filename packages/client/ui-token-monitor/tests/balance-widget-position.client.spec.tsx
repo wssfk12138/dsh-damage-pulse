@@ -98,11 +98,42 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup()
+  document.documentElement.style.removeProperty('--dsh-frame-top-clearance')
   vi.restoreAllMocks()
   setViewport(1024, 768)
 })
 
 describe('BalanceWidget stored position', () => {
+  it('defaults to the lower region and allows top zero when the host has no title strip', async () => {
+    window.localStorage.removeItem(POS_KEY)
+    const defaultView = await mountWidget()
+    // jsdom has no layout measurements; supply the card's measured dimensions.
+    vi.spyOn(card(defaultView), 'getBoundingClientRect').mockReturnValue({ width: 180, height: 34 } as DOMRect)
+    fireResize()
+    expect(renderedPos(defaultView).top).toBeGreaterThan(window.innerHeight / 2)
+    defaultView.unmount()
+    window.localStorage.setItem(POS_KEY, JSON.stringify({ left: 305, top: 0 }))
+    const topView = await mountWidget()
+    expect(renderedPos(topView).top).toBe(0)
+  })
+  it('keeps stored and dragged cards out of the desktop title strip, and permits dragging back down', async () => {
+    document.documentElement.style.setProperty('--dsh-frame-top-clearance', '40px')
+    window.localStorage.setItem(POS_KEY, JSON.stringify({ left: 305, top: 0 }))
+    const view = await mountWidget()
+    expect(renderedPos(view).top).toBe(40)
+    const element = card(view)
+    stubPointerCapture(element)
+    fireEvent.pointerDown(element, { button: 0, clientX: 320, clientY: 50, pointerId: 1 })
+    fireEvent.pointerMove(element, { clientX: 320, clientY: -200, pointerId: 1 })
+    fireEvent.pointerUp(element, { clientX: 320, clientY: -200, pointerId: 1 })
+    expect(renderedPos(view).top).toBe(40)
+    expect(storedPos()?.top).toBe(40)
+    fireEvent.pointerDown(element, { button: 0, clientX: 320, clientY: 50, pointerId: 2 })
+    fireEvent.pointerMove(element, { clientX: 320, clientY: 450, pointerId: 2 })
+    fireEvent.pointerUp(element, { clientX: 320, clientY: 450, pointerId: 2 })
+    expect(renderedPos(view).top).toBe(440)
+    expect(storedPos()?.top).toBe(440)
+  })
   it('keeps the user position when the window height collapses', async () => {
     const view = await mountWidget()
     expect(renderedPos(view)).toEqual(USER_POS)

@@ -4,6 +4,7 @@ import { createMessage } from '@deepseek-ai/dsh-llm'
 import { describe, expect, it, vi } from 'vitest'
 import { attachUsageCollector } from '../src/collector-core.ts'
 import { ModuleWork } from '../src/module-work.ts'
+import { summarizeUsage } from '../src/usage-summary.ts'
 import type { UsageRecord } from '../src/types.ts'
 
 const append = (session: ReturnType<Context['sessions']['create']>, turn: number) => session.append('assistant/message', {
@@ -13,6 +14,21 @@ const append = (session: ReturnType<Context['sessions']['create']>, turn: number
 }, { surfaceOp: 'append' })
 
 describe('permanent usage capture lifetime', () => {
+  it('captures child-only usage and excludes inherited parent events from the overview', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    const records: UsageRecord[] = []
+    const storage = { add: vi.fn((record: UsageRecord) => { records.push(record); return record }) }
+    attachUsageCollector(ctx, storage as never, {})
+    const parent = ctx.sessions.create()
+    append(parent, 1)
+    const child = ctx.sessions.create(undefined, { seed: structuredClone(parent.snapshotEvents()), meta: { origin: 'subagent', parentSession: parent.id } })
+    expect(records).toHaveLength(1)
+    append(child, 2)
+    expect(records.map(row => row.sessionId)).toEqual([parent.id, child.id])
+    expect(summarizeUsage(records, 'all')).toMatchObject({ requestCount: 2, totalTokens: 240, spendCny: null })
+    await ctx.fiber.dispose()
+  })
   it('continues unpriced after optional billing disposal and stops after core disposal', async () => {
     const ctx = new Context()
     const sessions = ctx.plugin(SessionStore)
