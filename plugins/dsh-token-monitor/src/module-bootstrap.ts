@@ -1,4 +1,4 @@
-/** This small loader stays inert after whole-plugin removal; it never regenerates deleted files. */
+/** This loader preserves whole-plugin removal until a complete verified package is installed again. */
 import type { Context } from '@deepseek-ai/cordis'
 import { access, readFile, mkdir } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
@@ -72,10 +72,15 @@ export async function bootModules(ctx: Context, pluginRoot: string, clientRoot: 
       catch (legacyError) { if ((legacyError as NodeJS.ErrnoException).code !== 'ENOENT') throw legacyError }
     }
     await recoverModuleTransaction(stateFile, roots)
-    let state: { manifest?: unknown; wholePlugin?: unknown } | undefined
+    let state: { manifest?: unknown; wholePlugin?: { pending?: boolean }; removed?: Record<string, { pending?: boolean }> } | undefined
     try { state = JSON.parse(await readFile(stateFile, 'utf8')) }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
-    const manifest = selectBootManifest(JSON.parse(await readFile(resolve(runtime, 'manifest.json'), 'utf8')), state?.manifest)
+    const packaged = JSON.parse(await readFile(resolve(runtime, 'manifest.json'), 'utf8'))
+    // Pending deletion still owns the previous release's paths. Only a completed
+    // whole removal can evaluate a replacement package for reinstatement.
+    const pending = state?.wholePlugin?.pending || Object.values(state?.removed ?? {}).some(record => record.pending)
+    const manifest = state?.wholePlugin && pending && state.manifest
+      ? validateManifest(state.manifest) : selectBootManifest(packaged, state?.wholePlugin ? undefined : state?.manifest)
     if (!state?.wholePlugin) for (const file of manifest.core) await verifyArtifact(roots, file)
     return { manifest, removed: !!state?.wholePlugin }
   })
@@ -85,21 +90,26 @@ export async function bootModules(ctx: Context, pluginRoot: string, clientRoot: 
       stop: async () => {}, start: async () => {}, stopCore: async () => {}, startCore: async () => {},
       // The whole-plugin record is authoritative; partial feature cleanup is subsumed.
       eraseData: async (id, selection) => { if (id === 'plugin' && selection) await eraseRemovedPlugin(ctx, dshHomePath('data', 'dsh-token-monitor'), selection) },
-    })
-    // The host still discovers the package's static client entry. Expose only
-    // the durable tombstone so that entry stays dormant after a restart.
-    ctx.inject(['webServer', 'connection'], web => {
-      const guard = createRouteGuard(web)
-      web.effect(() => web.webServer.register({
-        kind: 'exact', path: '/api/token-monitor/modules', handler: (req, res) => {
-          if (!guard(req, res)) return
-          if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-          res.end(JSON.stringify(manager.snapshot()))
-        },
-      }), 'token-monitor: removed plugin snapshot')
-    })
-    return
+    }, true)
+    if (manager.snapshot().pluginRemoved) {
+      if (manager.snapshot().cleanupErrors?.includes('PLUGIN_REINSTALL_INCOMPLETE')) {
+        ctx.logger.warn('dsh-damage-pulse: PLUGIN_REINSTALL_INCOMPLETE — replacement package files are missing or damaged; remove the listed plugin in the desktop Plugins page, add a complete packaged .tgz or published package, then restart this profile.')
+      }
+      // The host still discovers the package's static client entry. Expose only
+      // the durable tombstone so that entry stays dormant after a restart.
+      ctx.inject(['webServer', 'connection'], web => {
+        const guard = createRouteGuard(web)
+        web.effect(() => web.webServer.register({
+          kind: 'exact', path: '/api/token-monitor/modules', handler: (req, res) => {
+            if (!guard(req, res)) return
+            if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+            res.end(JSON.stringify(manager.snapshot()))
+          },
+        }), 'token-monitor: removed plugin snapshot')
+      })
+      return
+    }
   }
   const entry: typeof Runtime = await import(pathToFileURL(resolve(roots.host, 'manager.mjs')).href + `?v=${manifest.version}`)
   await entry.apply(ctx, { roots, stateFile, manifest })

@@ -1,8 +1,8 @@
-import { mkdir, readFile } from 'node:fs/promises'
+import { access, mkdir, readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { withFileLock } from '@deepseek-ai/dsh-atomic-write'
 import type { ModuleArtifact, ModuleReleaseManifest, ModuleSnapshot, ModuleUninstallRequest } from '@deepseek-ai/dsh-token-monitor-contract'
-import { atomicJson, compareReleaseVersions, removeArtifact, validModuleId, validReleaseVersion, validateManifest, verifyArtifact, type ArtifactRoots } from './module-files.ts'
+import { atomicJson, compareReleaseVersions, confinedPath, removeArtifact, validModuleId, validReleaseVersion, validateManifest, verifyArtifact, type ArtifactRoots } from './module-files.ts'
 import { ModuleCommittedError, ModuleRollbackError, recoverModuleTransaction, type PersistModuleState } from './module-transaction.ts'
 
 interface Removal { preserveData: boolean; preserveConfig?: boolean; preserveHistory?: boolean; pending: boolean; erased?: boolean }
@@ -44,12 +44,12 @@ export class ModuleManager {
     private readonly lifecycle: ModuleLifecycle,
   ) {}
 
-  static async open(manifest: unknown, stateFile: string, roots: ArtifactRoots, lifecycle: ModuleLifecycle): Promise<ModuleManager> {
+  static async open(manifest: unknown, stateFile: string, roots: ArtifactRoots, lifecycle: ModuleLifecycle, allowPackageReinstall = false): Promise<ModuleManager> {
     await mkdir(dirname(stateFile), { recursive: true })
-    return withFileLock(stateFile, () => this.openLocked(manifest, stateFile, roots, lifecycle))
+    return withFileLock(stateFile, () => this.openLocked(manifest, stateFile, roots, lifecycle, allowPackageReinstall))
   }
 
-  private static async openLocked(manifest: unknown, stateFile: string, roots: ArtifactRoots, lifecycle: ModuleLifecycle): Promise<ModuleManager> {
+  private static async openLocked(manifest: unknown, stateFile: string, roots: ArtifactRoots, lifecycle: ModuleLifecycle, allowPackageReinstall: boolean): Promise<ModuleManager> {
     await recoverModuleTransaction(stateFile, roots)
     const release = validateManifest(manifest)
     let state: InstalledState
@@ -65,14 +65,35 @@ export class ModuleManager {
       if (state.wholePlugin && !validRemoval(state.wholePlugin)) throw new Error('INVALID_MODULE_STATE')
       if (state.manifest) {
         const previous = validateManifest(state.manifest)
-        if (previous.version !== state.version || state.version === release.version && !sameManifest(previous, release)) throw new Error('RELEASE_CONTENT_CHANGED')
+        if (previous.version !== state.version || state.version === release.version && !sameManifest(previous, release)
+          && !(allowPackageReinstall && state.wholePlugin?.pending === false && Object.values(state.removed).every(record => !record.pending))) throw new Error('RELEASE_CONTENT_CHANGED')
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       state = { schemaVersion: 1, revision: 0, version: release.version, removed: {}, restartRequired: false, manifest: release }
       await atomicJson(stateFile, state)
     }
-    if (state.version !== release.version) {
+    let incompleteReinstall = false
+    if (allowPackageReinstall && state.wholePlugin?.pending === false && Object.values(state.removed).every(record => !record.pending)) {
+      const files = [...release.core, ...release.modules.flatMap(module => module.files)]
+      let complete = true, present = false
+      for (const file of files) {
+        try { await access(await confinedPath(roots[file.root], file.path)); present = true }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+        try { await verifyArtifact(roots, file) } catch { complete = false }
+      }
+      if (complete && files.length) {
+        // Deleted bytes cannot return on a restart; a complete package was installed again.
+        delete state.wholePlugin
+        state.removed = {}
+        state.version = release.version
+        state.manifest = release
+        state.restartRequired = false
+        state.revision++
+        await atomicJson(stateFile, state)
+      } else incompleteReinstall = present
+    }
+    if (state.version !== release.version && !state.wholePlugin) {
       // Package-manager upgrade has already put the new payload on disk.
       // Preserve tombstones before cleanup removes recopied module files.
       state.version = release.version
@@ -82,6 +103,7 @@ export class ModuleManager {
       await atomicJson(stateFile, state)
     }
     const manager = new ModuleManager(release, state, stateFile, roots, lifecycle)
+    if (incompleteReinstall) manager.cleanupErrors.set('plugin', 'PLUGIN_REINSTALL_INCOMPLETE')
     // A copied update must not bring an explicitly removed payload back to disk.
     if (state.wholePlugin) await lifecycle.stopCore()
     for (const id of Object.keys(state.removed)) await manager.finishRemoval(id)
@@ -148,6 +170,8 @@ export class ModuleManager {
   private async finishRemoval(id: string): Promise<void> {
     const record = id === 'plugin' ? this.state.wholePlugin : this.state.removed[id]
     if (!record) return
+    // Completed whole removal is one-shot; keep newly installed bytes available for recovery.
+    if (this.state.wholePlugin && !record.pending) return
     const files = id === 'plugin' ? this.manifest.core : this.manifest.modules.find(m => m.id === id)?.files ?? []
     record.pending = true
     this.cleanupErrors.delete(id)

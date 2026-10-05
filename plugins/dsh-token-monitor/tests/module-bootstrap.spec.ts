@@ -1,13 +1,68 @@
+import { createHash } from 'node:crypto'
 import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { bootModules, selectBootManifest } from '../src/module-bootstrap.ts'
 
 const manifest = (version: string, sha256: string) => ({ schemaVersion: 1, version, core: [{ root: 'host', path: 'core.mjs', size: 1, sha256 }], modules: [{ id: 'pet', files: [{ root: 'host', path: 'pet.mjs', size: 1, sha256 }] }] })
 
 describe('installed payload preflight', () => {
+  it.each(['complete', 'partial', 'pending-core', 'pending-module'])('handles %s replacement through the loader', async (scenario) => {
+    const root = await mkdtemp(join(tmpdir(), 'token-monitor-reinstall-'))
+    const pluginRoot = join(root, 'node_modules', 'token-monitor')
+    const runtime = join(pluginRoot, 'runtime')
+    const payload = 'export async function apply(ctx) { ctx.restoredRuntime = true }'
+    const artifact = (path: string, content: string) => ({ root: 'host', path, size: Buffer.byteLength(content), sha256: createHash('sha256').update(content).digest('hex') })
+    const previous = { schemaVersion: 1, version: '4.2.0', core: [artifact('old-core.mjs', 'old')], modules: [{ id: 'pet', files: [artifact('old-pet.mjs', 'old')] }] }
+    const replacement = { schemaVersion: 1, version: '4.2.1', core: [artifact('manager.mjs', payload)], modules: [{ id: 'pet', files: [artifact('pet.mjs', 'pet')] }] }
+    const cleanups: Array<() => unknown> = []
+    const ctx = {
+      restoredRuntime: false, logger: { warn: vi.fn() }, inject: vi.fn(),
+      effect(factory: () => unknown) { const cleanup = factory(); if (typeof cleanup === 'function') cleanups.push(cleanup as () => unknown) },
+    }
+    try {
+      await mkdir(join(runtime, 'host'), { recursive: true })
+      await mkdir(join(root, '.dsh-damage-pulse'))
+      await writeFile(join(runtime, 'manifest.json'), JSON.stringify(replacement))
+      await writeFile(join(runtime, 'host', 'manager.mjs'), payload)
+      if (scenario !== 'partial') await writeFile(join(runtime, 'host', 'pet.mjs'), 'pet')
+      for (const path of ['old-core.mjs', 'old-pet.mjs']) await writeFile(join(runtime, 'host', path), 'old')
+      const stateFile = join(root, '.dsh-damage-pulse', 'module-state.json')
+      await writeFile(stateFile, JSON.stringify({
+        schemaVersion: 1, revision: 3, version: previous.version,
+        removed: { pet: { preserveData: true, pending: scenario === 'pending-module', erased: true } },
+        restartRequired: false, manifest: previous,
+        wholePlugin: { preserveData: true, pending: scenario === 'pending-core', erased: true },
+      }))
+      await bootModules(ctx as unknown as Context, pluginRoot, join(runtime, 'client'))
+      const state = JSON.parse(await readFile(stateFile, 'utf8'))
+      expect(ctx.restoredRuntime).toBe(scenario === 'complete')
+      if (scenario === 'complete') {
+        expect(state.wholePlugin).toBeUndefined()
+        expect(state.removed).toEqual({})
+        expect(state.version).toBe(replacement.version)
+        expect(state.revision).toBe(4)
+      } else {
+        expect(state.wholePlugin.pending).toBe(false)
+        expect(state.removed.pet.pending).toBe(false)
+        expect(state.version).toBe(previous.version)
+        expect(ctx.inject).toHaveBeenCalledOnce()
+        if (scenario === 'partial') {
+          expect(ctx.logger.warn).toHaveBeenCalledWith(expect.stringMatching(/PLUGIN_REINSTALL_INCOMPLETE.*remove.*desktop Plugins.*complete packaged.*restart/))
+        } else {
+          await expect(readFile(join(runtime, 'host', scenario === 'pending-core' ? 'old-core.mjs' : 'old-pet.mjs'))).rejects.toMatchObject({ code: 'ENOENT' })
+          expect(ctx.logger.warn).not.toHaveBeenCalled()
+        }
+      }
+      expect(await readFile(join(runtime, 'host', 'manager.mjs'), 'utf8')).toBe(payload)
+    } finally {
+      for (const cleanup of cleanups.reverse()) await cleanup()
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('serves an authenticated tombstone snapshot when the core is absent', async () => {
     const root = await mkdtemp(join(tmpdir(), 'token-monitor-removed-'))
     const pluginRoot = join(root, 'node_modules', 'token-monitor')

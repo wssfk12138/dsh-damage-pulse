@@ -1,5 +1,6 @@
 /** Chinese billing editor labels and validation feedback. */
 export const billingZh = {
+  restoreDefaultPosition: '恢复默认位置（贴右下角）',
   billingPricingTab: '模型计价', balanceScriptTab: '供应商余额查询', balanceScriptLabel: '余额查询脚本',
   balanceSelectProvider: '请选择供应商', balanceUnconfigured: '未配置', balanceValid: '校验通过',
   balanceInvalid: '脚本校验失败，查询已暂停', balancePending: '等待自动保存…', balanceSaved: '已自动保存',
@@ -45,6 +46,7 @@ export const billingZh = {
 
 /** English equivalents for every Chinese billing editor message. */
 export const billingEn: Record<keyof typeof billingZh, string> = {
+  restoreDefaultPosition: 'Restore default position (bottom right)',
   billingPricingTab: 'Model pricing', balanceScriptTab: 'Provider balance', balanceScriptLabel: 'Balance query script',
   balanceSelectProvider: 'Select a provider', balanceUnconfigured: 'Not configured', balanceValid: 'Validation passed',
   balanceInvalid: 'Script validation failed; queries paused', balancePending: 'Waiting to save…', balanceSaved: 'Saved automatically',

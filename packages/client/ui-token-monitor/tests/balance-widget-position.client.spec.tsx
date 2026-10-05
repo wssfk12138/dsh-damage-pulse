@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
  * minimising the window collapses `innerWidth` / `innerHeight` (WebView2 reports
  * a zero-height viewport while minimised), and a clamp persisted from that
  * transient viewport destroys the position the user chose. These tests pin the
- * invariant: only a drag writes the stored position.
+ * invariant: layout changes never overwrite intent after the one-time legacy migration.
  */
 
 const POS_KEY = 'dsh-token-monitor-balance-pos'
@@ -41,6 +41,9 @@ const BALANCE = {
 
 /** Position the user dragged the card to before the window changed size. */
 const USER_POS = { left: 305, top: 492 }
+let measuredWidth = 180
+let measuredHeight = 34
+const resizeCallbacks = new Set<ResizeObserverCallback>()
 
 function setViewport(width: number, height: number): void {
   Object.defineProperty(window, 'innerWidth', { value: width, configurable: true, writable: true })
@@ -49,7 +52,11 @@ function setViewport(width: number, height: number): void {
 
 function storedPos(): { left: number; top: number } | null {
   const raw = window.localStorage.getItem(POS_KEY)
-  return raw === null ? null : JSON.parse(raw) as { left: number; top: number }
+  if (raw === null) return null
+  const saved = JSON.parse(raw) as { mode?: string; left: number; top: number }
+  const minTop = Number.parseFloat(document.documentElement.style.getPropertyValue('--dsh-frame-top-clearance')) || 0
+  return saved.mode === 'relative'
+    ? { left: saved.left * (1024 - 180), top: minTop + saved.top * (768 - 34 - minTop) } : saved
 }
 
 /** The card is portalled onto document.body, so queries walk the base element. */
@@ -91,6 +98,15 @@ async function mountWidget(): Promise<ReturnType<typeof render>> {
 }
 
 beforeEach(() => {
+  measuredWidth = 180
+  measuredHeight = 34
+  resizeCallbacks.clear()
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(private callback: ResizeObserverCallback) {}
+    observe() { resizeCallbacks.add(this.callback) }
+    disconnect() { resizeCallbacks.delete(this.callback) }
+  })
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() => ({ width: measuredWidth, height: measuredHeight } as DOMRect))
   window.localStorage.clear()
   window.localStorage.setItem(POS_KEY, JSON.stringify(USER_POS))
   setViewport(1024, 768)
@@ -100,10 +116,77 @@ afterEach(() => {
   cleanup()
   document.documentElement.style.removeProperty('--dsh-frame-top-clearance')
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
   setViewport(1024, 768)
 })
 
 describe('BalanceWidget stored position', () => {
+  it('migrates a legacy position as soon as the deferred card mounts', async () => {
+    const view = await mountWidget()
+    const saved = JSON.parse(localStorage.getItem(POS_KEY)!) as { mode: string }
+    expect(saved.mode).toBe('relative')
+    expect(renderedPos(view)).toEqual(USER_POS)
+    expect(resizeCallbacks.size).toBe(2)
+    view.unmount()
+    expect(resizeCallbacks.size).toBe(0)
+  })
+
+  it('preserves proportions across viewport changes, remounts and card size changes', async () => {
+    const view = await mountWidget()
+    const saved = localStorage.getItem(POS_KEY)
+    setViewport(700, 500)
+    fireResize()
+    expect(renderedPos(view).left).toBeCloseTo(USER_POS.left * 520 / 844)
+    expect(renderedPos(view).top).toBeCloseTo(USER_POS.top * 466 / 734)
+    measuredWidth = 300
+    measuredHeight = 60
+    act(() => { for (const callback of resizeCallbacks) callback([], {} as ResizeObserver) })
+    expect(renderedPos(view).left).toBeCloseTo(USER_POS.left * 400 / 844)
+    expect(renderedPos(view).top).toBeCloseTo(USER_POS.top * 440 / 734)
+    expect(localStorage.getItem(POS_KEY)).toBe(saved)
+    view.unmount()
+    const remounted = await mountWidget()
+    expect(renderedPos(remounted).left).toBeCloseTo(USER_POS.left * 400 / 844)
+    expect(renderedPos(remounted).top).toBeCloseTo(USER_POS.top * 440 / 734)
+  })
+
+  it('restores automatic corner anchoring immediately and after remount', async () => {
+    const view = await mountWidget()
+    fireEvent.contextMenu(card(view), { clientX: 310, clientY: 490 })
+    fireEvent.click(view.getByRole('menuitem', { name: 'restoreDefaultPosition' }))
+    expect(localStorage.getItem(POS_KEY)).toBeNull()
+    expect(renderedPos(view)).toEqual({ left: 828, top: 718 })
+    setViewport(700, 500)
+    fireResize()
+    expect(renderedPos(view)).toEqual({ left: 504, top: 450 })
+    view.unmount()
+    const remounted = await mountWidget()
+    expect(renderedPos(remounted)).toEqual({ left: 504, top: 450 })
+    expect(localStorage.getItem(POS_KEY)).toBeNull()
+  })
+
+  it('keeps automatic anchoring on clicks and movement below the drag threshold', async () => {
+    localStorage.removeItem(POS_KEY)
+    const view = await mountWidget()
+    const element = card(view)
+    stubPointerCapture(element)
+    fireEvent.pointerDown(element, { button: 0, clientX: 100, clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(element, { clientX: 102, clientY: 101, pointerId: 1 })
+    fireEvent.pointerUp(element, { pointerId: 1 })
+    expect(localStorage.getItem(POS_KEY)).toBeNull()
+    setViewport(700, 500)
+    fireResize()
+    expect(renderedPos(view)).toEqual({ left: 504, top: 450 })
+  })
+
+  it.each(['null', '{', '{"left":1e999,"top":0}', '{"mode":"relative","left":1.1,"top":0}', '{"mode":"other","left":1,"top":0}'])(
+    'defaults safely for malformed stored position %s', async (raw) => {
+      localStorage.setItem(POS_KEY, raw)
+      const view = await mountWidget()
+      expect(renderedPos(view)).toEqual({ left: 828, top: 718 })
+    },
+  )
+
   it('defaults to the lower region and allows top zero when the host has no title strip', async () => {
     window.localStorage.removeItem(POS_KEY)
     const defaultView = await mountWidget()

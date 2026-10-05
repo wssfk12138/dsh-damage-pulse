@@ -10,7 +10,7 @@ import { MenuSurface } from './MenuSurface.tsx'
  *
  * 全局浮动层中的卡片按当前主任务的实际执行路由选择数据。
  */
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { ModuleManagerPanel } from './ModuleManagerPanel.tsx'
 import { moduleInstalled, type createModuleState } from './moduleApi.ts'
 import { currencySymbol } from './currencySymbol.ts'
@@ -203,13 +203,19 @@ const WHALE_VISIBLE_KEY = 'dsh-token-monitor-show-whale-girl'
 const USAGE_OVERVIEW_KEY = 'dsh-token-monitor-show-usage-overview'
 
 /** 从 localStorage 恢复上次位置；缺失或非法返回 null，交由右下角锚定处理。 */
-function loadPos(): { left: number; top: number } | null {
+type SavedPosition = { mode: 'relative' | 'legacy'; left: number; top: number }
+
+function loadPos(): SavedPosition | null {
   try {
     const raw = localStorage.getItem(POS_KEY)
     if (raw !== null) {
-      const parsed = JSON.parse(raw) as { left?: unknown; top?: unknown }
-      if (typeof parsed.left === 'number' && typeof parsed.top === 'number') {
-        return { left: parsed.left, top: parsed.top }
+      const parsed = JSON.parse(raw) as { mode?: unknown; left?: unknown; top?: unknown } | null
+      if (parsed && typeof parsed.left === 'number' && Number.isFinite(parsed.left)
+        && typeof parsed.top === 'number' && Number.isFinite(parsed.top)) {
+        if (parsed.mode === 'relative' && parsed.left >= 0 && parsed.left <= 1 && parsed.top >= 0 && parsed.top <= 1) {
+          return { mode: 'relative', left: parsed.left, top: parsed.top }
+        }
+        if (parsed.mode === undefined) return { mode: 'legacy', left: parsed.left, top: parsed.top }
       }
     }
   } catch {
@@ -222,7 +228,7 @@ function loadPos(): { left: number; top: number } | null {
 const ANCHOR_MARGIN_PX = 16
 
 /** 持久化悬浮窗位置。 */
-function savePos(pos: { left: number; top: number }): void {
+function savePos(pos: SavedPosition): void {
   try {
     localStorage.setItem(POS_KEY, JSON.stringify(pos))
   } catch {
@@ -429,9 +435,13 @@ export function BalanceWidget({
   const [notificationBubble, setNotificationBubble] = useState<string>()
   const [contextMenu, setContextMenu] = useState<{ left: number; top: number } | null>(null)
   // 悬浮窗位置（left/top），初始从 localStorage 恢复或锚定右下角。
-  const restoredPosRef = useRef<{ left: number; top: number } | null | undefined>(undefined)
-  if (restoredPosRef.current === undefined) restoredPosRef.current = previewOverride?.fixedPosition ?? loadPos()
-  const [pos, setPos] = useState<{ left: number; top: number }>(() => restoredPosRef.current ?? { left: 0, top: 0 })
+  const restoredPosRef = useRef<SavedPosition | null | undefined>(undefined)
+  if (restoredPosRef.current === undefined) restoredPosRef.current = previewOverride
+    ? { mode: 'legacy', ...previewOverride.fixedPosition } : loadPos()
+  const [pos, setPos] = useState<{ left: number; top: number }>(() => {
+    const saved = restoredPosRef.current
+    return saved?.mode === 'legacy' ? { left: saved.left, top: saved.top } : { left: 0, top: 0 }
+  })
   // 用户未手动定位过时贴住右下角，卡片宽度随用量概览变化也不会被视口裁掉。
   const autoAnchorRef = useRef(previewOverride === undefined && restoredPosRef.current === null)
   const [dragging, setDragging] = useState(false)
@@ -455,14 +465,19 @@ export function BalanceWidget({
   const revivingRef = useRef(false)
   const showWhaleGirlRef = useRef(showWhaleGirl && petInstalled)
   const balanceValueRef = useRef<HTMLSpanElement>(null)
-  const cardRef = useRef<HTMLDivElement>(null)
+  const cardRef = useRef<HTMLDivElement | null>(null)
+  const [cardNode, setCardNode] = useState<HTMLDivElement | null>(null)
+  const attachCard = useCallback((node: HTMLDivElement | null) => {
+    cardRef.current = node
+    setCardNode(node)
+  }, [])
   // 拖拽起点：按下时的鼠标位置 + 卡片位置。
   const dragStart = useRef<{ x: number; y: number; left: number; top: number; pointerId: number; moved: boolean } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   /** 悬浮卡片实测宽度：扣血反馈与受击位移按它等比缩放。 */
   const [cardWidthPx, setCardWidthPx] = useState(0)
   useEffect(() => {
-    const node = cardRef.current
+    const node = cardNode
     if (node === null || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver((entries) => {
       const width = entries[0]?.borderBoxSize?.[0]?.inlineSize ?? entries[0]?.contentRect.width
@@ -470,7 +485,7 @@ export function BalanceWidget({
     })
     observer.observe(node)
     return () => { observer.disconnect() }
-  }, [])
+  }, [cardNode])
   const damageScale = damageScaleFor(cardWidthPx, animationScale)
   const notificationSettingsRef = useRef<{ provider: string; snapshot: TokenMonitorSettingsSnapshot }>()
   const notificationQueueRef = useRef(createNotificationQueueState())
@@ -729,7 +744,42 @@ export function BalanceWidget({
     return true
   }, [])
 
-  useEffect(() => {
+  /** Store intent within the movable area, so viewport and card resizes use the same proportions. */
+  const rememberPosition = useCallback((next: { left: number; top: number }) => {
+    const rect = cardRef.current?.getBoundingClientRect()
+    if (!rect || rect.width <= 0 || rect.height <= 0 || window.innerWidth <= 0 || window.innerHeight <= 0) return
+    const minTop = overlayTopMargin(0)
+    const width = Math.max(0, window.innerWidth - rect.width)
+    const height = Math.max(0, window.innerHeight - rect.height - minTop)
+    const saved: SavedPosition = { mode: 'relative', left: width ? clamp(next.left / width, 0, 1) : 0,
+      top: height ? clamp((next.top - minTop) / height, 0, 1) : 0 }
+    restoredPosRef.current = saved
+    savePos(saved)
+  }, [])
+
+  const resolvePosition = useCallback((current: { left: number; top: number }) => {
+    const saved = restoredPosRef.current, rect = cardRef.current?.getBoundingClientRect()
+    if (!saved || previewOverride || !rect || rect.width <= 0 || rect.height <= 0) return constrainPos(current)
+    if (saved.mode === 'legacy') {
+      const next = constrainPos(saved)
+      rememberPosition(next)
+      return next
+    }
+    const minTop = overlayTopMargin(0)
+    return constrainPos({ left: saved.left * Math.max(0, window.innerWidth - rect.width),
+      top: minTop + saved.top * Math.max(0, window.innerHeight - rect.height - minTop) })
+  }, [constrainPos, rememberPosition, previewOverride])
+
+  const resetPosition = useCallback(() => {
+    try { localStorage.removeItem(POS_KEY) } catch { /* Storage may be unavailable. */ }
+    restoredPosRef.current = null
+    autoAnchorRef.current = true
+    setContextMenu(null)
+    const rect = cardRef.current?.getBoundingClientRect()
+    anchorToCorner(rect?.width ?? 0, rect?.height ?? 0)
+  }, [anchorToCorner])
+
+  useLayoutEffect(() => {
     const onResize = () => {
       // WebView2 reports a zero-sized viewport while minimized. There is no
       // meaningful constraint in that state, and persisting a clamp would
@@ -738,9 +788,7 @@ export function BalanceWidget({
       const rect = cardRef.current?.getBoundingClientRect()
       if (anchorToCorner(rect?.width ?? 0, rect?.height ?? 0)) return
       setPos((current) => {
-        // A resize clamp is temporary. Restore the last user-saved position
-        // when the viewport grows again, then apply the current bounds.
-        const next = constrainPos(loadPos() ?? current)
+        const next = resolvePosition(current)
         if (next.left === current.left && next.top === current.top) return current
         return next
       })
@@ -748,25 +796,25 @@ export function BalanceWidget({
     window.addEventListener('resize', onResize)
     onResize()
     return () => window.removeEventListener('resize', onResize)
-  }, [anchorToCorner, constrainPos])
+  }, [anchorToCorner, resolvePosition, cardNode])
 
   /** 卡片宽度会随用量概览到达而变化，尺寸变化时重新约束，避免右侧内容被视口裁掉。 */
   useEffect(() => {
-    const node = cardRef.current
+    const node = cardNode
     if (node === null || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(() => {
       if (window.innerWidth <= 0 || window.innerHeight <= 0) return
       const rect = node.getBoundingClientRect()
       if (anchorToCorner(rect.width, rect.height)) return
       setPos((current) => {
-        const next = constrainPos(loadPos() ?? current)
+        const next = resolvePosition(current)
         if (next.left === current.left && next.top === current.top) return current
         return next
       })
     })
     observer.observe(node)
     return () => observer.disconnect()
-  }, [anchorToCorner, constrainPos])
+  }, [anchorToCorner, resolvePosition, cardNode])
 
   /** 拖拽开始：记录起点，捕获指针。 */
   const onPointerDown = useCallback((event: React.PointerEvent) => {
@@ -796,17 +844,18 @@ export function BalanceWidget({
   /** 拖拽结束：持久化位置。 */
   const onPointerUp = useCallback((event: React.PointerEvent) => {
     if (dragStart.current === null) return
+    const moved = dragStart.current.moved
     dragStart.current = null
     setDragging(false)
     if ((event.currentTarget as HTMLElement).hasPointerCapture(event.pointerId)) {
       ;(event.currentTarget as HTMLElement).releasePointerCapture(event.pointerId)
     }
     // 持久化最终位置（用 pos 的最新值）。
-    setPos((current) => {
-      savePos(current)
+    if (moved) setPos((current) => {
+      rememberPosition(current)
       return current
     })
-  }, [])
+  }, [rememberPosition])
 
   /** 余额节点保留同一 DOM；连续扣费从当前视觉状态接续，不再靠 key 强制重播。 */
   const pulseBalance = useCallback((kind: DamageKind) => {
@@ -932,14 +981,15 @@ export function BalanceWidget({
 
   const cancelDrag = useCallback(() => {
     if (dragStart.current === null) return
+    const moved = dragStart.current.moved
     dragStart.current = null
     setDragging(false)
     setPos((current) => {
       const next = constrainPos(current)
-      savePos(next)
+      if (moved) rememberPosition(next)
       return next
     })
-  }, [constrainPos])
+  }, [constrainPos, rememberPosition])
 
   // 某些宿主或高刷新率指针设备可能在卡片之外结束拖动；窗口级兜底避免遗留 grabbing 状态。
   useEffect(() => {
@@ -1309,7 +1359,7 @@ export function BalanceWidget({
     : '；供应商 ' + (usageOverview.provider ?? '未记录') + ' · 模型 ' + (usageOverview.model ?? '未记录') + ' · 记录时间 ' + fmtRecordTime(usageOverview.timestamp)
   return (
     <div
-      ref={cardRef}
+      ref={attachCard}
       style={{ ...CARD, display: widgetHidden ? 'none' : CARD.display, left: pos.left, top: pos.top, cursor: previewOverride === undefined ? (dragging ? 'grabbing' : 'grab') : 'default' }}
       data-token-monitor-balance=""
       data-showcase-instance={previewOverride?.instanceId}
@@ -1414,6 +1464,7 @@ export function BalanceWidget({
             <span>{t('notificationSettings')}</span>
           </button>}
           {billingInstalled && <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setBillingOpen(true) }} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>¥</span><span>计费规则</span></button>}
+          <button type="button" role="menuitem" onClick={resetPosition} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>↘</span><span>{t('restoreDefaultPosition')}</span></button>
           <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setManagerOpen(true) }} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>↻</span><span>{t('modulesTitle')}</span></button>
         </MenuSurface>
       )}
