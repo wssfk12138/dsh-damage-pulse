@@ -150,19 +150,19 @@ describe('BalanceWidget stored position', () => {
     expect(renderedPos(remounted).top).toBeCloseTo(USER_POS.top * 440 / 734)
   })
 
-  it('restores automatic corner anchoring immediately and after remount', async () => {
+  it('keeps the saved position when opening and closing the menu without a reset action', async () => {
     const view = await mountWidget()
+    const saved = localStorage.getItem(POS_KEY)
     fireEvent.contextMenu(card(view), { clientX: 310, clientY: 490 })
-    fireEvent.click(view.getByRole('menuitem', { name: 'restoreDefaultPosition' }))
-    expect(localStorage.getItem(POS_KEY)).toBeNull()
-    expect(renderedPos(view)).toEqual({ left: 828, top: 718 })
-    setViewport(700, 500)
-    fireResize()
-    expect(renderedPos(view)).toEqual({ left: 504, top: 450 })
+    expect(view.queryByRole('menuitem', { name: 'restoreDefaultPosition' })).toBeNull()
+    fireEvent.keyDown(view.getByRole('menu'), { key: 'Escape' })
+    expect(view.queryByRole('menu')).toBeNull()
+    expect(localStorage.getItem(POS_KEY)).toBe(saved)
+    expect(renderedPos(view)).toEqual(USER_POS)
     view.unmount()
     const remounted = await mountWidget()
-    expect(renderedPos(remounted)).toEqual({ left: 504, top: 450 })
-    expect(localStorage.getItem(POS_KEY)).toBeNull()
+    expect(renderedPos(remounted)).toEqual(USER_POS)
+    expect(localStorage.getItem(POS_KEY)).toBe(saved)
   })
 
   it('keeps automatic anchoring on clicks and movement below the drag threshold', async () => {

@@ -71,7 +71,10 @@ describe('BalanceWidget context menu (issue #28)', () => {
     const view = render(<BalanceWidget {...props} />)
     const card = view.baseElement.querySelector('[data-token-monitor-balance]') as HTMLElement
     const capture = vi.fn()
-    Object.assign(card, { setPointerCapture: capture, hasPointerCapture: () => false })
+    Object.assign(card, {
+      setPointerCapture: capture, hasPointerCapture: () => false,
+      getBoundingClientRect: () => ({ width: 100, height: 34 }),
+    })
     const gear = screen.getByRole('button', { name: '插件管理' })
     const before = { ...localStorage }
     // MouseEvent supplies button/coordinates even when jsdom has no PointerEvent constructor.
@@ -94,7 +97,7 @@ describe('BalanceWidget context menu (issue #28)', () => {
     expect(card!.style.left).toBe(expectedPosition.left + 'px')
     expect(card!.style.top).toBe(expectedPosition.top + 'px')
     fireEvent(card!, Object.assign(new MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 50, clientY: 60 }), { pointerId: 2 }))
-    expect(localStorage.getItem('dsh-token-monitor-balance-pos')).toBe(JSON.stringify(expectedPosition))
+    expect(JSON.parse(localStorage.getItem('dsh-token-monitor-balance-pos')!)).toEqual({ mode: 'relative', left: expectedPosition.left / (window.innerWidth - 100), top: expectedPosition.top / (window.innerHeight - 34) })
     expect(screen.queryByRole('dialog')).toBeNull()
   })
 
@@ -159,9 +162,9 @@ describe('BalanceWidget context menu (issue #28)', () => {
     expect(screen.queryByRole('menu')).toBeNull()
   })
 
-  it('blocks the balance-card tooltip for the whole menu without removing the card tooltip', async () => {
+  it('keeps both the card and its menu free of native tooltips', async () => {
     const { card, menu, item } = await openMenu()
-    expect(card.title).toContain('账户余额')
+    expect(card.getAttribute('title')).toBe('')
     expect(menu.getAttribute('title')).toBe('')
     // An explicit empty title stops native HTML title inheritance, including over child labels.
     for (const label of labels) expect(item(label).lastElementChild?.closest('[title]')).toBe(menu)

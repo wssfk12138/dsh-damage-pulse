@@ -770,15 +770,6 @@ export function BalanceWidget({
       top: minTop + saved.top * Math.max(0, window.innerHeight - rect.height - minTop) })
   }, [constrainPos, rememberPosition, previewOverride])
 
-  const resetPosition = useCallback(() => {
-    try { localStorage.removeItem(POS_KEY) } catch { /* Storage may be unavailable. */ }
-    restoredPosRef.current = null
-    autoAnchorRef.current = true
-    setContextMenu(null)
-    const rect = cardRef.current?.getBoundingClientRect()
-    anchorToCorner(rect?.width ?? 0, rect?.height ?? 0)
-  }, [anchorToCorner])
-
   useLayoutEffect(() => {
     const onResize = () => {
       // WebView2 reports a zero-sized viewport while minimized. There is no
@@ -1464,7 +1455,6 @@ export function BalanceWidget({
             <span>{t('notificationSettings')}</span>
           </button>}
           {billingInstalled && <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setBillingOpen(true) }} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>¥</span><span>计费规则</span></button>}
-          <button type="button" role="menuitem" onClick={resetPosition} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>↘</span><span>{t('restoreDefaultPosition')}</span></button>
           <button type="button" role="menuitem" onClick={() => { setContextMenu(null); setManagerOpen(true) }} {...CONTEXT_MENU_HOVER} style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '6px 8px', border: 0, borderRadius: 4, background: 'transparent', color: 'inherit', textAlign: 'left', cursor: 'pointer', font: 'inherit' }}><span aria-hidden="true" style={{ width: 14, textAlign: 'center', color: '#79b8ff' }}>↻</span><span>{t('modulesTitle')}</span></button>
         </MenuSurface>
       )}
