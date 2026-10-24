@@ -38,6 +38,7 @@ import { applyDebitToDisplay, comparableBalances } from './balanceMath.ts'
 import { compactTokens, latencyTone } from './detail-model.ts'
 import { isOfficialRoute } from './providerFamily.ts'
 import { overlayTopMargin } from './window-frame.tsx'
+import { useEscapeDismiss } from './useEscapeDismiss.ts'
 
 const UsageDetailsWindow = lazy(() => import('./UsageDetailsWindow.tsx').then(module => ({ default: module.UsageDetailsWindow })))
 const TokenMonitorSettingsPanel = lazy(() => import('./TokenMonitorSettingsPanel.tsx').then(module => ({ default: module.TokenMonitorSettingsPanel })))
@@ -522,7 +523,10 @@ export function BalanceWidget({
     notificationSeeded.current = false
   }, [scopeKey, billingInstalled, petInstalled, notifyInstalled])
 
-  /** 右键打开余额显示设置菜单，并限制菜单不超出视口。 */
+  /** 右键菜单的内联层级（见 onContextMenu 渲染处的 zIndex）。 */
+const CONTEXT_MENU_Z_INDEX = 1100
+
+/** 右键打开余额显示设置菜单，并限制菜单不超出视口。 */
   const onContextMenu = useCallback((event: React.MouseEvent) => {
     event.preventDefault()
     dragStart.current = null
@@ -537,6 +541,10 @@ export function BalanceWidget({
     })
   }, [])
 
+  // 全局 ESC：焦点不在卡片/菜单内也能关闭右键菜单。
+  useEscapeDismiss(contextMenu !== null, () => { setContextMenu(null) },
+    { zIndex: CONTEXT_MENU_Z_INDEX, element: () => contextMenuRef.current })
+
   const toggleUsageOverview = useCallback(() => {
     setShowUsageOverview((visible) => {
       const next = !visible
@@ -546,12 +554,8 @@ export function BalanceWidget({
     setContextMenu(null)
   }, [])
 
-  /** 支持 Context Menu 键和 Shift+F10 打开设置。 */
+  /** 支持 Context Menu 键和 Shift+F10 打开设置；Esc 由 useEscapeDismiss 统一关闭菜单。 */
   const onKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (event.key === 'Escape') {
-      setContextMenu(null)
-      return
-    }
     if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
       event.preventDefault()
       const rect = event.currentTarget.getBoundingClientRect()
@@ -1382,16 +1386,11 @@ export function BalanceWidget({
         <MenuSurface
           ref={contextMenuRef}
           role="menu"
+          data-token-monitor-layer="context-menu"
           aria-label="余额显示设置"
           // An empty title blocks the balance card's inherited native tooltip.
           title=""
           onPointerDown={event => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.stopPropagation()
-              setContextMenu(null)
-            }
-          }}
           style={{
             position: 'fixed',
             left: contextMenu.left,

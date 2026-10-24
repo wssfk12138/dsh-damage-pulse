@@ -418,3 +418,28 @@ it('saves separate period tiers and clock selections automatically without a sav
   expect(saved.offPeakTiers?.[0]?.output).toBe(3)
   expect(saved.tiers?.[0]?.output).toBe(6)
 })
+
+it('lets Escape reach document listeners of the host while closing its own layer', async () => {
+  // 复现 review 第 1 条（回归）：计费面板内按 Esc，宿主 document 监听必须仍被调用。
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  const { close } = mount()
+  await waitFor(() => expect(screen.getByRole('dialog')).toBeTruthy())
+  fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+  await waitFor(() => expect(hostListener).toHaveBeenCalledTimes(1))
+  expect(close).toHaveBeenCalledTimes(1)
+  document.removeEventListener('keydown', hostListener)
+})
+
+it('lets Escape from the provider list reach document listeners of the host', async () => {
+  // 复现 review：供应商下拉内按 Esc 收起下拉，但按键必须继续传播给宿主。
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
+  mount()
+  const trigger = await screen.findByRole('button', { name: /全部供应商|deepseek-official/ })
+  fireEvent.click(trigger)
+  const list = screen.getByRole('listbox')
+  fireEvent.keyDown(list, { key: 'Escape' })
+  expect(hostListener).toHaveBeenCalledTimes(1)
+  document.removeEventListener('keydown', hostListener)
+})

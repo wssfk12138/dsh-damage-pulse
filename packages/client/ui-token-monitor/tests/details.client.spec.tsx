@@ -130,7 +130,12 @@ it('shows frozen fee facts in an anchored panel and leaves absent historical sub
   fireEvent.keyDown(buttons[1]!, { key: 'Escape' })
   expect(screen.queryByRole('region', { name: '费用明细' })).toBeNull()
   fireEvent.click(buttons[1]!)
+  // 浮层内 Esc 必须继续传播给宿主的 document 监听（否则上层宿主弹层关不掉）。
+  const hostListener = vi.fn()
+  document.addEventListener('keydown', hostListener)
   fireEvent.keyDown(screen.getByRole('region', { name: '费用明细' }), { key: 'Escape' })
+  expect(hostListener).toHaveBeenCalledTimes(1)
+  document.removeEventListener('keydown', hostListener)
   expect(screen.queryByRole('region', { name: '费用明细' })).toBeNull()
   expect(document.activeElement).toBe(buttons[1])
   fireEvent.click(buttons[1]!)

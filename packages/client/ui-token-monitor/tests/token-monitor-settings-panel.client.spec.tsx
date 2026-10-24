@@ -202,9 +202,12 @@ describe('TokenMonitorSettingsPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '断开' }))
     const confirmation = screen.getByRole('alertdialog', { name: '确认断开微信连接' })
+    // ESC 先收起确认框（焦点不在面板内也生效），再按一次才关闭面板。
     fireEvent.keyDown(confirmation, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('alertdialog', { name: '确认断开微信连接' })).toBeTruthy()
+    expect(screen.queryByRole('alertdialog', { name: '确认断开微信连接' })).toBeNull()
+    fireEvent.keyDown(screen.getByRole('form', { name: 'dsh-damage-pulse 设置' }), { key: 'Escape' })
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(2))
   })
 
   it('saves only changed fields exposed by this panel', async () => {

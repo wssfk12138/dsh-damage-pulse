@@ -18,6 +18,10 @@ import {
 } from '@deepseek-ai/dsh-token-monitor-contract'
 import { PRODUCT_NAME } from './branding.ts'
 import { hostCompatHint, type HostCompatApi, type HostCompatStatus } from './hostCompatApi.ts'
+import { useEscapeDismiss } from './useEscapeDismiss.ts'
+
+/** 设置面板挂在 BalanceWidget 的 1200 层遮罩内（宿主 Modal 是 1000）。 */
+const SETTINGS_Z_INDEX = 1200
 import { displayProviderId } from './providerFamily.ts'
 import {
   WechatConnectionApiError,
@@ -291,6 +295,8 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
   const savePromiseRef = useRef<Promise<void>>()
   const switchingRef = useRef(false)
   const pendingRef = useRef(false)
+  /** 表单根元素：Esc 层级判定用它做命中测试。 */
+  const formRef = useRef<HTMLFormElement>(null)
 
   const setNumberInput = (id: NumberInputId, raw: string) => {
     numberInputsRef.current = { ...numberInputsRef.current, [id]: raw }
@@ -409,6 +415,12 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
     await flushSaves()
     if (!pendingRef.current) props.onClose()
   }
+
+  // 全局 ESC：焦点不在面板内也能关闭；有断开确认时先收起确认框。
+  useEscapeDismiss(true, () => {
+    if (disconnectConfirmation) setDisconnectConfirmation(false)
+    else void requestClose()
+  }, { zIndex: SETTINGS_Z_INDEX, element: () => formRef.current })
 
   const selectProvider = async (nextProvider: string) => {
     if (!props.loadProvider || switchingRef.current || !commitNumberInputs()) return
@@ -629,6 +641,8 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
 
   return (
     <form
+      ref={formRef}
+      data-token-monitor-layer="settings"
       aria-label={PRODUCT_NAME + ' 设置'}
       className="token-monitor-settings"
       data-token-monitor-settings-theme="whale-outfit-blue"
@@ -643,9 +657,7 @@ export function TokenMonitorSettingsPanel(props: TokenMonitorSettingsPanelProps)
       onPointerCancel={(event) => { event.stopPropagation() }}
       onClick={(event) => { event.stopPropagation() }}
       onContextMenu={(event) => { event.stopPropagation() }}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && !disconnectConfirmation) requestClose()
-      }}
+      // Esc 由 useEscapeDismiss 统一处理（含断开确认的先收起），这里不再重复。
       style={PANEL}
     >
       <style>{`

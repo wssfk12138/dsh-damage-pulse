@@ -8,6 +8,7 @@ import { attachAccountBalance } from '../balance-account.ts'
 import { resolveBalanceIdentity } from '../balance-provider.ts'
 import { requestBalanceJson } from '../balance-network.ts'
 import { registerBalanceApi, registerBalanceTools } from '../balance-api.ts'
+import { PlanQuotaRegistry, registerPlanQuotaApi } from '../plan-quota.ts'
 import { registerBillingTools } from '../billing-tools.ts'
 import { registerBudgetRoutes } from '../budget-routes.ts'
 import { registerChargeEventsRoute } from '../charge-route.ts'
@@ -58,6 +59,15 @@ export function apply(ctx: Context, services: ModuleServices): void {
       balanceCtx.effect(() => () => registry.stop(), 'token-monitor: balance requests')
       balanceCtx.inject(['webServer', 'connection'], web => registerBalanceApi(web, scripts, registry))
       balanceCtx.inject(['tools'], tools => registerBalanceTools(tools, scripts, registry))
+      // Plan 额度走宿主内置的 keyless 适配器，不经过用户的余额查询脚本。
+      const planQuotas = new PlanQuotaRegistry({
+        listProviders: () => balanceCtx.llm.listConfigurableProviders().map(item => item.provider),
+        resolveIdentity: provider => resolveBalanceIdentity(balanceCtx, provider, services.store.get().balanceProviders?.[provider]),
+        request: requestBalanceJson,
+        // Fixed-message diagnostics only; host, path, address and credentials never reach the log.
+        warn: message => balanceCtx.logger.warn(message) })
+      balanceCtx.effect(() => () => planQuotas.stop(), 'token-monitor: plan quota requests')
+      balanceCtx.inject(['webServer', 'connection'], web => registerPlanQuotaApi(web, planQuotas))
     })
   })
   ctx.inject(['webServer', 'connection'], web => {

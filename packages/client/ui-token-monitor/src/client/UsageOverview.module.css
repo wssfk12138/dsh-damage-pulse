@@ -4,6 +4,7 @@
 .header > strong { font-size: 14px; }
 .actions { margin-left: auto; }
 .scope { justify-content: flex-end; margin: 7px 0 10px; color: var(--dsw-alias-detail-muted); font-size: 11px; }
+.tabs { display: flex; align-items: center; gap: 4px; margin: 8px 0 10px; }
 .ranges { gap: 4px; }
 .provider { display: flex; align-items: center; gap: 8px; margin-right: auto; min-width: 0; }
 .provider select { max-width: 220px; min-width: 0; padding: 4px 8px; border: 1px solid var(--dsw-alias-detail-border); border-radius: var(--dsw-radius-sm, var(--dsh-token-monitor-radius-sm)); background: var(--dsw-alias-detail-card); color: var(--dsw-alias-detail-brand); font: inherit; }

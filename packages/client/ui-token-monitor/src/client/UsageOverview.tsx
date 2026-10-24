@@ -3,6 +3,7 @@ import { Button, Pill } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DetailKey, DetailTranslate } from './detail-locales.ts'
 import type { UsageSummary, UsageSummaryRange } from './types.ts'
 import { beijingDateTime } from './detail-model.ts'
+import { PlanQuotaPanel } from './PlanQuotaPanel.tsx'
 import styles from './UsageOverview.module.css'
 import { useUsageRefresh, usageSummaryUrl, type UsageRefreshState } from './useUsageRefresh.ts'
 
@@ -16,6 +17,8 @@ export function overviewNumber(value: number | null | undefined, compact = false
 }
 
 type OverviewRange = UsageSummaryRange | 'custom'
+/** 数据概览的两个页签：消费汇总与 Plan 额度。 */
+type OverviewTab = 'spend' | 'plan'
 
 interface OverviewProps {
   t: DetailTranslate
@@ -48,6 +51,9 @@ function OverviewContent({ t, compact, billingInstalled = true, provider = '', p
   const selectedRange = range
   const { data: summary, loading, error } = refresh.state
   const [collapsed, setCollapsed] = useState(false)
+  const [tab, setTab] = useState<OverviewTab>('spend')
+  // 计费规则功能未启用时没有 Plan 额度端点，页签与请求一并隐藏。
+  const activeTab: OverviewTab = billingInstalled ? tab : 'spend'
   const customFrom = selectedRange === 'custom' ? appliedCustom?.from : undefined
   const customTo = selectedRange === 'custom' ? appliedCustom?.to : undefined
   const metrics: {
@@ -75,22 +81,28 @@ function OverviewContent({ t, compact, billingInstalled = true, provider = '', p
       </div>
     </div>
     <div hidden={collapsed}>
-      <div className={styles.scope}>
-        {onProviderChange && <label className={styles.provider}>{t('provider')} <select aria-label={t('provider')} value={provider} onChange={event => onProviderChange(event.target.value)}><option value="">{t('allProviders')}</option>{providers.map(id => <option key={id} value={id}>{id}</option>)}</select></label>}
-        <div className={styles.ranges} role="group" aria-label={t('overviewRange')}>
-          {(['all', '30d', '7d', 'yesterday', 'today'] as const).map(value => <Pill key={value} active={selectedRange === value} aria-pressed={selectedRange === value} onClick={() => { onRangeChange?.(value) }}>{t(value)}</Pill>)}
-          {selectedRange === 'custom' && customFrom !== undefined && customTo !== undefined && <span style={{ fontSize: 11, opacity: 0.75 }}>{t('overviewCustom', { from: beijingDateTime(customFrom).replace('T', ' '), to: beijingDateTime(customTo).replace('T', ' ') })}</span>}
+      <div className={styles.tabs} role="group" aria-label={t('overviewTabs')}>
+        <Pill active={activeTab === 'spend'} aria-pressed={activeTab === 'spend'} onClick={() => { setTab('spend') }}>{t('overviewTabSpend')}</Pill>
+        {billingInstalled && <Pill active={activeTab === 'plan'} aria-pressed={activeTab === 'plan'} onClick={() => { setTab('plan') }}>{t('overviewTabPlan')}</Pill>}
+      </div>
+      {activeTab === 'plan' ? <PlanQuotaPanel t={t} active={!collapsed} /> : <>
+        <div className={styles.scope}>
+          {onProviderChange && <label className={styles.provider}>{t('provider')} <select aria-label={t('provider')} value={provider} onChange={event => onProviderChange(event.target.value)}><option value="">{t('allProviders')}</option>{providers.map(id => <option key={id} value={id}>{id}</option>)}</select></label>}
+          <div className={styles.ranges} role="group" aria-label={t('overviewRange')}>
+            {(['all', '30d', '7d', 'yesterday', 'today'] as const).map(value => <Pill key={value} active={selectedRange === value} aria-pressed={selectedRange === value} onClick={() => { onRangeChange?.(value) }}>{t(value)}</Pill>)}
+            {selectedRange === 'custom' && customFrom !== undefined && customTo !== undefined && <span style={{ fontSize: 11, opacity: 0.75 }}>{t('overviewCustom', { from: beijingDateTime(customFrom).replace('T', ' '), to: beijingDateTime(customTo).replace('T', ' ') })}</span>}
+          </div>
         </div>
-      </div>
-      {error && <div className={styles.status} role="alert">{t(error)}{summary && ' · ' + t('staleData')}</div>}
-      {loading && !summary && <div className={styles.status} role="status">{t('loading')}</div>}
-      <div className={styles.grid} aria-busy={loading}>
-        {metrics.filter(metric => billingInstalled || !['overviewSpend', 'overviewPer100m', 'overviewDaily'].includes(metric.label)).map(metric => <div className={styles.card} key={metric.label}
-          title={(metric.value == null ? '—' : String(metric.value))}>
-          <span>{t(metric.label)}</span>
-          <strong>{metric.value == null ? '—' : <>{metric.prefix}{overviewNumber(metric.value, metric.compact)}{metric.unit && <small>{t(metric.unit)}</small>}</>}</strong>
-        </div>)}
-      </div>
+        {error && <div className={styles.status} role="alert">{t(error)}{summary && ' · ' + t('staleData')}</div>}
+        {loading && !summary && <div className={styles.status} role="status">{t('loading')}</div>}
+        <div className={styles.grid} aria-busy={loading}>
+          {metrics.filter(metric => billingInstalled || !['overviewSpend', 'overviewPer100m', 'overviewDaily'].includes(metric.label)).map(metric => <div className={styles.card} key={metric.label}
+            title={(metric.value == null ? '—' : String(metric.value))}>
+            <span>{t(metric.label)}</span>
+            <strong>{metric.value == null ? '—' : <>{metric.prefix}{overviewNumber(metric.value, metric.compact)}{metric.unit && <small>{t(metric.unit)}</small>}</>}</strong>
+          </div>)}
+        </div>
+      </>}
     </div>
   </section>
 }

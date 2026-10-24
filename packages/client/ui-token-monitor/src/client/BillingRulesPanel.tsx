@@ -13,6 +13,10 @@ import { readBillingSnapshot as readSnapshot, type BillingEventsState } from './
 import { BillingSourceDetails } from './BillingSourceDetails.tsx'
 import { BillingTemplatePreview } from './BillingTemplatePreview.tsx'
 import { BalanceScriptEditor } from './BalanceScriptEditor.tsx'
+import { useEscapeDismiss } from './useEscapeDismiss.ts'
+
+/** 与 BillingRulesPanel.module.css 的 .panel z-index 保持一致（宿主 Modal 是 1000）。 */
+const PANEL_Z_INDEX = 1300
 import { FloatingResizeHandles, useFloatingWindow } from './window-frame.tsx'
 
 type CatalogModel = { provider: string; providerName?: string | undefined; model: string; name?: string | undefined }
@@ -217,7 +221,20 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
   const dirty = useRef(false)
   const liveSnapshot = useRef<BillingSnapshot>()
   const pendingSnapshot = useRef<BillingSnapshot>()
+
+  // 全局 ESC：焦点不在面板内也能关闭。优先收起供应商下拉，正在保存或
+  // 还有未保存修改时不关闭（与关闭按钮同一条件，避免丢掉编辑）。
+  useEscapeDismiss(true, () => {
+    if (providerOpen) {
+      setProviderOpen(false)
+      providerMenu.current?.querySelector('button')?.focus()
+      return
+    }
+    if (!(saving || dirty.current || scriptBusy)) onClose()
+  }, { zIndex: PANEL_Z_INDEX, element: () => panelRef.current })
   const providerMenu = useRef<HTMLDivElement>(null)
+  /** 面板根元素：Esc 层级判定用它做命中测试。 */
+  const panelRef = useRef<HTMLDivElement>(null)
   const savePending = useRef(false)
   const catalogGeneration = useRef(0)
   const bodyRef = useRef<HTMLFieldSetElement>(null)
@@ -414,13 +431,10 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     return () => { clearTimeout(timer) }
   }, [draft, multipliers, saving, snapshot, externalSnapshot, error])
 
-  return createPortal(<div role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
+  return createPortal(<div ref={panelRef} data-token-monitor-layer="billing" role="dialog" aria-modal="false" aria-label={t('billingTitle')} className={css.panel}
     style={{ left: frame.shown.x, top: frame.shown.y, width: frame.shown.width, height: frame.shown.height }}
-    onPointerDown={(event) => { event.stopPropagation() }}
-    onKeyDown={(event) => {
-      // 与关闭按钮同一条件：正在保存或还有未保存修改时不关闭，避免丢掉编辑。
-      if (event.key === 'Escape' && !(saving || dirty.current || scriptBusy)) onClose()
-    }}>
+    onPointerDown={(event) => { event.stopPropagation() }}>
+    {/* 面板 portal 到 body，键盘事件不经过悬浮卡；拦截全部按键会挡住宿主 document 监听，故不设 onKeyDown。 */}
     <header className={css.header}
       onPointerDown={(event) => { frame.startDrag(event) }} onPointerMove={frame.moveDrag}
       onPointerUp={frame.endDrag} onPointerCancel={frame.endDrag}
@@ -448,16 +462,16 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     <fieldset className={css.toolbar} disabled={!draft}>
       <div ref={providerMenu} className={css.providerMenu} onKeyDown={(event) => {
         if (event.key === 'Escape') {
+          // 收起下拉但放行传播：宿主 document 上的弹层监听依赖同一个按键。
           setProviderOpen(false)
           providerMenu.current?.querySelector('button')?.focus()
-          event.stopPropagation()
         }
       }}>
         <Button className={css.providerTrigger} aria-expanded={providerOpen} aria-haspopup="listbox"
           onClick={() => { setProviderOpen(value => !value) }}>
           <span>{catalog.groups.find(group => group.id === providerFilter)?.name ?? (providerFilter || t('billingAllProviders'))}</span><span aria-hidden="true">⌄</span>
         </Button>
-        {providerOpen && <MenuSurface role="listbox" aria-label={t('billingProvider')} className={css.providerOptions}>
+        {providerOpen && <MenuSurface role="listbox" data-token-monitor-layer="billing-provider" aria-label={t('billingProvider')} className={css.providerOptions}>
           {['', ...providerIds].map(provider => <button key={provider} className={css.providerOption} type="button" role="option"
             aria-selected={providerFilter === provider} onClick={() => { setProviderFilter(provider); if (provider && tab === 'balance') select(provider); setProviderOpen(false) }}>
             {catalog.groups.find(group => group.id === provider)?.name ?? (provider || t('billingAllProviders'))}

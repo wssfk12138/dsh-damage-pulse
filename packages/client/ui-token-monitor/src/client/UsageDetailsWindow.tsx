@@ -9,6 +9,10 @@ import { columnsKey, defaultColumns, detailColumns, readColumns, type DetailColu
 import styles from './UsageDetailsWindow.module.css'
 const FeeExplanation = lazy(() => import('./FeeExplanation.tsx').then(module => ({ default: module.FeeExplanation })))
 import { UsageOverview } from './UsageOverview.tsx'
+import { PLUGIN_LAYER_CLASS, useEscapeDismiss } from './useEscapeDismiss.ts'
+
+/** 与 UsageDetailsWindow.module.css 的 .window z-index 保持一致（宿主 Modal 是 1000）。 */
+const WINDOW_Z_INDEX = 1300
 import type { UsageSummaryRange } from './types.ts'
 import { useUsageRefresh, usageSummaryUrl } from './useUsageRefresh.ts'
 
@@ -110,6 +114,20 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
     return () => { window.removeEventListener('pointerdown', dismiss, true) }
   }, [columnsOpen])
   const clearFeeHide = () => { if (feeHideTimer.current) clearTimeout(feeHideTimer.current) }
+  // 全局 ESC：焦点不在窗口内也能关闭。优先级与窗口内按键一致：
+  // 费用浮层（焦点还给触发按钮）→ 列设置菜单 → 关闭窗口。
+  useEscapeDismiss(true, () => {
+    if (feePopover) {
+      const anchor = feePopover.anchor
+      clearFeeHide()
+      setFeePopover(undefined)
+      // 还原焦点时抑制按钮的 onFocus，否则浮层会立即重新打开。
+      restoringFeeFocus.current = true
+      anchor.focus()
+      restoringFeeFocus.current = false
+    } else if (columnsOpen) { setColumnsOpen(false); columnsAnchor.current?.querySelector('button')?.focus() }
+    else onClose()
+  }, { zIndex: WINDOW_Z_INDEX, element: () => windowRef.current })
   const scheduleFeeHide = () => {
     clearFeeHide()
     feeHideTimer.current = setTimeout(() => { setFeePopover(current => current?.pinned ? current : undefined) }, 180)
@@ -132,6 +150,8 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
   useEffect(() => { clearFeeHide(); setFeePopover(undefined) }, [data, columns, billingInstalled])
   useEffect(() => { try { localStorage.setItem(columnsKey, JSON.stringify(columns)) } catch { /* Optional preference. */ } }, [columns])
   const titleRef = useRef<HTMLDivElement>(null)
+  /** 弹层根元素：Esc 层级判定用它做命中测试。 */
+  const windowRef = useRef<HTMLElement>(null)
   useEffect(() => { titleRef.current?.focus() }, [])
   const change = (patch: Partial<Filters>) => { snapshot.current = ''; setFilters(value => ({ ...value, ...patch })); setPage(1) }
   const reload = () => { snapshot.current = ''; setPage(1); setRefresh(value => value + 1) }
@@ -202,14 +222,15 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
       case 'status': return <details className={styles.bad}><summary>{row.status === 'cancelled' ? t('cancelledStatus') : errorLabel(row.errorType, t)}</summary><div>{t('http')}: {row.httpStatus ?? t('unknown')}</div><div className={styles.secondary}>{t('errorSafe')}</div></details>
     }
   }
-  return <>{createPortal(<section role="dialog" aria-modal="false" aria-label={t('title')} className={styles.window}
+  return <>{createPortal(<section ref={windowRef} data-token-monitor-layer="details" role="dialog" aria-modal="false" aria-label={t('title')} className={styles.window}
     data-compact={compact} data-short={short} data-condensed={shown.width < 950}
     style={{ left: shown.x, top: shown.y, width: shown.width, height: shown.height }}
     onPointerDown={(event) => { event.stopPropagation() }}
     onPointerMove={(event) => { event.stopPropagation() }} onPointerUp={(event) => { event.stopPropagation() }}
     onContextMenu={(event) =>{  event.stopPropagation() }} onKeyDown={(event) => {
-      if (!(event.target as HTMLElement).closest('[role=menu]') || event.key === 'Escape') event.stopPropagation()
-      if (event.key === 'Escape') { if (feePopover) { clearFeeHide(); setFeePopover(undefined) } else if (columnsOpen) { setColumnsOpen(false); columnsAnchor.current?.querySelector('button')?.focus() } else onClose() }
+      // Esc 必须继续传播：宿主 document 上的 Modal/Menu 依赖同一个按键关闭自己。
+      if (event.key === 'Escape') return
+      if (!(event.target as HTMLElement).closest('[role=menu]')) event.stopPropagation()
       if (event.key === 'Tab') setColumnsOpen(false)
     }}>
     <div ref={titleRef} tabIndex={-1} className={styles.title}
@@ -239,7 +260,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
               const selected = sessions.find(item => sessionLabel(item) === value || item.id === value)
               change({ session: selected?.id ?? '', sessionText: selected ? '' : value })
             }} /></label><datalist id="token-detail-sessions">{sessions.map(session => <option key={session.id} value={sessionLabel(session)} />)}</datalist>
-            <div className={styles.quick}><Button variant="outline" onClick={reload}>{t('refresh')}</Button><span ref={columnsAnchor}><Menu open={columnsOpen} portal dense autoFocus side={columnsSide} listClassName={styles.menuSurface}
+            <div className={styles.quick}><Button variant="outline" onClick={reload}>{t('refresh')}</Button><span ref={columnsAnchor}><Menu open={columnsOpen} portal dense autoFocus side={columnsSide} listClassName={styles.menuSurface + ' ' + PLUGIN_LAYER_CLASS}
               getAnchorRect={() => columnsAnchor.current?.getBoundingClientRect() ?? null}
               anchor={<Button variant="ghost" aria-expanded={columnsOpen} aria-haspopup="menu" onClick={() => { toggleColumns(!columnsOpen) }}>{t('columns')}</Button>}
               items={detailColumns.filter(id => (id !== 'fee' || billingInstalled) && (id !== 'status' || filters.tab === 'errors')).map(id => ({ id, label: t(id), disabled: columns.includes(id) && id !== 'status' && columns.filter(key => key !== 'status').length === 1 }))}
@@ -271,10 +292,21 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
     <footer className={styles.footer}><label>{t('pageSize')} <select className={styles.select} value={filters.size} onChange={(event) =>{  change({ size: Number(event.target.value) }) }}>{[20, 50, 100].map(size => <option key={size}>{size}</option>)}</select></label><span>{data ? t('pages', { page: data.page, pages: data.pages, count: data.total }) : t('pageUnavailable', { page })}</span><Button variant="ghost" disabled={loading || !data || data.page <= 1} onClick={() =>{  setPage((data?.page ?? 1) - 1) }}>{t('prev')}</Button><Button variant="ghost" disabled={loading || !data || data.page >= data.pages} onClick={() =>{  setPage((data?.page ?? 1) + 1) }}>{t('next')}</Button></footer>
     <FloatingResizeHandles frame={frame} className={styles.resize} label={edge => t('resize') + ' · ' + t(edge)} />
   </section>, document.body)}
-  {feePopover && createPortal(<section id="token-monitor-fee-popover" ref={feePopoverRef} role="region" aria-label={t('feeDetails')} className={styles.feePopover}
+  {feePopover && createPortal(<section id="token-monitor-fee-popover" ref={feePopoverRef} data-token-monitor-layer="fee-popover" role="region" aria-label={t('feeDetails')} className={styles.feePopover}
     onPointerEnter={clearFeeHide} onPointerLeave={scheduleFeeHide}
     onFocusCapture={clearFeeHide} onBlurCapture={scheduleFeeHide}
-    onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); clearFeeHide(); setFeePopover(undefined); restoringFeeFocus.current = true; feePopover.anchor.focus(); restoringFeeFocus.current = false } }}>
+    onKeyDown={(event) => {
+      if (event.key !== 'Escape') return
+      // 浮层不是窗口的子元素，共享栈的命中测试靠 data 标记认出它；这里负责收起
+      // 浮层并把焦点还给触发按钮，是否继续传播交给共享栈决定。
+      // React 合成事件没有 isComposing，改用原生事件；组合态交给输入法处理。
+      if ((event.nativeEvent as KeyboardEvent).isComposing) return
+      clearFeeHide()
+      setFeePopover(undefined)
+      restoringFeeFocus.current = true
+      feePopover.anchor.focus()
+      restoringFeeFocus.current = false
+    }}>
     <Suspense fallback={null}><FeeExplanation row={feePopover.row} t={t} /></Suspense>
   </section>, document.body)}</>
 }
