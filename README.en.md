@@ -45,6 +45,7 @@ The public package name is <code>dsh-damage-pulse</code>. Internal identifiers s
 | Three-level usage display | Per-request details in the conversation, session totals near the composer, and a global account-balance card |
 | Historical statistics | Today, 7-day, 30-day, and all-time spending, request, token, cache-hit, and active-day summaries |
 | Balance monitoring | Periodic official balance checks, immediate charge deductions, recharge recovery, and peak/off-peak status |
+| Subscription quota tab | "Plan quotas" in usage details shows the 5-hour and weekly remaining allowance plus the next refresh per provider, and appears only when a plan subscription is actually detected |
 | Whale Girl feedback | Idle and blink states, charge reactions, cache-miss reactions, depleted balance, and recharge revival |
 | Proactive alerts | Daily budgets, peak/off-peak transitions, cache-hit anomalies, and optional companion bubbles |
 | WeChat notifications | QR login, connection management, delivery status, and test messages through ClawBot |
@@ -164,6 +165,7 @@ Open Usage Details from the balance card context menu to view a draggable, resiz
 - **Filters and pagination:** time range, model, project, or conversation. The error-request view supports error type and whether canceled requests are included. Page size is 20, 50, or 100 rows.
 - **Columns:** choose visible columns or restore the defaults.
 - **Cost breakdown:** open the info action beside a charge to inspect uncached input, cache hit, cache write, and output costs, token counts, unit prices, pricing mode, tier limit, multiplier, and rule identifier.
+- **Plan quotas:** switch to "Plan quotas" at the top of usage details to see the 5-hour and weekly windows, used/total, next refresh time and remaining time per provider; a used-up window reads "Used up, waiting for reset". Only providers the Host confirms have a plan appear - an API key without a subscription hides the tab entirely.
 
 <p align="center">
   <img src="docs/assets/readme/usage-details.png" alt="Detailed usage overview, filters, and table" width="100%">
