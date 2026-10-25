@@ -32,6 +32,15 @@ export function fakeIpBalanceAddress(address: string): boolean {
 /** Backoff-relevant transport classification; never carries host, path or credential data. */
 export type BalanceNetworkFailure = 'blocked' | 'rate-limited'
 
+/** An HTTP response outside 2xx, carrying only the status so callers can classify it. */
+export class BalanceHttpError extends Error {
+  /** @param status Status code returned by the provider. */
+  constructor(readonly status: number) {
+    super('Balance HTTP ' + String(status))
+    this.name = 'BalanceHttpError'
+  }
+}
+
 /** Ordinary transport results stay plain errors and keep the short-recovery backoff, while an
  * explicit upstream wait or a policy refusal is surfaced so the caller can classify the failure.
  */
@@ -114,7 +123,7 @@ export async function requestBalanceJson(descriptor: BalanceRequest, baseURL: st
         res.destroy()
         // A 429 keeps the provider's own wait so the query never polls harder than requested.
         const wait = status === 429 ? retryAfterMs(res.headers) : undefined
-        reject(wait === undefined ? new Error(`Balance HTTP ${status}`) : new BalanceNetworkError('rate-limited', `Balance HTTP ${status}`, wait))
+        reject(wait === undefined ? new BalanceHttpError(status) : new BalanceNetworkError('rate-limited', `Balance HTTP ${status}`, wait))
         return
       }
       if (res.headers['content-encoding'] && res.headers['content-encoding'] !== 'identity') {

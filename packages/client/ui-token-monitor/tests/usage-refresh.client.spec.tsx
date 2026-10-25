@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { StrictMode } from 'react'
 import { UsageDetailsWindow } from '../src/client/UsageDetailsWindow.tsx'
 import { UsageOverview } from '../src/client/UsageOverview.tsx'
+import { resetPlanQuotaAvailability } from '../src/client/plan-quota-availability.ts'
 import { zh, type DetailTranslate } from '../src/client/detail-locales.ts'
 
 const t: DetailTranslate = (key, values) => Object.entries(values ?? {}).reduce((text, [name, value]) => text.replace('{' + name + '}', String(value)), zh[key] as string)
@@ -20,7 +21,11 @@ function details(url: string, value = 1) {
 type Fetcher = (url: string, init: RequestInit) => Promise<ReturnType<typeof response>>
 function mount(implementation: Fetcher = async url => response(url.includes('usage-summary') ? summary(url) : details(url)), strict = false) {
   const fetcher = vi.fn(implementation)
-  vi.stubGlobal('fetch', fetcher)
+  // Plan 额度探测只决定页签是否出现，用例关注的是两个用量端点；探测本身由
+  // plan-quota.client.spec.tsx 覆盖，这里直接给出「无套餐」的稳定答复。
+  vi.stubGlobal('fetch', (url: string, init: RequestInit) => String(url).includes('plan-quotas')
+    ? Promise.resolve(response({ updatedAt: time, providers: [] }))
+    : fetcher(url, init))
   const view = <UsageDetailsWindow t={t} onClose={() => {}} />
   const result = render(strict ? <StrictMode>{view}</StrictMode> : view)
   return { ...result, fetcher }
@@ -28,28 +33,30 @@ function mount(implementation: Fetcher = async url => response(url.includes('usa
 const flush = async () => { await act(async () => {}) }
 const tick = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
 const urls = (fetcher: ReturnType<typeof vi.fn>, endpoint: string) => fetcher.mock.calls.filter(([url]) => String(url).includes(endpoint)).map(([url]) => String(url))
+/** Plan 额度探测不属于本用例的用量端点，统计时排除。 */
+const usageCalls = (fetcher: ReturnType<typeof vi.fn>) => fetcher.mock.calls.filter(([url]) => !String(url).includes('plan-quotas'))
 function visible(state: 'visible' | 'hidden') { Object.defineProperty(document, 'visibilityState', { configurable: true, value: state }); fireEvent(document, new Event('visibilitychange')) }
-beforeEach(() => { vi.useFakeTimers(); Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }) })
+beforeEach(() => { resetPlanQuotaAvailability(); vi.useFakeTimers(); Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }) })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear(); Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' }) })
 
 it('AC-R01/R02: immediately loads both endpoints, polls after completion, refreshes first-page snapshots and retains both displays in flight', async () => {
   let value = 1, resolveDetail!: (value: ReturnType<typeof response>) => void
-  const { fetcher } = mount(async url => url.includes('usage-summary') ? response(summary(url, value)) : value === 2 ? await new Promise(resolve => { resolveDetail = resolve }) : response(details(url, value)))
+  const { fetcher } = mount(async url => url.includes('plan-quotas') ? response({ updatedAt: time, providers: [] }) : url.includes('usage-summary') ? response(summary(url, value)) : value === 2 ? await new Promise(resolve => { resolveDetail = resolve }) : response(details(url, value)))
   await flush()
-  expect(fetcher).toHaveBeenCalledTimes(2)
+  expect(usageCalls(fetcher)).toHaveLength(2)
   expect(screen.getByText('¥1.000000')).toBeTruthy()
   value = 2
-  await tick(1999); expect(fetcher).toHaveBeenCalledTimes(2)
-  await tick(1); expect(fetcher).toHaveBeenCalledTimes(4)
+  await tick(1999); expect(usageCalls(fetcher)).toHaveLength(2)
+  await tick(1); expect(usageCalls(fetcher)).toHaveLength(4)
   expect(screen.getByText('¥1.000000')).toBeTruthy()
   expect(within(screen.getByRole('region', { name: '数据概览' })).getByText('¥2')).toBeTruthy()
   expect(screen.queryByText('正在加载…')).toBeNull()
-  await tick(10000); expect(fetcher).toHaveBeenCalledTimes(4)
+  await tick(10000); expect(usageCalls(fetcher)).toHaveLength(4)
   await act(async () => { resolveDetail(response(details(urls(fetcher, '/details?').at(-1)!, 2))) })
   expect(screen.getByText('¥2.000000')).toBeTruthy()
   value = 3
   await tick(2000)
-  expect(fetcher).toHaveBeenCalledTimes(6)
+  expect(usageCalls(fetcher)).toHaveLength(6)
   expect(urls(fetcher, '/details?').every(url => !url.includes('snapshot='))).toBe(true)
   expect(vi.getTimerCount()).toBe(1)
 })
@@ -209,7 +216,9 @@ it('AC-R11: historical 409 is explicit and does not silently switch snapshot/pag
 
 it('AC-R12/R06: standalone has one poller and explicit custom ranges use identical inclusive-second endpoints', async () => {
   const fetcher = vi.fn(async (url: string) => response(summary(url)))
-  vi.stubGlobal('fetch', fetcher)
+  vi.stubGlobal('fetch', (url: string) => String(url).includes('plan-quotas')
+    ? Promise.resolve(response({ updatedAt: time, providers: [] }))
+    : fetcher(url))
   const view = render(<UsageOverview t={t} compact={false} />); await flush()
   expect(fetcher).toHaveBeenCalledTimes(1); expect(vi.getTimerCount()).toBe(1)
   await tick(2000); expect(fetcher).toHaveBeenCalledTimes(2)

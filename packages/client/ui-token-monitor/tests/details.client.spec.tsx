@@ -6,6 +6,7 @@ import { UsageDetailsWindow } from '../src/client/UsageDetailsWindow.tsx'
 import { zh, type DetailTranslate } from '../src/client/detail-locales.ts'
 import { beijingDateTime, clampWindow, latencyTone, resizeWindow, type ResizeEdge } from '../src/client/detail-model.ts'
 import { overviewNumber, UsageOverview } from '../src/client/UsageOverview.tsx'
+import { resetPlanQuotaAvailability } from '../src/client/plan-quota-availability.ts'
 
 const t: DetailTranslate = (key, values) => Object.entries(values ?? {}).reduce((text, [name, value]) => text.replace('{' + name + '}', String(value)), zh[key] as string)
 const time = Date.parse('2026-09-14T02:01:02Z')
@@ -13,7 +14,7 @@ const payload = { snapshot: 'snapshot-1', capturedAt: time, rows: [
   { id: 'a', sessionId: 'one', provider: 'deepseek-official', model: 'deepseek-v4-flash', status: 'success', timestamp: time, inputTokens: 1234, outputTokens: 56, cacheReadTokens: 40000, cost: 0.012345, peak: true, firstMs: 2000, totalMs: 190000 },
   { id: 'b', sessionId: 'two', provider: 'deepseek-official', model: 'deepseek-v4-pro', status: 'success', timestamp: time, peak: false },
 ], total: 21, page: 1, pages: 2, size: 20, sessions: [{ id: 'one', title: '同名对话', project: 'Project A', child: false }, { id: 'two', title: '同名对话', project: 'Project B', child: true, parent: 'one' }], models: ['deepseek-v4-flash', 'deepseek-v4-pro'] }
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear() })
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); resetPlanQuotaAvailability(); localStorage.clear() })
 const summary = { range: 'today', from: '2026-09-14', to: '2026-09-14', spendCny: 12.3, requestCount: 200, totalTokens: 100000000, activeDays: 2, cacheHitTokens: 90000000, cacheHitRate: 0.9, costPer100mTokensCny: 12.3, activeDaySpendCny: 6.15 }
 function mount(response: DetailPage = payload as DetailPage) {
   const fetcher = vi.fn(async (input: string, _options: RequestInit) => ({ ok: true, json: async () => input.includes('usage-summary') ? { ...summary, range: new URL(input, 'http://localhost').searchParams.get('range') } : response }))
@@ -57,7 +58,10 @@ it('formats overview decimals, tiny positive values and absent averages', () => 
 
 it('shows failed overview values as unknown and allows retry', async () => {
   const fetcher = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue({ ok: true, json: async () => ({ ...summary, totalTokens: 0, costPer100mTokensCny: null, activeDaySpendCny: null }) })
-  vi.stubGlobal('fetch', fetcher)
+  // 订阅探测不属于本用例：给它一个稳定的「无套餐」答复，避免消耗一次失败注入。
+  vi.stubGlobal('fetch', (url: string, init: RequestInit) => String(url).includes('plan-quotas')
+    ? Promise.resolve({ ok: true, status: 200, json: async () => ({ updatedAt: time, providers: [] }) })
+    : fetcher(url, init))
   render(<UsageOverview t={t} compact={false} />)
   await screen.findByRole('alert')
   expect(screen.getAllByText('—')).toHaveLength(8)

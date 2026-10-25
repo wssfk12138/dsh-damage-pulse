@@ -8,6 +8,7 @@ import {
   planQuotaAdapterFor,
   registerPlanQuotaApi,
 } from '../src/plan-quota.ts'
+import { BalanceHttpError } from '../src/balance-network.ts'
 
 const GLM_RAW = {
   code: 200,
@@ -294,6 +295,45 @@ describe('plan quota registry', () => {
     expect(request).not.toHaveBeenCalled()
     await registry.stop()
   })
++
+  it('treats a keyed account without a subscription as absent, not as an error', async () => {
+    // 网关认得这家厂商，但响应里没有任何额度窗口：用户没买套餐，不该在界面留一张空卡片。
+    const request = vi.fn(async () => ({ data: { limits: [], level: '' } }))
+    const warn = vi.fn()
+    const registry = new PlanQuotaRegistry({
+      listProviders: () => ['zai-coding'],
+      resolveIdentity: async () => ({ apiKey: 'key-a', baseURL: 'https://api.z.ai/api/coding/paas/v4' }),
+      request: request as never,
+      warn,
+    })
+    expect((await registry.snapshot()).providers).toEqual([])
+    expect(warn).not.toHaveBeenCalled()
+    // 负缓存：短时间内不再重复请求。
+    await registry.snapshot()
+    expect(request).toHaveBeenCalledTimes(1)
+    await registry.stop()
+  })
+
+  it('treats 401 and 403 as absent but keeps 5xx as a real failure', async () => {
+    for (const status of [401, 403]) {
+      const registry = new PlanQuotaRegistry({
+        listProviders: () => ['kimi-coding'],
+        resolveIdentity: async () => ({ apiKey: 'key-a', baseURL: 'https://api.kimi.com/coding/v1' }),
+        request: vi.fn(async () => { throw new BalanceHttpError(status) }) as never,
+      })
+      expect((await registry.snapshot()).providers).toEqual([])
+      await registry.stop()
+    }
+    const registry = new PlanQuotaRegistry({
+      listProviders: () => ['kimi-coding'],
+      resolveIdentity: async () => ({ apiKey: 'key-a', baseURL: 'https://api.kimi.com/coding/v1' }),
+      request: vi.fn(async () => { throw new BalanceHttpError(503) }) as never,
+    })
+    // 真故障仍要显示，不能被当成「未订阅」藏起来。
+    expect((await registry.snapshot()).providers[0]).toMatchObject({ provider: 'kimi-coding', status: 'error' })
+    await registry.stop()
+  })
+
 
   it('aborts in-flight requests when the plugin is unloaded', async () => {
     let aborted = false

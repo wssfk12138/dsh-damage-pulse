@@ -3,6 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import type { PlanQuotaSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
 import { UsageOverview } from '../src/client/UsageOverview.tsx'
+import { resetPlanQuotaAvailability } from '../src/client/plan-quota-availability.ts'
+import { PlanQuotaPanel } from '../src/client/PlanQuotaPanel.tsx'
 import { zh, type DetailTranslate } from '../src/client/detail-locales.ts'
 
 const t: DetailTranslate = (key, values) => Object.entries(values ?? {}).reduce((text, [name, value]) => text.replace('{' + name + '}', String(value)), zh[key] as string)
@@ -38,10 +40,10 @@ const planCalls = (fetcher: ReturnType<typeof vi.fn>) => fetcher.mock.calls.filt
 const flush = async () => { await act(async () => {}) }
 const tick = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
 
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(now) })
+beforeEach(() => { resetPlanQuotaAvailability(); vi.useFakeTimers(); vi.setSystemTime(now) })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); localStorage.clear() })
 
-it('默认停在消费概览页签：八项指标照常显示，且不请求 Plan 额度', async () => {
+it('打开窗口时探测一次：有套餐才出现页签，默认仍停在消费概览', async () => {
   const { fetcher } = mount(defaultFetch)
   await flush()
   const overview = within(screen.getByRole('region', { name: '数据概览' }))
@@ -51,7 +53,29 @@ it('默认停在消费概览页签：八项指标照常显示，且不请求 Pla
   expect(overview.getByText('¥12.3')).toBeTruthy()
   expect(overview.getByRole('button', { name: '消费概览' }).getAttribute('aria-pressed')).toBe('true')
   expect(overview.getByRole('button', { name: 'Plan 额度' }).getAttribute('aria-pressed')).toBe('false')
-  expect(planCalls(fetcher)).toHaveLength(0)
+  // 页签是否显示取决于「有没有真套餐」，必须在用户点开之前就知道，因此开窗时探测一次。
+  expect(planCalls(fetcher)).toHaveLength(1)
+})
+
+it('供应商只是配了 key 而没有套餐时，不显示 Plan 额度页签', async () => {
+  // Host 对「没有套餐」返回空 providers，客户端据此完全不露出这个页签。
+  const { fetcher } = mount(async url => String(url).includes('plan-quotas')
+    ? ok({ updatedAt: now, providers: [] })
+    : ok(summary))
+  await flush()
+  expect(screen.queryByRole('button', { name: 'Plan 额度' })).toBeNull()
+  expect(screen.getByRole('button', { name: '消费概览' })).toBeTruthy()
+  await tick(120_000)
+  // 没有页签就不会继续轮询。
+  expect(planCalls(fetcher)).toHaveLength(1)
+})
+
+it('探测失败时不显示页签，并在短时间内不再重复探测', async () => {
+  const { fetcher } = mount(async url => String(url).includes('plan-quotas') ? fail(500) : ok(summary))
+  await flush()
+  expect(screen.queryByRole('button', { name: 'Plan 额度' })).toBeNull()
+  await tick(30_000)
+  expect(planCalls(fetcher)).toHaveLength(1)
 })
 
 it('切到 Plan 额度后渲染供应商、窗口名、已用百分比与下次刷新时间', async () => {
@@ -59,8 +83,9 @@ it('切到 Plan 额度后渲染供应商、窗口名、已用百分比与下次�
   await flush()
   fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
   await flush()
-  expect(planCalls(fetcher)).toHaveLength(1)
-  expect(planCalls(fetcher)[0]?.[1]).toMatchObject({ cache: 'no-store' })
+  // 开窗探测一次，进入页签后再加载一次。
+  expect(planCalls(fetcher)).toHaveLength(2)
+  expect(planCalls(fetcher)[1]?.[1]).toMatchObject({ cache: 'no-store' })
   expect(screen.getByText('GLM Coding Plan')).toBeTruthy()
   expect(screen.getByText('zhipuai')).toBeTruthy()
   expect(screen.getByText('套餐 pro')).toBeTruthy()
@@ -158,14 +183,14 @@ it('进度条带有 progressbar 角色与无障碍数值，没有百分比时改
   expect(unknownFill.getAttribute('data-level')).toBe('unknown')
 })
 
-it('整体请求失败时给出错误提示与重试入口', async () => {
+it('面板加载失败时给出错误提示与重试入口', async () => {
+  // 页签已经由探测确认有套餐，这里只覆盖面板自身的失败与重试。
   let broken = true
-  const { fetcher } = mount(async url => String(url).includes('plan-quotas') ? (broken ? fail() : ok(planSnapshot)) : ok(summary))
+  const fetcher = vi.fn(async url => String(url).includes('plan-quotas') ? (broken ? fail() : ok(planSnapshot)) : ok(summary))
+  vi.stubGlobal('fetch', fetcher)
+  render(<PlanQuotaPanel t={t} active />)
   await flush()
-  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
-  await flush()
-  const panel = within(screen.getByRole('region', { name: '数据概览' }))
-  expect(panel.getByRole('alert').textContent).toContain('Plan 额度加载失败，请重试')
+  expect(screen.getByRole('alert').textContent).toContain('Plan 额度加载失败，请重试')
   expect(screen.queryByText('GLM Coding Plan')).toBeNull()
   broken = false
   fireEvent.click(screen.getByRole('button', { name: '重试' }))
@@ -191,15 +216,6 @@ it('单个供应商查询失败时只提示该供应商，其它供应商照常�
   expect(screen.getByText('GLM Coding Plan')).toBeTruthy()
   // 右侧百分比与进度条同为剩余口径：已用 12.5% → 「剩余 87.5%」。
   expect(screen.getByText('剩余 87.5%')).toBeTruthy()
-})
-
-it('没有可用额度时显示空态', async () => {
-  mount(async url => ok(String(url).includes('plan-quotas') ? { updatedAt: now, providers: [] } : summary))
-  await flush()
-  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
-  await flush()
-  expect(screen.getByText('当前没有可用的 Plan 额度')).toBeTruthy()
-  expect(screen.queryByRole('progressbar')).toBeNull()
 })
 
 it('单个供应商字段非法时只丢这一家，其余供应商照常渲染', async () => {
@@ -241,11 +257,12 @@ it('停留在 Plan 页签时每 60 秒刷新一次，切走后停止轮询', asy
   await flush()
   fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
   await flush()
-  expect(planCalls(fetcher)).toHaveLength(1)
-  await tick(59000)
-  expect(planCalls(fetcher)).toHaveLength(1)
-  await tick(1000)
+  // 第一次是开窗探测，第二次是页签自己的加载。
   expect(planCalls(fetcher)).toHaveLength(2)
+  await tick(59000)
+  expect(planCalls(fetcher)).toHaveLength(2)
+  await tick(1000)
+  expect(planCalls(fetcher)).toHaveLength(3)
   fireEvent.click(screen.getByRole('button', { name: '消费概览' }))
   await flush()
   const calls = planCalls(fetcher).length
@@ -260,14 +277,6 @@ it('未启用计费规则时不显示 Plan 额度页签，也不发起该请求'
   expect(screen.queryByRole('button', { name: 'Plan 额度' })).toBeNull()
   expect(screen.getByRole('button', { name: '消费概览' })).toBeTruthy()
   expect(planCalls(fetcher)).toHaveLength(0)
-})
-
-it('端点返回 404 时提示计费规则未启用', async () => {
-  mount(async url => String(url).includes('plan-quotas') ? fail(404) : ok(summary))
-  await flush()
-  fireEvent.click(screen.getByRole('button', { name: 'Plan 额度' }))
-  await flush()
-  expect(screen.getByRole('alert').textContent).toContain('计费规则功能未启用，无法查询 Plan 额度')
 })
 
 it('剩余时长随本地时钟每 30 秒推进一次', async () => {
@@ -288,3 +297,37 @@ it('剩余时长随本地时钟每 30 秒推进一次', async () => {
   await tick(30_000)
   expect(screen.getByText('已到期')).toBeTruthy()
 })
++
+it('面板在没有任何供应商时显示空态（页签本身已由探测隐藏）', async () => {
+  vi.stubGlobal('fetch', vi.fn(async url => String(url).includes('plan-quotas') ? ok({ updatedAt: now, providers: [] }) : ok(summary)))
+  render(<PlanQuotaPanel t={t} active />)
+  await flush()
+  expect(screen.getByText('当前没有可用的 Plan 额度')).toBeTruthy()
+  expect(screen.queryByRole('progressbar')).toBeNull()
+})
+
+it('确认有套餐后，重开窗口复用结论，不再重复探测', async () => {
+  const first = mount(defaultFetch)
+  await flush()
+  expect(screen.getByRole('button', { name: 'Plan 额度' })).toBeTruthy()
+  first.unmount()
+  const second = mount(defaultFetch)
+  await flush()
+  expect(screen.getByRole('button', { name: 'Plan 额度' })).toBeTruthy()
+  // 缓存期内重开只复用上次结论，不再多发探测请求。
+  expect(planCalls(second.fetcher)).toHaveLength(0)
+})
+
+it('否定的探测结果不缓存：刚开通套餐后重开窗口就能看到页签', async () => {
+  const first = mount(async url => String(url).includes('plan-quotas')
+    ? ok({ updatedAt: now, providers: [] })
+    : ok(summary))
+  await flush()
+  expect(screen.queryByRole('button', { name: 'Plan 额度' })).toBeNull()
+  first.unmount()
+  // 同一进程内重新打开：这次 Host 已经报告了套餐。
+  const second = mount(defaultFetch)
+  await flush()
+  expect(screen.getByRole('button', { name: 'Plan 额度' })).toBeTruthy()
+})
+

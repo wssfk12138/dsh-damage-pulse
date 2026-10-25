@@ -21,6 +21,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { PlanQuotaProvider, PlanQuotaSnapshot, PlanQuotaWindow, PlanQuotaWindowKind } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { BalanceRequest } from './balance-script.ts'
 import type { BalanceIdentity } from './balance-registry.ts'
+import { BalanceHttpError } from './balance-network.ts'
 import { createRouteGuard } from './http-trust.ts'
 
 /** Aggregated plan quota endpoint. */
@@ -28,6 +29,12 @@ export const TOKEN_MONITOR_PLAN_QUOTAS_PATH = '/api/token-monitor/plan-quotas'
 
 /** One query per provider is served from cache for this long. */
 const PLAN_QUOTA_THROTTLE_MS = 15_000
+
+/** How long a provider without a usable subscription stays out of the snapshot. */
+const PLAN_QUOTA_ABSENT_TTL_MS = 30 * 60_000
+
+/** Statuses that mean "this credential has no plan access" rather than a transient failure. */
+const PLAN_QUOTA_ABSENT_STATUSES: readonly number[] = Object.freeze([401, 403, 404])
 
 /** Normalized result of one adapter parse. */
 export interface PlanQuotaParse {
@@ -405,6 +412,8 @@ interface PlanQuotaEntry {
   pending?: Promise<PlanQuotaProvider | undefined>
   value?: PlanQuotaProvider
   nextAttempt: number
+  /** Set when the provider answered that this credential has no plan access. */
+  absent?: true
 }
 
 /**
@@ -495,6 +504,14 @@ export class PlanQuotaRegistry {
         this.invalidate(provider)
         return undefined
       }
+      // 网关认得这家厂商，但响应里没有任何额度窗口：这条凭据没有开通套餐，
+      // 不是查询失败。不进入快照，并在一段时间内不再重复请求。
+      if (parsed.windows.length === 0) {
+        delete entry.value
+        entry.absent = true
+        entry.nextAttempt = this.now() + PLAN_QUOTA_ABSENT_TTL_MS
+        return undefined
+      }
       const value: PlanQuotaProvider = {
         provider,
         label: entry.adapter.label,
@@ -504,11 +521,19 @@ export class PlanQuotaRegistry {
         status: 'ok',
       }
       entry.value = value
+      delete entry.absent
       entry.nextAttempt = this.now() + PLAN_QUOTA_THROTTLE_MS
       return value
-    } catch {
+    } catch (error) {
       // 上游异常细节、主机名、路径与凭据都不进入日志或响应。
       if (this.stopped || controller.signal.aborted || this.entries.get(provider) !== entry) return undefined
+      // 401/403/404 表示这条凭据对套餐接口没有访问权，按「未接入」处理。
+      if (error instanceof BalanceHttpError && PLAN_QUOTA_ABSENT_STATUSES.includes(error.status)) {
+        delete entry.value
+        entry.absent = true
+        entry.nextAttempt = this.now() + PLAN_QUOTA_ABSENT_TTL_MS
+        return undefined
+      }
       const value: PlanQuotaProvider = {
         provider,
         label: entry.adapter.label,

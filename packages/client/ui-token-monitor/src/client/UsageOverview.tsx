@@ -4,6 +4,7 @@ import type { DetailKey, DetailTranslate } from './detail-locales.ts'
 import type { UsageSummary, UsageSummaryRange } from './types.ts'
 import { beijingDateTime } from './detail-model.ts'
 import { PlanQuotaPanel } from './PlanQuotaPanel.tsx'
+import { usePlanQuotaAvailability } from './plan-quota-availability.ts'
 import styles from './UsageOverview.module.css'
 import { useUsageRefresh, usageSummaryUrl, type UsageRefreshState } from './useUsageRefresh.ts'
 
@@ -52,8 +53,11 @@ function OverviewContent({ t, compact, billingInstalled = true, provider = '', p
   const { data: summary, loading, error } = refresh.state
   const [collapsed, setCollapsed] = useState(false)
   const [tab, setTab] = useState<OverviewTab>('spend')
-  // 计费规则功能未启用时没有 Plan 额度端点，页签与请求一并隐藏。
-  const activeTab: OverviewTab = billingInstalled ? tab : 'spend'
+  // 只有 Host 报告了真实套餐额度时才显示页签：计费模块未启用、或供应商
+  // 只是配置了 key 而没有订阅套餐时，这里都不出现 Plan 额度。
+  const planAvailability = usePlanQuotaAvailability(billingInstalled)
+  const planAvailable = planAvailability === 'available'
+  const activeTab: OverviewTab = planAvailable ? tab : 'spend'
   const customFrom = selectedRange === 'custom' ? appliedCustom?.from : undefined
   const customTo = selectedRange === 'custom' ? appliedCustom?.to : undefined
   const metrics: {
@@ -83,7 +87,7 @@ function OverviewContent({ t, compact, billingInstalled = true, provider = '', p
     <div hidden={collapsed}>
       <div className={styles.tabs} role="group" aria-label={t('overviewTabs')}>
         <Pill active={activeTab === 'spend'} aria-pressed={activeTab === 'spend'} onClick={() => { setTab('spend') }}>{t('overviewTabSpend')}</Pill>
-        {billingInstalled && <Pill active={activeTab === 'plan'} aria-pressed={activeTab === 'plan'} onClick={() => { setTab('plan') }}>{t('overviewTabPlan')}</Pill>}
+        {planAvailable && <Pill active={activeTab === 'plan'} aria-pressed={activeTab === 'plan'} onClick={() => { setTab('plan') }}>{t('overviewTabPlan')}</Pill>}
       </div>
       {activeTab === 'plan' ? <PlanQuotaPanel t={t} active={!collapsed} /> : <>
         <div className={styles.scope}>
