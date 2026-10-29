@@ -420,7 +420,7 @@ MIT. See [LICENSE](LICENSE).
 <a id="sponsors"></a>
 ## Sponsors
 
-Fastai supports model access during development. If you need a model relay, you can use [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK); the link includes an affiliate code, and qualifying purchases provide credits and tokens that support ongoing development. GPT routing is not guaranteed to avoid model degradation, so other model groups may be preferable.
+Fastai supports model access during development. If you need a model relay, you can use [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse); the link includes an affiliate code, and qualifying purchases provide credits and tokens that support ongoing development. GPT routing is not guaranteed to avoid model degradation, so other model groups may be preferable.
 
 Free software still has development costs. Sponsorship helps keep features available to all users without in-app advertising.
 
