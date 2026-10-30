@@ -12,384 +12,156 @@
   <a href="#support"><img src="https://img.shields.io/badge/%E8%B5%9E%E5%8A%A9%E6%9C%AC%E9%A1%B9%E7%9B%AE-%E5%BE%AE%E4%BF%A1-07C160.svg?logo=wechat&logoColor=white" alt="微信 · 赞助本项目"></a>
 </p>
 
-`dsh-damage-pulse` 是为 DSH（DeepSeek Harness）打造的 DeepSeek 用量、消费与余额监控插件。它按照官方计费规则记录每次调用，通过单次、会话和全局三个层级呈现 Token 与费用，并用鲸鱼娘的动态反馈把抽象的模型消耗变成一眼就能看懂的变化。
+为 DeepSeek Harness 提供用量、费用与余额监控：查看单次调用、会话累计和历史统计，让鲸鱼娘陪你观察每次 Token 消耗。
+
+[安装](#安装) · [功能介绍](#功能介绍) · [常见问题](#常见问题) · [高级配置与接口](docs/REFERENCE.zh-CN.md) · [更新记录](https://github.com/wssfk12138/dsh-damage-pulse/releases)
 
 <a id="model-sponsor"></a>
-<h2><img src="assets/fastai-icon.png" alt="FastAI 官方图标" height="40" valign="middle"> <a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse">Fastai</a> 模型赞助商<br><sub><sup>免费不意味着开发没有成本。感谢<a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse">Fastai</a>的赞助，让我能把功能留给所有用户，把广告留在应用之外。</sup></sub></h2>
-
-如果你正在寻找稳定、实惠的 AI 模型中转服务，可以试试 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse)，[Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse) 提供 DeepSeek、GLM、kimi、GPT、Claude、grok 等模型厂商的旗舰模型，同时还提供 image2.5、**Seedance 2.0** 等最先进的图片和视频生成模型。国模分组采用大厂自部署模型，低延迟高缓存，注册即送 3$ 体验金，欢迎试用。**目前 GPT 分组不能完全保证不降智，推荐使用其它分组。** 本项目全程使用 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse) 提供的 GPT、DeepSeek 等模型开发，你的每一笔充值都会使我获得返利和更多 token 来继续维护和开发新功能。 <a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&amp;promo=WSSFK&amp;utm=dsh-damage-pulse"><img src="assets/fastai-register.svg" alt="Fastai 点击注册" height="18"></a>
-
-## 功能总览
-
-| 能力 | 你能看到什么 |
-|---|---|
-| 精准计费 | 按 provider、model、缓存类型和北京时间峰谷价格计算每次真实费用 |
-| 三层用量展示 | 对话内单次明细、输入区会话累计、全局账户余额悬浮卡 |
-| 历史统计 | 今日、近 7 天、近 30 天和全部历史的消费、请求与 Token 概览 |
-| 余额与峰谷监控 | 官方余额定时校准、实时扣减、充值恢复及峰谷状态提示 |
-| 额度窗口 | GLM Coding Plan 等额度型供应商的 5 小时 / 每周剩余额度，随余额卡显示 |
-| 订阅额度页签 | 详细用量里的「Plan 额度」按供应商展示 5 小时 / 每周剩余额度与下次刷新，只有真正开通套餐时才出现 |
-| 鲸鱼娘动态反馈 | 待机、眨眼、扣费受击、缓存未命中、余额耗尽与充值复活 |
-| 主动提醒 | 每日预算、峰谷切换、缓存命中异常和鲸鱼娘通知气泡 |
-| 微信通知 | 在详细设置中登录、管理 ClawBot，并接收少女风业务提醒 |
-| 模块化管理 | 查看五个功能模块的安装状态、按需卸载或整体卸载，并在插件内检查与安装更新 |
-| 可编辑计费规则 | 按 provider/model 编辑固定价或峰谷价、阶梯与倍率，并可编写第三方供应商余额查询脚本 |
-| 详细用量窗口 | 可拖动缩放的明细窗口：时间/供应商/模型/项目/对话筛选、列设置、费用构成与分页 |
-| 节假日峰谷 | 法定节假日与调休上班的周末整日按空闲时段（谷价）计算 |
-| 安全更新 | 检查 GitHub Release，验证版本、来源与 SHA-256 后再安装 |
-
-### 2026 年 9 月官方计价更新
-
-- 北京时间 9 月 10 日 12:00 起，`deepseek-flash`（V4.1 Flash）、`deepseek-v4-flash` 和 `deepseek-v4-flash-vision-exp` 共用 Flash 新价。每百万 tokens：空闲时段缓存命中输入 ¥0.02、未命中输入 ¥1、输出 ¥4；高峰时段分别为 ¥0.04、¥2、¥8。
-- 高峰为北京时间工作日 09:00–12:00、14:00–18:00，周末全天空闲。
-- 官方已取消原定北京时间 9 月 14 日 12:00 起 `deepseek-v4-pro` 按 Flash 价格计费的调整：V4 Pro 继续按原 Pro 价格计费；空闲时段缓存命中输入 ¥0.15、未命中输入 ¥4.5、输出 ¥13.5，高峰时段分别为 ¥0.3、¥9、¥27。如有变动按官网通知另行更新。
-- 会话金额缓存升级后会按可用事件重算；不会重写已持久化的 usage 账本。官方内置价格表按生效时间分段计价：北京时间 8 月 17 日 00:00 之前按旧统一价，8 月 17 日 00:00 至 9 月 10 日 12:00 按旧峰谷价，之后按现行价格。显式自定义价格表整体优先于默认表、不做历史分段；更新价格规则后需重启插件宿主加载。
-- 北京时间 9 月 25 日起，法定节假日整日按空闲时段（谷价）计价：节假日当天不再有 09:00–12:00、14:00–18:00 的高峰价。周末同样整日按空闲时段计价，且**不区分是否调休上班**——因节假日调休而需要上班的周六、周日也全天按谷价，不进入工作日高峰时段。该口径对 DeepSeek 模型统一生效：官方内置价格表与第三方自定义规则使用同一套峰谷判定。
-- 价格依据：[DeepSeek 官方模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)。
-
-### 精准计费与持久账本
-
-- 同时依据 provider 与 model 判断计费资格，未知或不合格模型不会套用默认价格。
-- 分别统计未缓存输入、缓存读取、缓存写入和输出，并按调用发生时的北京时间选择峰价或谷价。
-- 视觉模型直接使用 DeepSeek 返回的 usage 数据，不对图片 Token 重复估算。
-- 合格调用写入本地持久账本；重启后可恢复历史统计和会话摘要，零成本记录不会污染账本。
-- 使用 `sessionId + sourceEventSeq` 保证事件幂等，避免重放导致重复扣费。
-
-### 三层用量与历史统计
-
-- **单次用量行**：每次模型调用结束，在对话流中显示输入、缓存、输出、思考 Token 和精确金额。
-- **会话累计条**：输入区持续显示当前会话累计 Token 与费用。
-- **全局悬浮卡**：跨会话持续显示 DeepSeek 账户余额；今日消费与历史范围统计集中在详细设置概览中。
-- **统计概览**：支持今日、近 7 天、近 30 天和全部时间，汇总消费金额、请求数、Token 总数、缓存命中 Token、缓存命中率和活跃天数。
-- **中文大数单位**：概览按“万、千万、亿、万亿”逐级显示，千万级数字不再折算成两位数的“百万”；舍入跨越边界时会自动提升单位。
-
-### 余额、峰谷与悬浮交互
-
-- 查询 DeepSeek 官方余额并每 60 秒校准；扣费事件到达时先逐笔更新显示余额，充值后以绿色反馈恢复金额。
-- 余额查询失败或缺少 API Key 时显示明确状态；本地账本统计的今日消费不依赖余额接口成功。
-- 使用 TUN / Fake-IP 代理时无需任何额外设置：代理把域名解析到 `198.18.0.0/15` 时，插件照常查询余额，并在核对该地址的 TLS 证书身份后才发送密钥。代理通过 IPv6 或 IPv4-mapped 形式返回的 Fake-IP 答复暂不支持，表现与查询失败相同——卡片回到无余额显示，不出现错误码或错误文案。
-- 峰谷标识每 30 秒刷新，峰时使用红色、谷时使用绿色提示。
-- 悬浮卡支持鼠标拖动、键盘移动、视口边界限制和位置记忆；右键可隐藏鲸鱼娘或打开详细设置。
-- 右键菜单提供「显示鲸鱼娘」「显示用量概览」「用量明细」「通知设置」「计费规则」和「卸载与更新」六个入口。
-
-<p align="center">
-  <img src="docs/assets/readme/balance-card-no-credentials.png" alt="没有余额接口时的悬浮卡：只显示本次调用的 Token 与首字/总耗时" width="330">
-  &nbsp;&nbsp;
-  <img src="docs/assets/readme/balance-card-usage.png" alt="带余额的悬浮卡：账户余额、Token 与首字/总耗时" width="330">
-</p>
-
-<p align="center">
-  <img src="docs/assets/readme/balance-card-context-menu.png" alt="悬浮卡右键菜单：显示鲸鱼娘、显示用量概览、用量明细、通知设置、计费规则与卸载更新" width="420">
-</p>
-
-
-
-## 模块化管理
-
-插件把能力拆成五个可以单独卸载的功能模块：**桌宠功能区**（鲸鱼娘动画、拖动与桌宠资源）、**数据概览功能区**（数据概览、用量明细与历史查询）、**通知功能区**（预算、异常、峰谷提醒与桌宠气泡）、**计费规则功能区**（官方/第三方计费规则、余额查询与扣费动画）、**微信通知渠道**（微信登录、连接、测试消息与投递）。
-
-- 在「卸载与更新」面板可以看到当前插件版本、每个模块的安装状态，单独卸载某个模块，或者一次性卸载整个插件。
-- 已卸载的模块会记住状态并禁止自动重装。卸载默认勾选保留配置与历史数据；取消对应选项会清除该插件或模块拥有的配置、用量账本与历史，不会清除宿主凭据。
-- 「检查更新」读取项目主页的 GitHub Release，比较版本后提供「安装更新」；安装前会校验版本、资产名称、下载来源与 SHA-256，只有识别到可安装的 profile 时才执行安装。
-- 用量采集属于常驻基础能力：卸载整个插件时会一并停止采集，重启仍保持卸载状态。恢复时，在桌面版「插件」页移除仍列出的插件，再添加完整的发布包或打包后的 `.tgz`，重启当前 profile；新包的全部文件通过校验后恢复。缺失或损坏的包不会自动恢复，启动日志会提示重新安装。
-- 拖动悬浮卡后会记住其在可移动区域中的相对位置，窗口或卡片尺寸改变时按比例恢复。旧像素位置在首次显示时按当前窗口迁移。
-
-<p align="center">
-  <img src="docs/assets/readme/module-management.png" alt="dsh-damage-pulse 卸载与更新面板：当前插件版本、检查更新、安装更新与五个功能模块的卸载入口" width="640">
-</p>
-
-## 可视化计费规则
-
-计费规则面板把「每条 provider/model 怎么算钱」做成可编辑的表单：官方内置价格表之外，第三方中转商也能按自己的价目表计费。
-
-- **固定价或峰谷价**：每个模型可以选择「固定」或「峰谷」；峰谷模式下自行增删高峰时段，按「时:分」选择开始与结束时间并勾选周几，其余时间为谷价。
-- **法定节假日与调休周末**：2026 年 9 月 25 日起，法定节假日整日按空闲时段（谷价）计价；因节假日调休而上班的周六、周日同样整日按空闲时段（谷价）计价，不会因为当天上班而进入高峰时段。只要模型属于 DeepSeek，官方价格表与第三方自定义规则使用同一套峰谷判定。
-- **阶梯与倍率**：按最大上下文 Token 配置阶梯单价，倍率用于中转商的加价系数。
-- **模板与来源**：可选择官方模板预览对比后一键应用；面板显示规则来源、版本与「已自动保存」状态，模型与供应商都可以单独启停。
-- **供应商余额查询脚本**：为第三方供应商写一小段 JavaScript 描述余额接口（请求路径、方法、鉴权方式，以及如何处理返回的 JSON），在沙箱里校验通过后，悬浮卡即可显示该供应商的余额。脚本可返回可选的 `windows` 数组（`label` + `used`/`remaining`/`percent` + `total`，`resetAt` 支持 epoch 毫秒或 ISO 字符串，最多 8 项），悬浮卡会逐窗口显示「剩余/共」，额度型供应商（`currency` 不是三位货币代码，如默认 `credits`）只显示窗口、不再显示余额数字；有 `windows` 时 `currency` 与 `totalBalance` 可省略，默认 `credits` 与首个窗口的剩余量。脚本也可以返回可选的 `display` 字符串（去除首尾空白后最多 48 个字符），存在时悬浮卡用它整段替代「货币符号 + 金额」，适合百分比或组合额度等非货币形态。清空脚本并保存即删除该供应商的自定义脚本：已知网关（DeepSeek、fastaitoken、GLM Coding Plan）会自动回落到内置适配器，其余供应商进入「未配置」状态；`DELETE /api/token-monitor/balance-script?provider=<id>&expectedRevision=<n>` 提供同等的删除入口。
-
-<p align="center">
-  <img src="docs/assets/readme/billing-rules.png" alt="计费规则面板：按 provider/model 配置倍率、固定价或峰谷价与高峰时段" width="720">
-</p>
-
-<p align="center">
-  <img src="docs/assets/readme/balance-script.png" alt="供应商余额查询脚本编辑器：用 JavaScript 描述余额接口与解析方式，并提示校验通过" width="720">
-</p>
-
-计费规则窗口和用量明细窗口一样支持拖动、八向缩放、最大化与位置记忆；点窗口外的空白处不会关闭，方便一边看对话一边改价格。
-
-## 详细用量窗口
-
-悬浮卡右键菜单里的「用量明细」会打开一个可以拖动、缩放、最大化的独立窗口。窗口位置与尺寸会被记住，也不会挡住后面的对话操作。
-
-- **数据概览**：消费、请求数、Token 总数、活跃天数、缓存命中 Token、缓存命中率、每亿 Token 费用、活跃日均消费八项指标，可切换时间范围并按供应商筛选。
-- **明细表**：模型、对话、Provider、项目、Token（未缓存输入 / 输出 / 缓存命中）、推理 Token、推理强度、本地费用、延迟（首字与总耗时）与记录时间，峰谷标记直接写在时间列。
-- **筛选与分页**：开始/结束时间、模型、项目、对话，以及「错误请求」页的错误类型与是否包含已取消请求；每页 20/50/100 条。
-- **列设置**：自己勾选要显示的列，或者一键恢复默认列。下拉卡片贴着按钮显示、不会遮住入口，点窗口里任意空白处即可收起。
-- **费用构成**：点费用旁的 ⓘ 展开未缓存输入、缓存命中、缓存写入、输出四项费用与 Token 数、对应单价、实际计价模式、命中阶梯上限、倍率与规则标识。
-- **Plan 额度**：详细用量顶部可切到「Plan 额度」，按供应商看 5 小时与每周窗口的剩余额度、已用/总量、下次刷新时间与剩余时长；额度用尽时显示「已用尽，等待刷新」。只有 Host 确认已开通套餐的供应商才会出现，仅配置 API key 而没有订阅时该页签整体隐藏。
-
-<p align="center">
-  <img src="docs/assets/readme/usage-details.png" alt="详细用量窗口：数据概览、筛选条件与用量明细表" width="100%">
-</p>
-
-<table>
-  <tr>
-    <td align="center" width="50%"><img src="docs/assets/readme/usage-details-columns.png" alt="用量明细的列设置下拉卡片" width="300"><br><sub><b>列设置</b></sub></td>
-    <td align="center" width="50%"><img src="docs/assets/readme/usage-details-by-provider.png" alt="数据概览按供应商筛选" width="300"><br><sub><b>按供应商查看</b></sub></td>
-  </tr>
-</table>
-
-<p align="center">
-  <img src="docs/assets/readme/fee-explanation.png" alt="单次费用构成：四项费用与 Token 数、单价、计价模式、阶梯上限与倍率" width="620">
-</p>
-
-## 鲸鱼娘
-
-鲸鱼娘是趴在余额悬浮卡上的桌面伙伴。她会用待机和眨眼动作陪你等待，并根据普通扣费、缓存未命中、连续消费、余额耗尽与充值恢复呈现不同反馈。扣费金额按事件顺序排队飘字，不同费用类型使用不同颜色与反馈强度；普通扣费保持轻量，不会频繁弹出气泡打扰工作。
-
-鲸鱼娘与扣血反馈共用后台配置 `animationScale`，默认 `0.8`（卡片宽度的 80%），允许 `0.5`–`1` 的数字。卡片宽度变化时两者同比缩放，角色保持原宽高比；此项没有新增前端设置控件。旧配置未写此字段时使用 80%，已明确写入的自定义值会保留。
-
-可直接请模型：“将 dsh-damage-pulse 的全局 animationScale 改为 0.65，保留其他设置，并验证保存后读回。”模型应通过当前桌面应用已认证的 `GET /api/token-monitor/settings` 读取 `revision`，再向同一路径发送 `PATCH`，正文为 `{"expectedRevision":读取到的revision,"patch":{"animationScale":0.65}}`；不要添加 `provider` 参数，比例属于全局设置。接口沿用宿主鉴权与 profile 配置持久化，保存后应再 GET 核对；409 冲突时重新读取后重试。切回应用会触发刷新，应用活动时最迟约 5 秒生效，重启后保留。恢复默认使用同一路径将值设回 `0.8`。无法访问认证接口时，模型应先核对宿主当前配置入口，不猜测 profile 路径或覆盖整份配置。
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <img src="docs/assets/readme/whale-girl-idle-bite-finger.png" alt="鲸鱼娘啃手指待机原画" width="260"><br>
-      <sub><b>等待任务时：啃手指待机</b></sub>
-    </td>
-    <td align="center" width="50%">
-      <img src="docs/assets/readme/whale-girl-critical-damage.png" alt="鲸鱼娘严重扣费原画" width="260"><br>
-      <sub><b>缓存未命中时：严重扣费反应</b></sub>
-    </td>
-  </tr>
-</table>
-
-## 提醒与微信通知
-
-- **每日预算**：设置当日预算金额，首次越过预算线时提醒；提醒不会阻止、取消或限流模型请求。
-- **峰谷切换**：进入峰时和进入谷时可分别启用提醒，同一价格边界不会重复通知。
-- **缓存异常**：可设置缓存命中率阈值与连续异常次数，恢复后再次异常仍可重新提醒。
-- **鲸鱼娘气泡**：只承载预算越线、峰谷切换和缓存异常等需要关注的事件，可独立关闭。
-- **ClawBot 微信通知**：在详细设置中查看连接、认证与投递状态，完成二维码登录、刷新、重连、安全断开和测试消息发送。
-- **少女风文案**：通道测试、预算越线、进入峰时、进入谷时和缓存异常均使用 `dsh-damage-pulse` 标准项目名；Star 邀请只出现在测试消息中。
-- 所有业务通知开关默认关闭；旧配置从 v0、v1、v2、v3 迁移且缺少通知字段时，也会保守补为关闭。发送测试消息是独立的通道验证，不受业务微信通知总开关限制。
-
-<p align="center">
-  <img src="docs/assets/readme/notification-settings.png" alt="通知设置面板：左侧提醒规则（每日预算、峰谷提醒、缓存命中异常），右侧通知渠道（鲸鱼娘气泡、微信通知与登录状态）" width="720">
-</p>
-
-<p align="center">
-  <img src="docs/assets/readme/dsh-damage-pulse-wechat-live.jpg" alt="dsh-damage-pulse 通过 ClawBot 发送的微信通知实机截图" width="520">
-</p>
-
-## 详细设置与安全更新
-
-插件提供蓝粉双色的响应式详细设置面板，集中展示今日消费与历史统计，并可配置鲸鱼娘、每日预算、峰谷提醒、缓存异常、气泡和微信通知。设置更新使用 revision 防止多个页面互相覆盖，并兼容旧字段迁移。
-
-更新面板可以打开项目主页、检查最新 Release、比较版本并下载安装包。安装前会校验 Release/tag 版本、资产名称、下载来源、重定向域名和 SHA-256，且只有识别到可安装 profile 时才执行安装。
-
-## 架构
-
-> 项目公开品牌为 `dsh-damage-pulse`。为兼容已安装用户，下列目录名、包名、API 路径、设置命名空间和本地存储键仍沿用 `dsh-token-monitor` / `token-monitor`，无需迁移已有配置与历史数据。
-
-| 部分 | 位置 | 职责 |
-|---|---|---|
-| Host 插件 | `plugins/dsh-token-monitor` | 计费资格、价格计算、持久账本、余额、统计、预算/峰谷/缓存提醒、微信与更新 API |
-| Client 包 | `packages/client/ui-token-monitor` | 单次用量、会话累计、余额悬浮卡、鲸鱼娘动画、通知气泡和详细设置 |
-| 微信能力 | `plugins/wechat-notify` / ClawBot | 连接状态、登录管理与消息投递；不可用时不会阻塞计费和余额监控 |
+感谢模型赞助商 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse) 支持开发。[赞助说明](#sponsor)
 
 ## 安装
 
-本仓库从 `0.2.0` 起提供标准 DSH Host + Client 组合包和预编译产物。当前版本为 **4.3.0**：Plan 额度页签改为按真实订阅显示——只有 Host 确认存在套餐额度时才出现，仅配置了 key、没有开通套餐的供应商不再显示空卡片或查询失败；401/403/404 与「响应里没有任何额度窗口」按未接入处理并在 30 分钟内不再重复请求，5xx 与网络故障仍照常报错。同时适配 DeepSeek Harness `0.2.1-rc.3`。4.2.9 的内置 GLM Coding Plan 额度窗口（5 小时 / 每周积分）、自定义余额脚本的 `display` 文本，以及额度型供应商只显示滚动窗口的卡片布局继续保留。`4.2.8` 的余额查询连接错误修复、`4.2.7` 的 DeepSeek Harness `0.2.1-rc.2` 精确兼容适配与 `4.2.5` 的 TUN / Fake-IP 快退避修复继续保留。
+**当前源码版本：4.3.1，适配 DeepSeek Harness 0.2.1-rc.5。** 4.3.0 会被 rc.5 的兼容检查跳过。可下载版本以 [GitHub Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases) 为准；若尚无 4.3.1 发布包，请等待发布，不要在 rc.5 上安装旧包。
 
-`4.2.4` 修复余额卡右键菜单继承卡片悬停说明、菜单标记不统一的问题；拖动后的卡片使用窗口内相对位置记忆，窗口和卡片尺寸变化后继续保持位置；修复整体卸载后完整重装仍被旧卸载记录阻止恢复的问题。新增子会话用量聚合与显示修复，移除卡片悬停说明，鲸鱼娘动画默认缩放为 80%（保留已有自定义值）。右键菜单不新增恢复默认位置入口。
-
-`4.2.3` 修复通过插件内置更新升级后，版本号已更新、桌面却仍加载旧界面的问题；升级后完整退出桌面程序再启动，即可加载新的右键菜单与前端修复。设置、用量账本和已卸载模块状态保留。
-
-`4.2.2` 修复晚到用量记录导致已完成回复无法分支的问题，并统一实际计费、工具查询与计费规则界面的规则来源；继承官方价格的账号条目会明确显示共享规则及编辑入口，已有独立账号规则保持优先。亮色主题下的右键菜单使用深色底与高对比度文字，桌面更新入口也已修正。GitHub Release 与 npm 使用同一份预编译包。`4.2.1` 包含设置兼容、模块卸载与桌面资源加载修复。`4.2.0` 让 DeepSeek 账号路由（`deepseek-account`）与官方 API key 路由共用同一套官方计价与资格判定：账号路由下的调用不再落成「未计价」，悬浮卡片的用量概览与用量明细不再显示「未记录」，计费规则面板不再预置账号独立条目：默认快照只保存官方条目，账号路由按规则继承共用官方计价（已保存的旧快照只有官方条目时同样按官方规则回退计价，客户端扣费门禁同口径回退，账号路由的扣费事件不再被丢弃，飘字与鲸鱼娘受击动画恢复）；显式保存的账号条目整体优先，某个模型在账号条目里缺失时保持缺规则，不会逐模型混合继承官方价格；同一版按当日决定隐藏设置页的「已停止写入会话日志」提示，并把 `ipaddr.js` 移入运行时依赖。`4.1.3` 修掉本插件写入的会话用量记录会让历史对话打不开的问题：宿主读取端只接受「不在已知类型表内但带 `ignorable` 标记」的事件，而 0.1.7 早期构建的 `Session.append` 不会把该标记落盘，没有标记的未知事件会让**整份**会话日志被拒绝解释。现在插件先探测宿主实现是否转发 `ignorable` 再写入，并在任何一次写入后发现标记丢失时永久停写（会话金额退回本地账本与兜底路由），设置页会给出对应提示。`4.1.2` 把安装入口收敛到 npm 发布包：README 过去推荐的 `github:` 源地址装法拿不到只在打包阶段生成的 `runtime/` 预编译产物，插件加载时会直接失败（加载器现已补上前置检查，payload 缺失时点名修复方式，而不是抛出无法定位的 ENOENT）。`4.1.1` 修复 DSH `0.1.7` 把会话节点注册表改名为 `uiConversation.events` 之后、对话流内「单次用量行」不再注册的问题（旧宿主继续走顶层 `conversationEvents`，两代行为一致）。`4.1.0` 把插件拆成五个可独立卸载的功能模块（模块管理器内置检查更新与 SHA-256 校验安装），加入可视化计费规则编辑器（含第三方供应商余额查询脚本）、可拖动缩放的用量明细与计费规则窗口，并把法定节假日并入 DeepSeek 峰谷计价的空闲时段（官方 2026-09-25 生效）；宿主兼容范围保留 `0.1.0-rc.5` 之后的全部旧版，并扩展到 DSH `0.1.7-rc.2`。
-
-`4.0.11` 同时支持旧版宿主的 `SessionListState.current` 与 DSH `0.1.6-alpha.2` 的 `retainedBy.mainView` 主会话标记，避免新版宿主无法定位当前会话并错误隐藏余额卡；公开包的 DSH peer 范围同步扩展到 `0.1.6`，旧版范围完整保留。`4.0.10` 修复余额数字可能长时间不更新的问题：卡片显示值过去按「接口快照 + 尚未发射的扣费」合成，飘字发射链一旦抛错停摆，60 秒校准就会把余额的下降原样加回，数字被钉死在某个看似合理的值上且无任何可见报错；扣费游标改为在视觉处理之前推进，避免视觉失败让客户端每秒重放整本账并重复扣减；发射链加入自愈（单条发射失败不再杀死队列、队列非空即可续跑、清理时复位定时器引用），余额校准改为先落快照再做充值动画。`4.0.9` 跟随官网 2026 年 9 月的计价说明修正 V4 Pro 计价：官方已取消原定 9 月 14 日 12:00 起按 Flash 价格计费的调整，`deepseek-v4-pro` 继续按 Pro 原价计费，不再在边界时刻切换价格表。`4.0.9` 同时修复三处历史缺陷（内置价格表的历史分段因对象身份判定而从未生效、余额卡片与鲸鱼娘被右侧栏浮动面板遮挡、无事件序号的历史账本行重复计入），并把鲸鱼娘开关写入失败从静默改为提示；`4.0.8` 修复 DSH `0.1.5-alpha.2`（官方 0.1.5 线）下的两项失效：Host 半兼容 0.1.5 的 `SessionHandleReadResult`（`{ eventState, events }` 包裹结果），会话历史金额投影不再整体迁移失败；Client 半改用官方席位 `conversation.session.header.actions`。`4.0.3` 明确兼容 DSH Desktop `2.0.4`（DSH `0.1.2-alpha.1`），并继续支持 `0.1.0-rc.5` 之后的旧版兼容宿主（含 `0.1.0-rc.6/rc.7/rc.8` 与 `0.1.1-rc.2`）。无需复制源码、修改 DSH `tsconfig`、手动传入 `--patch` 或重建 Client bundle。
-
-Desktop `2.0.4` 不再提供旧的 `@deepseek-ai/dsh-client-runtime` 模块；`4.0.3` 已将该包从产品 peer 与 Client 注入图中移除，仅在开发环境保留旧宿主回归测试。
-
-旧版或社区自行打包的 DSH 客户端应在其现有项目中沿用宿主自身的 lock 文件和依赖版本安装本插件。不要在一个新建的纯 npm 依赖树中把 rc.5/rc.6/rc.7 宿主包与当前 registry 的 rc.8 上游包混合钉定；这种组合会因上游 peer 版本漂移而解析失败，并不表示插件与原宿主不兼容。
+在桌面版「插件」页添加包名 `dsh-damage-pulse`，或下载 Release 中完整的 `.tgz` 后添加其文件路径。也可用 CLI 安装 npm 当前发布版：
 
 ```powershell
-# web 端：
-dsh plugin --profile web add dsh-damage-pulse
-# 桌面端（示例 profile 名 desktop，换成你实际使用的那个）：
 dsh plugin --profile desktop add dsh-damage-pulse
 ```
 
-**4.3.0 通过 GitHub Release 提供预编译 tgz。** npm 包名 `dsh-damage-pulse` 安装的是 registry 上的最新版本：如果本版本已同步到 npm，用包名即可；如果 registry 尚未更新到 4.3.0，请使用下面的 GitHub Release 预编译 tgz，或通过插件内的 GitHub 更新入口升级。
+将 `desktop` 换成实际使用的 profile 名。安装后**完整退出桌面程序（含托盘）再启动**，在悬浮卡右键的「卸载与更新」核对版本。
 
-需要锁定具体版本时改用 GitHub Release 的预编译 tgz。先分清四种「地址」：npm 包名 `dsh-damage-pulse`、Release 里打包好的 `.tgz` 文件、GitHub 仓库页地址、Release 页的 `Source code` 压缩包——后两种是源码，不含打包阶段才生成的 `runtime/`，装出来无法启动：
+- 需要指定版本时，使用对应 Release 的预编译 `.tgz`；不要直接安装仓库 URL、`github:` 地址、`Source code` 压缩包或未打包的源码目录，它们缺少运行载荷。
+- 页面提示已安装时，先移除再添加完整包；保留配置和历史数据，不用清空账本解决启动问题。
+- 官方 API 余额通过 DSH 凭据机制配置 `DEEPSEEK_API_KEY`；没有余额凭据也可记录用量和费用。
 
-```powershell
-# web 端：
-dsh plugin --profile web add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.3.0/dsh-damage-pulse-4.3.0.tgz
-# 桌面端：
-dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.3.0/dsh-damage-pulse-4.3.0.tgz
-```
+<details>
+<summary>旧版宿主兼容说明</summary>
 
-> 不要用源码地址安装。`runtime/` 是包内的预编译产物，只在打包阶段由 `scripts/prepare-package-runtime.mjs` 生成且不入库（`.gitignore`），所以 `dsh plugin add github:wssfk12138/dsh-damage-pulse`、GitHub 仓库页地址、Release 页的 `Source code` 压缩包，以及本地 clone 出来的源码目录，装出来的包都只有 `lib/` 没有 `runtime/`，插件启动时会直接失败（现在的报错会点名修复方式，而不是抛出无法定位的 ENOENT），还可能被宿主侧的启动失败隔离直接停用该行。如果你确实要从源码安装，请先在源码目录完成构建与 `runtime/` 生成，再挂载这个构建产物；正确构建过的源码可以正常运行，不能说源码方式绝对不可用。
->
-> 在桌面版「插件」页添加本插件时同样只认包名或**打包好的 tgz 文件路径**：仓库地址和本地源码目录都会装出缺载荷的包，把 tgz 解压成文件夹也不等于安装。同一个版本已经装过时，页面会提示「该插件已安装。如需升级，请卸载后重新安装」，请先卸载再装——即使磁盘上那一份已经装坏，它也只按包名判断。安装后要重启对应的 profile 才生效；桌面版若在插件的「卸载与更新」里点「安装更新」失败，也用卸载后按包名重装的方式升级。除上面这些已核实的形式外，桌面版插件页是否接受其它输入形式尚未逐一验证，请以页面实际提示为准。安装完成后要在本插件的「卸载与更新」面板核对当前版本，并完整退出桌面程序再启动。通过内置更新升级时，宿主插件列表可能仍显示最初安装包的版本；也不要仅凭版本数字认定新界面已经加载，4.2.3 的恢复检查见下文。
+保留 `0.1.0-rc.5`、`0.1.1-rc.2`、Desktop 2.0.4（`0.1.2-alpha.1`）、`0.1.5-alpha.2` 等旧版兼容段，实际范围见 [package.json](package.json)。声明兼容不等于每个版本都逐一实机验收；本次验收使用 rc.5 桌面版。
 
-出错时还要留意第二种表现：如果宿主装了「启动失败隔离」类插件（例如第三方插件控制台），它可能把这条 loader 报错自动写进 profile 的 `cordis.patch.yml`：
+标准包自带会话金额：优先使用 `conversation.session.header.actions`；宿主提供 `sidebar.workspaces.sessionRow.trailing` 时追加注册。旧客户端使用严格 fail-closed 的兼容桥，只有唯一匹配原生会话行时才显示，检测到已有金额或正式席位即停用，避免重复。
 
-```yaml
-- id: dsh-token-monitor
-  disabled: true
-```
+旧宿主沿用自身 lock 与依赖，不混装不同预发行版本。更多恢复与源码部署说明见[参考文档](docs/REFERENCE.zh-CN.md)。
 
-这种情况下插件只是从「启动时报错」变成「界面上不出现」，很容易被误判成没装上。改用包含 runtime 的正式预编译包安装后，记得删掉这段（或在插件管理界面点启用），否则装好了也不会挂载。
+</details>
 
-安装后重启**实际安装的那个 profile**。web 端：
+## 功能介绍
 
-```powershell
-dsh --profile web
-```
+本轮 rc.5 桌面截图使用合成示例数据；Plan 额度与部分 Token 概览使用接口替身展示，不代表真实供应商查询结果。
 
-桌面端在界面里重启，或运行（把 `desktop` 换成你实际的 profile 名）：
+### 余额悬浮卡与鲸鱼娘
 
-```powershell
-dsh --profile desktop
-```
+显示余额、本次输入/输出/缓存 Token、首字与总耗时，以及峰谷状态。余额每 60 秒校准；查询不可用时不显示金额，本地统计继续工作。支持拖动、键盘移动和位置记忆，右键进入各功能面板。
 
-标准包提供余额悬浮栏、余额实时扣减、缓存命中/未命中动画、单次用量行和输入区会话累计。升级自早期源码集成版时，请移除原有手工 `--patch` 或重复挂载项，避免同一插件加载两次。
+鲸鱼娘会待机、眨眼，并对扣费、缓存未命中、余额耗尽和充值恢复作出反应；可以单独隐藏。动画默认按卡片宽度的 80% 显示，已有自定义比例保留。
 
-### 4.2.3：内置更新后仍显示旧菜单
+<p align="center"><img src="docs/assets/readme/balance-card-usage.png" alt="带余额的悬浮卡与鲸鱼娘" width="440"></p>
 
-如果通过插件内的「安装更新」升到 4.2.2 后，亮色模式的右键菜单仍是浅色底、文字发白，可能是旧版更新器只更新了模块，而桌面仍读取旧前端文件。4.2.3 会在启动时校验并同步桌面实际加载的前端入口。
+<details>
+<summary>查看无余额状态、右键菜单、工作区与角色细节</summary>
 
-1. 在余额悬浮卡上右键，打开「卸载与更新」，点击「检查更新」，安装 **4.2.3 或更新版本**。
-2. 等待安装成功后，**完整退出 DeepSeek Harness 桌面程序，再重新打开**。如果关闭窗口后程序仍留在托盘，请从托盘菜单退出；仅关闭设置面板不算重启。
-3. 重新打开「卸载与更新」，确认本插件显示 4.2.3 或更新版本；亮色主题下的右键菜单应呈现深色背景、清晰浅色文字。
+<p align="center"><img src="docs/assets/readme/balance-card-no-credentials.png" alt="无余额时仍显示 Token 与耗时" width="410"></p>
 
-正常升级无需删除配置、清空账本或重新安装，之前主动卸载的模块也不会自动恢复。若安装或启动仍报错，请保留错误内容和当前版本，便于排查。
+<p align="center"><img src="docs/assets/readme/balance-card-context-menu.png" alt="悬浮卡右键功能菜单" width="440"></p>
 
-本次已在 DeepSeek Harness `0.2.0-rc.2` 桌面版验证：4.2.1 通过内置更新升级、模块为 4.2.2 但界面仍旧的安装升级，以及 4.2.3 tgz 全新安装；完整重启后无需手动刷新。4.2.6 另在 `0.2.1-rc.1` 桌面版以实际 tgz 验证加载、合成非零余额与用量、设置保存及完整重启保持、明细和窄窗口；4.2.7 在 `0.2.1-rc.2` 桌面版复验同一条路径。4.2.8 在 `0.2.1-rc.2` 桌面版以注入连接错误复验：同一注入下 4.2.7 复现宿主致命退出，4.2.8 宿主保持运行并回到原有短退避；正常合成链路仍返回非零余额。其他宿主版本未逐一实机验证。4.2.9 在 `0.2.1-rc.2` 桌面版以实际 tgz 复验宿主加载、余额、菜单、用量明细与额度窗口布局；额度窗口使用合成响应，未请求真实 GLM 接口。4.3.0 在 `0.2.1-rc.3` 桌面版以实际 tgz 在隔离 profile 复验：无套餐时 Plan 额度页签不出现，有套餐快照时页签与两个窗口正常渲染，Esc 仍只关闭最上层。
+<p align="center"><img src="docs/assets/readme/workspace-overview.png" alt="桌面工作区中的悬浮卡" width="100%"></p>
 
-### 4.2.1 升级与恢复
+<p align="center"><img src="docs/assets/readme/whale-girl-idle-bite-finger.png" alt="鲸鱼娘待机原画" width="260"></p>
 
-- 支持当前 profile 设置存储，并补齐旧版 namespace 设置的注册、更新事件与冲突处理；数字设置继续自动保存。
-- 修复桌面宿主中的图片路径、动态面板路由、旧宿主原生会话行金额兜底，以及明暗主题、窄窗口和菜单键盘操作。
-- 五个模块执行实际文件卸载；已卸载状态在重启与升级后保留。整体卸载后的清理可以在重启时重试。
-- 4.2.1 使用独立版本的完整清单和模块资产，继续校验文件大小与 SHA-256。升级时保留现有设置、usage.jsonl 账本和模块卸载状态；不要用删除账本、清除卸载标记或跳过摘要检查来解决启动问题。
-- 如需恢复已卸载模块，在“卸载与更新”中显式选择恢复；恢复只针对所选模块。请在更改版本前备份 profile 与插件数据；本版不承诺通过降级自动撤销数据迁移。
+<p align="center"><img src="docs/assets/readme/whale-girl-critical-damage.png" alt="鲸鱼娘扣费反馈原画" width="260"></p>
 
-4.2.1–4.2.6 已在 DSH `0.2.0-rc.2` 真实桌面 EXE 的隔离 profile 中验证新装、升级、设置重启保持、资源和模块生命周期；旧设置服务 `0.1.0-rc.7` 与 `0.1.7` profile 的兼容检查另有覆盖。peer 范围不代表其中每个宿主版本都逐一实机测试。微信请求、进程生命周期和通知作用域有自动化覆盖，本轮未重新执行真实微信扫码与插件消息投递。
+</details>
 
-### 原生会话金额（标准包能力）
+### 用量明细、历史统计与 Plan 额度
 
-会话金额属于标准包能力，标准包开箱即可提供，无需手工改宿主源码：
+对话流显示单次用量，输入区显示会话累计；独立明细窗口支持拖动、缩放、时间/模型/项目/对话筛选、列选择及费用构成查询。统计概览提供今日、近 7 天、近 30 天与全部历史的消费、请求、Token 和缓存指标。
 
-- **官方会话头席位**（`conversation.session.header.actions`）：0.1.5-alpha 与 rc.7 的会话头都声明该席位，标准包把金额徽标注册到会话标题旁的操作区；`sessionId` 与 `useSessions` 由宿主标准 props 提供，不改任何宿主文件，也无需重建 bundle。
-- **兼容宿主侧栏尾席位**（`sidebar.workspaces.sessionRow.trailing`）：该席位由本机侧边栏补丁宿主自行声明，上游 0.1.3 / 0.1.5 都未提供。标准包只在宿主声明后追加注册，会话行在时间前显示金额；未声明时保持等待，不注册也不报错。
-- **旧版 / 社区自行打包或定制客户端**（既无官方会话头席位，也无侧栏尾席位）：标准包内置严格 fail-closed 的兼容桥，只在能对原生会话行做唯一、无歧义匹配时显示金额；一旦检测到宿主已带正式席位标记、稳定会话标识或既有金额，立即整体停用，不会重复写入。
-- **输入区会话累计条** 行为不变，上述所有客户端下都可用。
+「Plan 额度」显示订阅的 5 小时/每周窗口、剩余额度和下次刷新时间；只有确认存在套餐时才出现，仅有 API key 不会显示空页签。
 
-`scripts/apply-sidebar-integration.ps1` 保留为完整 DSH 源码部署的开发/历史兼容工具；标准包已自动显示金额时无需运行。如需在完整 DSH 源码上手工挂载，运行：
+<p align="center"><img src="docs/assets/readme/usage-details.png" alt="用量明细与筛选" width="100%"></p>
 
-```powershell
-.\scripts\apply-sidebar-integration.ps1 -HarnessRoot 'C:\path\to\deepseek-harness'
-$env:DSH_BUILD_FACE = 'client'
-corepack pnpm --dir 'C:\path\to\deepseek-harness\packages\client\ui-workspace' exec tsdown
-```
+<details>
+<summary>查看统计概览、列设置、费用构成与 Plan 额度</summary>
 
-脚本会先备份三个目标文件，并以幂等方式读取 `projectionValues.tokenCost.cost`。上游结构不匹配时会停止，不会猜测写入。
+<p align="center"><img src="docs/assets/readme/usage-overview.png" alt="历史用量八项统计指标" width="720"></p>
 
-### 宿主侧补丁（平台侧）
+<p align="center"><img src="docs/assets/readme/usage-details-by-provider.png" alt="按供应商筛选统计" width="500"></p>
 
-`patches/` 收录本插件在 DSH 宿主侧需要的补丁，随 npm 包一起发布，目标版本、症状与完整应用步骤见 `patches/README.md`：
+<p align="center"><img src="docs/assets/readme/usage-details-columns.png" alt="列设置菜单" width="330"></p>
 
-- `@deepseek-ai/dsh-session@0.1.7-alpha.2`：让 `Session.append` 转发 `ignorable`，插件写入的用量行才能被标记为可忽略。本仓库的 `patchedDependencies` 会在安装时自动应用，社区重建本仓库不需要额外操作。
-- `@deepseek-ai/dsh-session-format-v3-to-v4@0.1.7-rc.2`：修复「会话在工具调用过程中被中断」的旧日志无法迁移的问题。缺少该补丁时，这类会话会被整份拒绝迁移并报「历史加载失败」，源日志保持不动，会话完全打不开，其金额与用量也随之缺失；官方 `0.1.7-rc.2` 及更早的 v3→v4 迁移都不含该修复，源码部署可按 `patches/README.md` 直接 `git apply` 后重建该包。
+<p align="center"><img src="docs/assets/readme/fee-explanation.png" alt="单次费用构成与合计" width="500"></p>
 
-### 源码开发
+费用浮层为便于阅读已展开完整内容，日常界面内可滚动查看。
 
-```powershell
-corepack pnpm install
-corepack pnpm build
-corepack pnpm run check:bundle
-```
+<p align="center"><img src="docs/assets/readme/plan-quota.png" alt="Plan 额度与刷新时间" width="100%"></p>
 
-## 配置
+</details>
 
-### API Key
+### 计费规则与供应商余额
 
-通过 DSH 的 credentials 机制配置 `DEEPSEEK_API_KEY`（`~/.dsh/.credentials.yaml`），只用于查询账户余额。插件加载、对话用量采集与计费都不依赖它：未配置时悬浮卡显示引导态，token 计量与账本照常记录，也不会因此判定插件「没有加载成功」。
+按 **provider + model** 判断计费资格，未知模型不套用 Flash 价格；输入、缓存与输出分项计费，推理 Token 不重复叠加。历史保存在本地持久账本，重启后恢复，事件重放不会重复扣费。
 
-### 价格表（可选覆盖）
+可编辑固定价、峰谷价、阶梯与倍率，也可为第三方供应商配置余额查询脚本，显示金额、自定义文字或额度窗口。DeepSeek 默认高峰为北京时间工作日 09:00–12:00、14:00–18:00；周末（含调休上班）与法定节假日全天按谷价。内置价格按生效时间分段，具体价格以[官方说明](https://api-docs.deepseek.com/zh-cn/quick_start/pricing)及已加载规则为准。
 
-价格表默认内置（见 `src/pricing.ts`），可通过 settings namespace `dsh-token-monitor` 的 `priceTable` 字段覆盖价格和工作日高峰时段。周一至周五默认按北京时间 `9:00–12:00`、`14:00–18:00` 为峰价，其余时间为谷价；周六、周日与法定节假日无论时段均按谷价，调休上班的周末同样整日按谷价。内置默认表按生效时间分段：8 月 17 日 00:00 之前按旧统一价，8 月 17 日 00:00 至 9 月 10 日 12:00 按旧峰谷价，之后按上表现行价格。传入自定义 `priceTable` 时视为整体覆盖，直接用于当年 8 月 17 日及之后的全部历史与新增调用；8 月 17 日之前的调用仍按官方旧统一价计费。官方依据：[模型与价格](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)、[图像理解 Token 用量](https://api-docs.deepseek.com/zh-cn/guides/vision#token-usage)。
+<p align="center"><img src="docs/assets/readme/billing-rules.png" alt="可视化计费规则" width="720"></p>
 
-## HTTP 端点
+<details>
+<summary>查看余额脚本与高级设置</summary>
 
-| 端点 | 说明 |
-|---|---|
-| `GET /api/token-monitor/balance` | DeepSeek 账户余额（含 currency / 总余额 / 赠送余额） |
-| `GET /api/token-monitor/usage?sessionId=` | 用量明细历史（可过滤会话） |
-| `GET /api/token-monitor/usage-summary?range=` | 今日 / 7 天 / 30 天 / 全部时间的聚合统计 |
-| `GET /api/token-monitor/charge-events?since=<seq>` | 严格递增的扣费事件流，驱动余额变化、飘字和受击动画 |
-| `GET /api/token-monitor/notification-events?since=<seq>` | 预算、峰谷和缓存异常通知流 |
-| `GET/PATCH /api/token-monitor/settings` | 带 revision 的统一设置读取与更新 |
-| `GET /api/token-monitor/wechat/status` | 查询微信连接、认证、投递和短时登录会话状态；设置页“刷新”会重新请求此端点 |
-| `POST /api/token-monitor/wechat/login` | 创建二维码登录会话 |
-| `POST /api/token-monitor/wechat/login/confirm` | 确认当前二维码登录状态 |
-| `POST /api/token-monitor/wechat/reconnect` | 重连由 DSH Host 管理的微信 bridge |
-| `POST /api/token-monitor/wechat/disconnect` | 经显式确认后断开由 DSH Host 管理的微信 bridge |
-| `POST /api/token-monitor/wechat/test` | 发送独立测试消息，不受业务微信通知总开关限制 |
-| `GET/POST /api/token-monitor/update*` | Release 检查与受安全门禁保护的安装流程 |
+<p align="center"><img src="docs/assets/readme/balance-script.png" alt="供应商余额查询脚本" width="720"></p>
 
-## 微信通知兼容层
+脚本返回格式、历史计价和动画比例配置见[高级参考](docs/REFERENCE.zh-CN.md)。
 
-插件内置一个不注册 Cordis 工具的轻量 ClawBot 适配器，并按以下优先级选择通知 provider：宿主提供的 wechatNotify 发送服务及 wechatConnection 连接服务 → 内置适配器 → 不可用。两类能力分别选择，服务晚加载时自动复用；每次发送只会调用一个 provider；微信未登录、超时或发送失败不会阻塞余额监控、计费和鲸鱼娘动画。
+</details>
 
-如果用户已经安装独立 dsh-wechat-notify，本插件会复用它的发送能力；未安装时，只要设置 `WECHAT_NOTIFY_CLAWBOT_INDEX`，内置适配器即可开箱发送。该变量必须指向本机 ClawBot CLI 的入口文件，例如：
+### 提醒与微信通知
 
-```powershell
-$env:WECHAT_NOTIFY_CLAWBOT_INDEX = 'C:\path\to\clawbot-cli\dist\index.js'
-dsh --profile web
-```
+可设置每日预算、峰谷切换和连续缓存命中异常提醒，通过鲸鱼娘气泡或 ClawBot 微信发送。预算提醒不会阻止或取消请求。业务通知默认关闭，测试消息可独立发送；设置面板提供扫码登录、连接状态、刷新、重连与断开操作。
 
-兼容层不迁移或删除原插件凭据，也不会重复注册 wechat_notify、扫码工具或 bridge。旧版接口若只能发送，状态面板会明确标注“发送可用，登录管理由原插件负责”。
+<p align="center"><img src="docs/assets/readme/settings-dialog.png" alt="提醒规则、通知渠道与微信连接" width="720"></p>
+
+<details>
+<summary>查看提醒规则与微信示例</summary>
+
+<p align="center"><img src="docs/assets/readme/notification-settings.png" alt="预算、峰谷与缓存异常提醒" width="520"></p>
+
+<p align="center"><img src="docs/assets/readme/dsh-damage-pulse-wechat-live.jpg" alt="微信通知示例" width="520"></p>
+
+</details>
+
+### 模块管理与更新
+
+桌宠、数据概览、通知、计费规则和微信渠道五个模块可独立卸载，状态在重启与升级后保留。默认保留配置和历史；取消保留选项会清除对应模块的数据。整体卸载会停止用量采集。
+
+「卸载与更新」可检查 GitHub Release，并在校验版本、下载来源与 SHA-256 后安装。正常升级保留设置、账本和已卸载模块状态。
+
+<p align="center"><img src="docs/assets/readme/module-management.png" alt="五个功能模块与安全更新" width="640"></p>
 
 ## 常见问题
 
-- **余额卡片显示「未配置」**：只说明没有可用于查询余额的 `DEEPSEEK_API_KEY`；插件本身已加载，token 计量与计费采集不受影响。
-- **余额卡片没有余额**：先区分「未配置」与查询失败。前者说明没有可用的 `DEEPSEEK_API_KEY`；后者在开启 TUN / 代理时也已自动兼容代理对域名返回的 `198.18.0.0/15`（Fake-IP）解析，不需要新增设置。仍不显示余额的常见原因是代理用 IPv6 或 IPv4-mapped 地址返回 Fake-IP，这种形式暂不支持，卡片会像查询失败一样只显示无余额、不出现错误码；让代理把该域名按 IPv4 公网地址或 IPv4 Fake-IP 解析即可。
-- **会话金额没有显示**：标准包把金额徽标注册到官方会话头席位（`conversation.session.header.actions`，会话标题旁的操作区）；旧版 / 定制客户端由标准包内置的 fail-closed 兼容桥在能安全匹配原生侧栏会话行时显示。若仍未出现，先确认重启了目标 profile；完整源码部署可选运行开发兼容脚本，但标准包已显示金额时不要再运行，避免重复写入。输入区会话累计条始终可用。
-- **只有旧会话没有金额**：插件加载前结束的旧会话需在下次启动时自动补齐（插件启动时对缺失投影的历史会话触发冷读 fold），启动后请稍等几秒再刷新页面。
-- **窗口启动后仍无动画**：确认已重启安装目标 profile；若以前使用过源码集成版，先删除旧的手工 patch 和重复挂载。
-- **插件页显示已安装，但启动报 `the installed payload is incomplete: runtime/manifest.json is missing`**：装进来的包缺 `runtime/` 预编译产物。最常见的原因是源码类安装（仓库地址、`github:` 源、`Source code` 压缩包、本地源码目录，它们都跳过了打包步骤），下载或解压中断、只复制了部分文件时现象相同。先确认自己用的是哪个 profile，再用该 profile 的包名 `dsh-damage-pulse` 或 Release 的 `.tgz` 文件路径重新安装并重启；同一个版本已存在时面板会拒绝重装，必须先卸载。
+- **没有余额？** 先检查对应供应商凭据与连接；缺少余额凭据不影响用量统计。支持 IPv4 TUN/Fake-IP（`198.18.0.0/15`），暂不支持 IPv6 或 IPv4-mapped Fake-IP；查询失败时不显示金额或错误码。
+- **安装后不出现或仍是旧界面？** 完整退出并重启目标 profile，核对插件自身版本；旧源码集成用户检查是否重复挂载。若宿主因启动失败禁用了插件，修复安装后需重新启用。
+- **缺少 `runtime/manifest.json`？** 换用 npm 包或 Release 的完整 `.tgz`，不要直接安装源码。包名安装版本偏旧时，核对 registry 和包管理器新版本等待策略，或使用目标 Release 的 tgz。
+- **旧会话没有金额？** 重启后等待历史投影补齐；标准包已有会话金额能力，无需手工改宿主源码。异常时附宿主版本、插件版本和错误内容到 [Issues](https://github.com/wssfk12138/dsh-damage-pulse/issues)。
 
-- **按包名安装却装到了旧版本**：如果你的包管理器启用了「新版本等待期」（pnpm 的 `minimumReleaseAge`，默认让刚发布的版本等一段时间后才参与版本选择），刚发布不久的版本可能暂时选不到，于是装上了等待期之外的旧版本。这只是一条待核实的排查线索，不是已确认的根因，也不建议为此全局关闭该策略或放宽兼容限制。需要装指定版本时，改用 Release 的 `.tgz` 或带精确版本号的包地址；显式版本用于选定目标版本，不保证绕过包管理器的策略。
+接口、ClawBot 配置、旧版恢复及源码开发见[高级参考](docs/REFERENCE.zh-CN.md)。历史修复见 [Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases)。
 
-## 社区与反馈
+## 社区与支持
 
-欢迎在 [LINUX DO 社区](https://linux.do/) 交流使用体验、反馈问题和分享改进建议。插件的安装、运行和全部功能均不依赖任何中转服务或充值渠道。
-
-社区提交经复核后会合并进主线，并在发行说明与本文件中署名。已合入：`@gurio-wine`（PR #17：桌面端卡片位置与鲸鱼娘开关修复，包含在 `4.0.9`）。
-
-## 许可证
-
-MIT
+欢迎在 [LINUX DO](https://linux.do/t/topic/2773449) 交流。感谢社区贡献者，包括 `@gurio-wine`（PR #17，桌面卡片位置与鲸鱼娘开关修复）。[MIT 许可证](LICENSE)。
 
 <a id="sponsor"></a>
-<h2>赞助商简介<br><sub><sup>免费不意味着开发没有成本。感谢<a href="https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse">Fastai</a>的赞助，让我能把功能留给所有用户，把广告留在应用之外。</sup></sub></h2>
+### 模型赞助商
 
-如果你正在寻找稳定、实惠的 AI 模型中转服务，可以试试 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse)，[Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse) 提供 DeepSeek、GLM、kimi、GPT、Claude、grok 等模型厂商的旗舰模型，同时还提供 image2.5、**Seedance 2.0** 等最先进的图片和视频生成模型。国模分组采用大厂自部署模型，低延迟高缓存，注册即送 3$ 体验金，欢迎试用。**目前 GPT 分组不能完全保证不降智，推荐使用其它分组。** 本项目全程使用 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse) 提供的 GPT、DeepSeek 等模型开发，你的每一笔充值都会使我获得返利和更多 token 来继续维护和开发新功能。 下图是我的 [Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse) 账户使用记录，重度使用一个月，亲测好用。
+[Fastai](https://www.fastaitoken.com/register?aff=BF9KNKFHX725&promo=WSSFK&utm=dsh-damage-pulse) 支持本项目开发，提供多家模型服务。链接含邀请标记，符合条件的充值会为作者提供返利和 Token，用于持续维护。**GPT 分组不能保证不降智，建议优先考虑其他分组。** 插件安装和全部功能均不依赖中转服务或充值。
 
 <p><img src="assets/fastaitoken-account-usage.png" alt="Fastai 账户使用记录" width="100%"></p>
 
-<p><img src="assets/fastaitoken-request-history.png" alt="Fastai 模型调用明细" width="100%"></p>
+<p><img src="assets/fastaitoken-request-history.png" alt="Fastai 调用记录" width="100%"></p>
 
 <a id="support"></a>
-<h2>赞助本项目<br><sub><sup>使用微信扫码支付以赞助本项目的开发。</sup></sub></h2>
 
-<p align="center">
-  <img src="docs/assets/readme/wechat-sponsor-qr.png" alt="微信赞赏码" width="360">
-</p>
+### 微信赞赏，支持项目开发
+
+<p align="center"><img src="docs/assets/readme/wechat-sponsor-qr.png" alt="微信赞赏码" width="300"></p>
