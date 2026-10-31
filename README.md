@@ -21,7 +21,7 @@
 
 ## 安装
 
-**当前源码版本：4.3.1，适配 DeepSeek Harness 0.2.1-rc.5。** 4.3.0 会被 rc.5 的兼容检查跳过。可下载版本以 [GitHub Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases) 为准；若尚无 4.3.1 发布包，请等待发布，不要在 rc.5 上安装旧包。
+**当前源码版本：4.3.2，适配 DeepSeek Harness 0.2.1-rc.1 至 rc.5。** 4.3.0 与 4.3.1 缺少 `0.2.1-rc.4` 的兼容声明，会被该宿主的兼容检查跳过。4.3.2 刚发布时会受包管理器约 24 小时的新版本等待期影响；需要立即安装时请指定版本，或使用 Release 里完整的 `.tgz`。
 
 在桌面版「插件」页添加包名 `dsh-damage-pulse`，或下载 Release 中完整的 `.tgz` 后添加其文件路径。也可用 CLI 安装 npm 当前发布版：
 

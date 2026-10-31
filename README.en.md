@@ -17,7 +17,7 @@ A usage, cost, and balance monitor for DeepSeek Harness. Inspect individual requ
 
 ## Installation
 
-**Source version: 4.3.1, supporting DeepSeek Harness 0.2.1-rc.5.** The rc.5 host skips 4.3.0 during compatibility checks. See [GitHub Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases) for available downloads; if 4.3.1 has not been published yet, wait for it instead of installing an older package on rc.5.
+**Source version: 4.3.2, supporting DeepSeek Harness 0.2.1-rc.1 through rc.5.** 4.3.0 and 4.3.1 omit the `0.2.1-rc.4` compatibility declaration and are skipped on that host. A just-published 4.3.2 is subject to the package manager's roughly 24-hour release-age window; pin the version or install the complete `.tgz` from Releases when you need it immediately.
 
 In the desktop Plugins page, add `dsh-damage-pulse` or the file path to a complete prebuilt `.tgz` downloaded from Releases. To install the currently published npm version with the CLI:
 
