@@ -21,7 +21,7 @@
 
 ## 安装
 
-**当前源码版本：4.3.2，适配 DeepSeek Harness 0.2.1-rc.1 至 rc.5。** 4.3.0 与 4.3.1 缺少 `0.2.1-rc.4` 的兼容声明，会被该宿主的兼容检查跳过。4.3.2 刚发布时会受包管理器约 24 小时的新版本等待期影响；需要立即安装时请指定版本，或使用 Release 里完整的 `.tgz`。
+**当前源码版本：4.3.3，适配 DeepSeek Harness 0.2.1-rc.1 至 rc.5，以及 `0.2.2-alpha.2`、`0.2.2-alpha.2-ce7073d-dirty`、`0.2.2-alpha.3`、`0.2.2-rc.1`。** 4.3.0–4.3.2 缺少新版宿主的兼容声明，会被兼容检查跳过。其中 `0.2.2-alpha.3` 与 `0.2.2-rc.1` 已在本机桌面版实机验证；`0.2.2-alpha.2` 及其报告的本地构建只是兼容声明放行，未取得对应桌面构建做实机验收。其它 0.2.2 版本（`alpha.4`、`beta`、`preview`、`rc.2` 与正式版）不在声明内，宿主仍会拒绝，发布后需要重新核验。新发布版本会受包管理器约 24 小时的新版本等待期影响；需要立即安装时请指定版本，或使用 Release 里完整的 `.tgz`。
 
 在桌面版「插件」页添加包名 `dsh-damage-pulse`，或下载 Release 中完整的 `.tgz` 后添加其文件路径。也可用 CLI 安装 npm 当前发布版：
 
@@ -38,7 +38,7 @@ dsh plugin --profile desktop add dsh-damage-pulse
 <details>
 <summary>旧版宿主兼容说明</summary>
 
-保留 `0.1.0-rc.5`、`0.1.1-rc.2`、Desktop 2.0.4（`0.1.2-alpha.1`）、`0.1.5-alpha.2` 等旧版兼容段，实际范围见 [package.json](package.json)。声明兼容不等于每个版本都逐一实机验收；本次验收使用 rc.5 桌面版。
+保留 `0.1.0-rc.5`、`0.1.1-rc.2`、Desktop 2.0.4（`0.1.2-alpha.1`）、`0.1.5-alpha.2` 等旧版兼容段，实际范围见 [package.json](package.json)。声明兼容不等于每个版本都逐一实机验收；本次验收使用 `0.2.2-rc.1` 与 `0.2.2-alpha.3` 桌面版。
 
 标准包自带会话金额：优先使用 `conversation.session.header.actions`；宿主提供 `sidebar.workspaces.sessionRow.trailing` 时追加注册。旧客户端使用严格 fail-closed 的兼容桥，只有唯一匹配原生会话行时才显示，检测到已有金额或正式席位即停用，避免重复。
 

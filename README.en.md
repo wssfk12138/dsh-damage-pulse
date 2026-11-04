@@ -17,7 +17,7 @@ A usage, cost, and balance monitor for DeepSeek Harness. Inspect individual requ
 
 ## Installation
 
-**Source version: 4.3.2, supporting DeepSeek Harness 0.2.1-rc.1 through rc.5.** 4.3.0 and 4.3.1 omit the `0.2.1-rc.4` compatibility declaration and are skipped on that host. A just-published 4.3.2 is subject to the package manager's roughly 24-hour release-age window; pin the version or install the complete `.tgz` from Releases when you need it immediately.
+**Source version: 4.3.3, supporting DeepSeek Harness 0.2.1-rc.1 through rc.5, plus `0.2.2-alpha.2`, `0.2.2-alpha.2-ce7073d-dirty`, `0.2.2-alpha.3`, and `0.2.2-rc.1`.** 4.3.0 through 4.3.2 omit the new host's compatibility declaration and are skipped by its check. `0.2.2-alpha.3` and `0.2.2-rc.1` were verified on the desktop app; `0.2.2-alpha.2` and the reported local build are admitted by the declaration only and were not installed from a matching desktop build. Other 0.2.2 builds (`alpha.4`, `beta`, `preview`, `rc.2`, and the final release) are not claimed and are still rejected by the host; each needs a new check once published. A just-published 4.3.3 is subject to the package manager's roughly 24-hour release-age window; pin the version or install the complete `.tgz` from Releases when you need it immediately.
 
 In the desktop Plugins page, add `dsh-damage-pulse` or the file path to a complete prebuilt `.tgz` downloaded from Releases. To install the currently published npm version with the CLI:
 
@@ -34,7 +34,7 @@ Replace `desktop` with your actual profile name. **Fully quit the desktop applic
 <details>
 <summary>Older host compatibility</summary>
 
-The declared peer ranges retain older hosts, including `0.1.0-rc.5`, `0.1.1-rc.2`, Desktop 2.0.4 (`0.1.2-alpha.1`), and `0.1.5-alpha.2`; see [package.json](package.json) for the exact ranges. A peer declaration does not mean every version has been tested on a real installation. This release was checked on the rc.5 desktop app.
+The declared peer ranges retain older hosts, including `0.1.0-rc.5`, `0.1.1-rc.2`, Desktop 2.0.4 (`0.1.2-alpha.1`), and `0.1.5-alpha.2`; see [package.json](package.json) for the exact ranges. A peer declaration does not mean every version has been tested on a real installation. This release was checked on the `0.2.2-rc.1` and `0.2.2-alpha.3` desktop apps.
 
 Session amounts are included in the standard package: `conversation.session.header.actions` is used first, and `sidebar.workspaces.sessionRow.trailing` is registered when the host provides it. A fail-closed bridge supports older clients only when a native session row can be matched unambiguously; it stops when formal slots or existing amounts are detected.
 
