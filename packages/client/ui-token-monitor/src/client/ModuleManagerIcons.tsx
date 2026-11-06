@@ -1,9 +1,8 @@
 import { useId } from 'react'
 /** Community glyphs copied from the accepted local preview. */
-export function ManagerCommunityIcon({ kind }: { kind: 'github' | 'star' | 'qq' }) {
+export function ManagerCommunityIcon({ kind }: { kind: 'github' | 'qq' }) {
   const maskId = useId()
   if (kind === 'github') return (<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.64 0 8.13c0 3.59 2.29 6.64 5.47 7.72.4.08.55-.18.55-.39 0-.19-.01-.83-.01-1.5-2.01.38-2.53-.5-2.69-.96-.09-.23-.48-.96-.82-1.15-.28-.15-.68-.54-.01-.55.63-.01 1.08.59 1.23.83.72 1.23 1.87.88 2.33.67.07-.53.28-.88.51-1.08-1.78-.21-3.64-.9-3.64-4.01 0-.89.31-1.62.82-2.19-.08-.2-.36-1.04.08-2.16 0 0 .67-.22 2.2.84A7.48 7.48 0 0 1 8 3.89c.68 0 1.36.09 2 .27 1.53-1.06 2.2-.84 2.2-.84.44 1.12.16 1.96.08 2.16.51.57.82 1.3.82 2.19 0 3.12-1.87 3.8-3.65 4.01.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.47.55.39A8.04 8.04 0 0 0 16 8.13C16 3.64 12.42 0 8 0Z" /></svg>)
-  if (kind === 'star') return (<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 2.6 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3-5.6-3-5.6 3 1.1-6.3-4.6-4.5 6.3-.9L12 2.6Z" /></svg>)
   if (kind === 'qq') return (<svg viewBox="4 2 24 28" aria-hidden="true">
     <defs><mask id={maskId} maskUnits="userSpaceOnUse" x="4" y="2" width="24" height="28">
       <path d="M4 2h24v28H4Z" fill="white" />

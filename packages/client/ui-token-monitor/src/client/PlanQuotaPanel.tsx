@@ -4,9 +4,10 @@ import type { PlanQuotaProvider, PlanQuotaSnapshot, PlanQuotaWindow, PlanQuotaWi
 import type { DetailKey, DetailTranslate } from './detail-locales.ts'
 import { beijingDateTime } from './detail-model.ts'
 import styles from './PlanQuotaPanel.module.css'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 /* Host 提供的 Plan 额度快照端点。 */
-export const PLAN_QUOTA_URL = '/api/token-monitor/plan-quotas'
+export const PLAN_QUOTA_URL = tokenMonitorUrl('/api/token-monitor/plan-quotas')
 /* Plan 额度页签停留期间的轮询间隔。 */
 export const PLAN_QUOTA_POLL_MS = 60_000
 /* 本地时钟推进间隔，用来保持剩余时长实时。 */

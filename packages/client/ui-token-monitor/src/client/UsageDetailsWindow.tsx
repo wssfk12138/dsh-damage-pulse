@@ -15,6 +15,7 @@ import { PLUGIN_LAYER_CLASS, useEscapeDismiss } from './useEscapeDismiss.ts'
 const WINDOW_Z_INDEX = 1300
 import type { UsageSummaryRange } from './types.ts'
 import { useUsageRefresh, usageSummaryUrl } from './useUsageRefresh.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 interface Filters {
   provider: string
@@ -60,7 +61,7 @@ export function UsageDetailsWindow({ onClose, t, billingInstalled = true }: {
     invalidTime = !Number.isFinite(from) || !Number.isFinite(to) || from < 0 || to < from
     params.set('from', String(from)); params.set('to', String(to + 999))
   }
-  const usage = useUsageRefresh(usageSummaryUrl(filters.range as UsageSummaryRange, filters.provider, appliedCustom), invalidTime ? undefined : '/api/token-monitor/details?' + params, page > 1, refresh)
+  const usage = useUsageRefresh(usageSummaryUrl(filters.range as UsageSummaryRange, filters.provider, appliedCustom), invalidTime ? undefined : tokenMonitorUrl('/api/token-monitor/details?' + params), page > 1, refresh)
   const { data, loading } = usage.details
   const error: DetailKey | undefined = invalidTime ? 'invalidTime' : usage.details.error
   useEffect(() => { if (data) snapshot.current = data.snapshot }, [data])

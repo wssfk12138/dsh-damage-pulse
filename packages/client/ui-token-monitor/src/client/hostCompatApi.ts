@@ -1,3 +1,5 @@
+import { tokenMonitorUrl } from './monitorUrl.ts'
+
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 /** 宿主持久化「可忽略」标记的能力。 */
@@ -65,7 +67,7 @@ export function parseHostCompatStatus(value: unknown): HostCompatStatus {
  */
 export function createHostCompatApi(
   fetchImpl: FetchLike = fetch,
-  path = '/api/token-monitor/host-compat',
+  path = tokenMonitorUrl('/api/token-monitor/host-compat'),
 ): HostCompatApi {
   return {
     async status(signal) {

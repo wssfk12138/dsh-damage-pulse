@@ -51,6 +51,13 @@ it('shows update failures only in the dismissible error dialog', async () => {
   expect(screen.queryByText(/DOWNLOAD_FAILED/)).toBeNull()
 })
 
+it('labels the QQ control as the user group and no longer renders a star shortcut', () => {
+  mount()
+  const qq = screen.getByRole('link', { name: '加入 QQ 群' })
+  expect(qq.textContent).toContain('用户群')
+  expect(screen.queryByRole('link', { name: /Star/i })).toBeNull()
+})
+
 it('keeps manager controls outside the draggable balance-card pointer path', () => {
   const parentPointerDown = vi.fn()
   const onClose = vi.fn()

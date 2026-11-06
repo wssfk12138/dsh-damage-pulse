@@ -5,6 +5,7 @@ import {
   type TokenMonitorSettingsSnapshot,
 } from '@deepseek-ai/dsh-token-monitor-contract'
 import { PRODUCT_NAME } from './branding.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
@@ -99,7 +100,7 @@ export interface TokenMonitorSettingsApi {
  */
 export function createTokenMonitorSettingsApi(
   fetcher: FetchLike = fetch,
-  endpoint = '/api/token-monitor/settings',
+  endpoint = tokenMonitorUrl('/api/token-monitor/settings'),
 ): TokenMonitorSettingsApi {
   let observed: TokenMonitorSettingsSnapshot | undefined
   const remember = (snapshot: TokenMonitorSettingsSnapshot) => { observed = snapshot; return snapshot }

@@ -19,6 +19,7 @@ import {
 import { PRODUCT_NAME } from './branding.ts'
 import { hostCompatHint, type HostCompatApi, type HostCompatStatus } from './hostCompatApi.ts'
 import { useEscapeDismiss } from './useEscapeDismiss.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 /** 设置面板挂在 BalanceWidget 的 1200 层遮罩内（宿主 Modal 是 1000）。 */
 const SETTINGS_Z_INDEX = 1200
@@ -31,8 +32,7 @@ import {
 } from './wechatConnectionApi.ts'
 const LocalLoginQr = lazy(() => import('./WechatLoginQr.tsx').then(module => ({ default: module.WechatLoginQr })))
 
-const CUTE_ASSET_ROOT = TOKEN_MONITOR_CUTE_ASSET_BASE
-function cuteAsset(name: string): string { return `${CUTE_ASSET_ROOT}/${name}.png` }
+function cuteAsset(name: string): string { return tokenMonitorUrl(`${TOKEN_MONITOR_CUTE_ASSET_BASE}/${name}.png`) }
 
 const SETTINGS_KEYS = [
   'dailyBudgetEnabled',

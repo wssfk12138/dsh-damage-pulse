@@ -28,6 +28,7 @@ import { TokenMonitorSettingsApiError } from './settingsApi.ts'
 import { createWechatConnectionApi } from './wechatConnectionApi.ts'
 import { createHostCompatApi } from './hostCompatApi.ts'
 import { createNotificationEventsApi, type TokenMonitorNotificationEvent } from './notificationApi.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 import { applyNotificationPollResult, createNotificationQueueState, dequeueNotificationItem, notificationMatchesScope, type NotificationVisualItem } from './notificationQueue.ts'
 import type { BalanceInfo } from './types.ts'
 import { useDisplayScope } from './useDisplayScope.ts'
@@ -105,7 +106,7 @@ const CONTEXT_MENU_HOVER = {
 const RED = '#ff3b30'
 const GREEN = '#30a46c'
 const UNKNOWN_COLOR = '#8a8a8a'
-const WHALE_ASSET_ROOT = TOKEN_MONITOR_WHALE_ASSET_BASE
+const WHALE_ASSET_ROOT = tokenMonitorUrl(TOKEN_MONITOR_WHALE_ASSET_BASE)
 /** 鲸鱼娘与扣血反馈共用后台比例；保留各自宽高比，随卡片实际宽度同比调整。 */
 const DAMAGE_REFERENCE_WIDTH_PX = 200
 /** 原扣血字号/位移按 200px 卡片、90% 角色宽度调定，不改变动画节奏。 */
@@ -399,7 +400,7 @@ export function BalanceWidget({
   activeProviderRef.current = scope?.provider
   const legacyRouteActive = loadDisplayScope === undefined && loadRouteEligibility !== undefined && previewOverride === undefined
   const shouldPoll = scope !== undefined || previewOverride !== undefined || (legacyRouteActive && legacyEligible === true)
-  const balanceUrl = `/api/token-monitor/balance?${new URLSearchParams({ provider: scope?.provider ?? 'deepseek-official' })}`
+  const balanceUrl = tokenMonitorUrl(`/api/token-monitor/balance?${new URLSearchParams({ provider: scope?.provider ?? 'deepseek-official' })}`)
   // undefined = 加载中（不渲染）；null = 端点返回空（未查询到余额）。
   const [balanceInfo, setBalanceInfo] = useState<BalanceInfo | null | undefined>(undefined)
   // 本地维护的显示余额（null = 尚未从余额接口初始化基线）。
@@ -672,9 +673,9 @@ const CONTEXT_MENU_Z_INDEX = 1100
     }
   }, [applySettingsSnapshot, loadModelCatalog])
 
-  const loadProviderSettings = useCallback((provider: string) => createTokenMonitorSettingsApi(fetch, `/api/token-monitor/settings?${new URLSearchParams({ provider })}`).get(), [])
+  const loadProviderSettings = useCallback((provider: string) => createTokenMonitorSettingsApi(fetch, tokenMonitorUrl(`/api/token-monitor/settings?${new URLSearchParams({ provider })}`)).get(), [])
   const saveProviderSettings = useCallback(async (provider: string, request: TokenMonitorSettingsPatchRequest) => {
-    const snapshot = await createTokenMonitorSettingsApi(fetch, `/api/token-monitor/settings?${new URLSearchParams({ provider })}`).patch(request)
+    const snapshot = await createTokenMonitorSettingsApi(fetch, tokenMonitorUrl(`/api/token-monitor/settings?${new URLSearchParams({ provider })}`)).patch(request)
     if (isOfficialRoute(provider)) applySettingsSnapshot(snapshot)
     if (activeProviderRef.current === provider && (notificationSettingsRef.current?.snapshot.revision ?? -1) <= snapshot.revision) {
       notificationSettingsRef.current = { provider, snapshot }
@@ -692,7 +693,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
       if (loading) return
       loading = true
       try {
-        const snapshot = await createTokenMonitorSettingsApi(fetch, `/api/token-monitor/settings?${new URLSearchParams({ provider })}`).get(controller.signal)
+        const snapshot = await createTokenMonitorSettingsApi(fetch, tokenMonitorUrl(`/api/token-monitor/settings?${new URLSearchParams({ provider })}`)).get(controller.signal)
         if (!controller.signal.aborted && (notificationSettingsRef.current?.snapshot.revision ?? -1) <= snapshot.revision) {
           notificationSettingsRef.current = { provider, snapshot }
         }
@@ -1020,7 +1021,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
     const controller = new AbortController()
     void (async () => {
       try {
-        const response = await fetch('/api/token-monitor/balance-script?provider=' + encodeURIComponent(scope.provider), { cache: 'no-store', signal: controller.signal })
+        const response = await fetch(tokenMonitorUrl('/api/token-monitor/balance-script?provider=' + encodeURIComponent(scope.provider)), { cache: 'no-store', signal: controller.signal })
         if (!response.ok) return
         const value = await response.json() as { status?: string; source?: string }
         if (!controller.signal.aborted) setBalanceScriptAvailable(value.status === 'valid' || value.source === 'built-in')
@@ -1042,7 +1043,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
     const modelQuery = scope && scope.sessionId !== undefined ? '?' + new URLSearchParams({ provider: scope.provider, model: scope.model }) : query
     const read = async (search: string): Promise<UsageOverview | null | undefined> => {
       try {
-        const response = await fetch('/api/token-monitor/modules/overview' + search, { cache: 'no-store', signal: controller.signal })
+        const response = await fetch(tokenMonitorUrl('/api/token-monitor/modules/overview' + search), { cache: 'no-store', signal: controller.signal })
         if (response.status === 204) { unavailable = true; void refreshModules?.(); return undefined }
         return response.ok ? await response.json() as UsageOverview | null : undefined
       } catch { return undefined /* Keep the current scope's last telemetry during transient failures. */ }
@@ -1068,7 +1069,7 @@ const CONTEXT_MENU_Z_INDEX = 1100
     let timer: ReturnType<typeof setTimeout> | undefined
     const poll = async () => {
       try {
-        const res = await fetch(`/api/token-monitor/charge-events?since=${chargeSeq.current}`, { cache: 'no-store', signal: controller.signal })
+        const res = await fetch(tokenMonitorUrl(`/api/token-monitor/charge-events?since=${chargeSeq.current}`), { cache: 'no-store', signal: controller.signal })
         if (!res.ok) return
         const data = (await res.json()) as {
           streamId?: string

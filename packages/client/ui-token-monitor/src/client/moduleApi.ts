@@ -1,5 +1,6 @@
 /** Authenticated module management transport; failures never substitute mock state. */
 import type { ModuleSnapshot, ModuleUninstallRequest, ModuleRestorePlan, ModuleRestoreRequest, ModuleUpdateStatus } from '@deepseek-ai/dsh-token-monitor-contract'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 type JsonObject = Record<string, unknown>
 const object = (value: unknown): value is JsonObject => value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -20,7 +21,7 @@ const plan = (value: unknown): value is ModuleRestorePlan => object(value) && mo
   && version(value.currentVersion) && version(value.latestVersion) && flag(value.currentAvailable) && flag(value.hasUpdate)
 
 async function request<T>(action: string, validate: (value: unknown) => value is T, body?: unknown, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`/api/token-monitor/modules${action}`, {
+  const response = await fetch(tokenMonitorUrl(`/api/token-monitor/modules${action}`), {
     credentials: 'same-origin', cache: 'no-store', ...(signal ? { signal } : {}),
     ...(body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
   })

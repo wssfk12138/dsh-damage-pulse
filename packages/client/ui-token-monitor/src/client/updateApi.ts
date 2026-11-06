@@ -1,3 +1,5 @@
+import { tokenMonitorUrl } from './monitorUrl.ts'
+
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 /** Download metadata for one Token Monitor update asset. */
@@ -93,7 +95,7 @@ export interface TokenMonitorUpdateApi {
  * @param basePath - Base path of the update endpoint.
  * @returns An update API client bound to the supplied base path.
  */
-export function createTokenMonitorUpdateApi(fetcher: FetchLike = fetch, basePath = '/api/token-monitor/update'): TokenMonitorUpdateApi {
+export function createTokenMonitorUpdateApi(fetcher: FetchLike = fetch, basePath = tokenMonitorUrl('/api/token-monitor/update')): TokenMonitorUpdateApi {
   return {
     async check(signal) { return parse(await fetcher(basePath, { cache: 'no-store', ...(signal === undefined ? {} : { signal }) }), parseStatus) },
     async install(signal) { return parse(await fetcher(`${basePath}/install`, { method: 'POST', cache: 'no-store', ...(signal === undefined ? {} : { signal }) }), parseInstall) },

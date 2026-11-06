@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DetailPage } from '@deepseek-ai/dsh-token-monitor-contract'
 import type { UsageSummary, UsageSummaryRange } from './types.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 /** Safe display states; response bodies and credentials never become error copy. */
 export type UsageRefreshError = 'failed' | 'authorizationExpired' | 'expired'
@@ -17,7 +18,7 @@ export function usageSummaryUrl(range: UsageSummaryRange, provider: string, cust
   if (range === 'custom' && !custom) return undefined
   const query = new URLSearchParams({ range, provider })
   if (range === 'custom' && custom) { query.set('from', String(custom.from)); query.set('to', String(custom.to)) }
-  return '/api/token-monitor/usage-summary?' + query
+  return tokenMonitorUrl('/api/token-monitor/usage-summary?' + query)
 }
 
 function validResponse(endpoint: Endpoint, value: unknown, url: string): boolean {

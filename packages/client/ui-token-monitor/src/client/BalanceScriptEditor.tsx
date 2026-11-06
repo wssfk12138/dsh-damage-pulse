@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DetailTranslate } from './detail-locales.ts'
 import css from './BillingRulesPanel.module.css'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 type Endpoint = { path: string; method: string }
 type Snapshot = {
@@ -52,7 +53,7 @@ export function BalanceScriptEditor({ provider, t, onBusyChange }: {
     const draft: Draft = { text: '', version: 0, dirty: false, pending: true }
     drafts.current.set(id, draft); refresh()
     try {
-      const response = await fetch('/api/token-monitor/balance-script?provider=' + encodeURIComponent(id))
+      const response = await fetch(tokenMonitorUrl('/api/token-monitor/balance-script?provider=' + encodeURIComponent(id)))
       if (!response.ok) throw new Error('Script load failed')
       draft.snapshot = readSnapshot(await response.json(), id)
       draft.text = draft.snapshot.script
@@ -67,7 +68,7 @@ export function BalanceScriptEditor({ provider, t, onBusyChange }: {
     const version = draft.version, script = draft.text
     refresh()
     try {
-      const response = await fetch('/api/token-monitor/balance-script?provider=' + encodeURIComponent(id), {
+      const response = await fetch(tokenMonitorUrl('/api/token-monitor/balance-script?provider=' + encodeURIComponent(id)), {
         method: 'PUT', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ expectedRevision: draft.snapshot.revision, ...(draft.snapshot.source === 'native-account' ? { enabled: draft.enabled } : { script }) }),
       })
@@ -84,7 +85,7 @@ export function BalanceScriptEditor({ provider, t, onBusyChange }: {
     draft.pending = true; delete draft.error
     refresh()
     try {
-      const response = await fetch('/api/token-monitor/balance-endpoint?provider=' + encodeURIComponent(id), {
+      const response = await fetch(tokenMonitorUrl('/api/token-monitor/balance-endpoint?provider=' + encodeURIComponent(id)), {
         method: 'PUT', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ path: endpoint.path, method: endpoint.method }),
       })

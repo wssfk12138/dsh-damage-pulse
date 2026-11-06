@@ -1,5 +1,6 @@
 /** Authenticated billing snapshots exposed to the slot renderer as one observable source. */
 import { validateBillingRules, type BillingSnapshot } from '@deepseek-ai/dsh-token-monitor-contract'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 /** Validate HTTP and event-stream snapshots before exposing them to the editor.
  * @param value Untrusted response.
@@ -19,7 +20,9 @@ export interface BillingEventsState { snapshot?: BillingSnapshot; invalid: boole
 /** Create a lazy stream owned by the plugin and subscribed by the slot renderer.
  * @returns Stable observable source and its plugin disposal callback.
  */
-export function createBillingEvents(): {
+export function createBillingEvents(
+  endpoint = tokenMonitorUrl('/api/token-monitor/billing/events'),
+): {
   getSnapshot: () => BillingEventsState
   subscribe: (listener: () => void) => () => void
   dispose: () => void
@@ -40,7 +43,7 @@ export function createBillingEvents(): {
   }
   const connect = () => {
     if (disposed || !enabled || events || !listeners.size) return
-    const current = events = new EventSource('/api/token-monitor/billing/events')
+    const current = events = new EventSource(endpoint)
     current.onmessage = (event) => {
       if (events !== current || disposed || !enabled) return
       let next: BillingEventsState

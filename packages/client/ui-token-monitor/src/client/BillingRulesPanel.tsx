@@ -14,6 +14,7 @@ import { BillingSourceDetails } from './BillingSourceDetails.tsx'
 import { BillingTemplatePreview } from './BillingTemplatePreview.tsx'
 import { BalanceScriptEditor } from './BalanceScriptEditor.tsx'
 import { useEscapeDismiss } from './useEscapeDismiss.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 /** 与 BillingRulesPanel.module.css 的 .panel z-index 保持一致（宿主 Modal 是 1000）。 */
 const PANEL_Z_INDEX = 1300
@@ -249,7 +250,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     const version = editVersion.current
     setLoadError(false)
     try {
-      const response = await fetch('/api/token-monitor/billing')
+      const response = await fetch(tokenMonitorUrl('/api/token-monitor/billing'))
       if (!response.ok) throw new Error('Billing load failed')
       const next = readSnapshot(await response.json())
       if (liveSnapshot.current !== startedWith || version !== editVersion.current || (dirty.current && !discard)) return
@@ -281,7 +282,7 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
   const loadTemplates = async () => {
     setTemplatesFailed(false)
     try {
-      const response = await fetch('/api/token-monitor/billing/templates')
+      const response = await fetch(tokenMonitorUrl('/api/token-monitor/billing/templates'))
       if (!response.ok) throw new Error('Template load failed')
       setTemplates(validateBillingRules(await response.json()))
     } catch { setTemplatesFailed(true) }
@@ -387,12 +388,12 @@ export function BillingRulesPanel({ onClose, loadModelCatalog, billingEvents, t 
     setSaved(false)
     setError(undefined)
     try {
-      const response = await fetch('/api/token-monitor/billing', { method: 'PUT',
+      const response = await fetch(tokenMonitorUrl('/api/token-monitor/billing'), { method: 'PUT',
         headers: { 'content-type': 'application/json' }, body: JSON.stringify({ expectedRevision: snapshot.revision, rules }),
       })
       if (!response.ok) {
         if (response.status === 409) {
-          const fresh = await fetch('/api/token-monitor/billing')
+          const fresh = await fetch(tokenMonitorUrl('/api/token-monitor/billing'))
           if (!fresh.ok) throw new Error('Billing reload failed')
           const latest = readSnapshot(await fresh.json())
           if (JSON.stringify(latest.rules) === JSON.stringify(snapshot.rules)) {

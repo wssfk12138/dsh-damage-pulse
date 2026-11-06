@@ -10,10 +10,13 @@
 .version { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; padding: 10px 12px; border: 1px solid var(--dsw-alias-monitor-card-border); border-radius: var(--dsw-radius-lg, var(--dsh-token-monitor-radius-lg)); background: var(--dsw-alias-monitor-card); box-shadow: var(--dsw-alias-monitor-card-shadow); }
 .versionCopy { display: grid; gap: 4px; min-width: 150px; padding-top: 4px; }
 .updateState { color: var(--dsw-alias-monitor-muted); font-size: 11px; }
-.updateActions { display: grid; grid-template-columns: 34px minmax(84px,1fr) minmax(84px,1fr) 34px 34px; align-items: center; gap: 7px; width: min(100%, 420px); min-width: 0; }
+.updateActions { display: grid; grid-template-columns: 34px minmax(72px,1fr) minmax(72px,1fr) auto; align-items: center; gap: 7px; width: min(100%, 390px); min-width: 0; }
 .community { display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--dsw-alias-monitor-action-border); border-radius: var(--dsw-radius-sm, var(--dsh-token-monitor-radius-sm)); background: var(--dsw-alias-monitor-button); color: var(--dsw-alias-monitor-brand); text-decoration: none; cursor: pointer; }
 .community:hover { border-color: var(--dsw-alias-monitor-brand); background: var(--dsw-alias-monitor-hover); }
 .community svg { width: 19px; height: 19px; fill: currentColor; }
+.qq { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: auto; min-width: 82px; padding: 0 10px; white-space: nowrap; font-size: 12px; }
+.qq svg { width: 18px; height: 18px; }
+.qqLabel { line-height: 1; }
 .check { background: var(--dsw-alias-monitor-button); color: var(--dsw-alias-monitor-brand); }
 .check, .install { height: 34px; min-width: 0; padding: 6px 10px; border: 1px solid var(--dsw-alias-monitor-action-border); border-radius: var(--dsw-radius-sm, var(--dsh-token-monitor-radius-sm)); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
 .danger { color: var(--dsw-alias-monitor-error); border-color: var(--dsw-alias-monitor-danger-panel-border); }
@@ -45,4 +48,4 @@
 .confirm.confirm { width: min(440px, calc(100vw - 28px)); padding: 18px; gap: 0; }
 .confirm pre { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--dsw-alias-monitor-error); }
 .button:disabled { opacity: .45; cursor: not-allowed; }
-@media (max-width: 540px) { .row { gap: 10px; padding: 12px 17px; border-radius: var(--dsw-radius-panel, var(--dsh-token-monitor-radius-panel)); } .status { gap: 7px; } .status strong { max-width: 66px; } .row p { margin-left: 0; } .row h2 { font-size: 14px; gap: 6px; } .updateActions { gap: 5px; grid-template-columns: 34px minmax(0,1fr) minmax(0,1fr) 34px 34px; } }
+@media (max-width: 540px) { .row { gap: 10px; padding: 12px 17px; border-radius: var(--dsw-radius-panel, var(--dsh-token-monitor-radius-panel)); } .status { gap: 7px; } .status strong { max-width: 66px; } .row p { margin-left: 0; } .row h2 { font-size: 14px; gap: 6px; } .updateActions { gap: 5px; grid-template-columns: 34px minmax(0,1fr) minmax(0,1fr) auto; } .qq { min-width: 74px; padding: 0 7px; } }

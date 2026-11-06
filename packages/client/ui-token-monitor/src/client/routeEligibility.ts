@@ -1,4 +1,5 @@
 import type { SessionId } from '@deepseek-ai/dsh-client-connection/client'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 /** Host pricing identity used to decide whether the current route can be charged. */
 export interface PricingEligibilityInfo {
@@ -88,7 +89,7 @@ export function createRouteEligibilityLoader(
       if (signal.aborted) return undefined
       const [route, response] = await Promise.all([
         directory.load(),
-        fetcher('/api/token-monitor/pricing-eligibility', { cache: 'no-store', signal }),
+        fetcher(tokenMonitorUrl('/api/token-monitor/pricing-eligibility'), { cache: 'no-store', signal }),
       ])
       if (signal.aborted || !response.ok) return undefined
       const pricing = parsePricingEligibilityInfo(await response.json())

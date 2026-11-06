@@ -21,12 +21,12 @@
 
 ## 安装
 
-**当前源码版本：4.3.3，适配 DeepSeek Harness 0.2.1-rc.1 至 rc.5，以及 `0.2.2-alpha.2`、`0.2.2-alpha.2-ce7073d-dirty`、`0.2.2-alpha.3`、`0.2.2-rc.1`。** 4.3.0–4.3.2 缺少新版宿主的兼容声明，会被兼容检查跳过。其中 `0.2.2-alpha.3` 与 `0.2.2-rc.1` 已在本机桌面版实机验证；`0.2.2-alpha.2` 及其报告的本地构建只是兼容声明放行，未取得对应桌面构建做实机验收。其它 0.2.2 版本（`alpha.4`、`beta`、`preview`、`rc.2` 与正式版）不在声明内，宿主仍会拒绝，发布后需要重新核验。新发布版本会受包管理器约 24 小时的新版本等待期影响；需要立即安装时请指定版本，或使用 Release 里完整的 `.tgz`。
+**当前源码版本：4.3.4，适配 DeepSeek Harness 0.2.1-rc.1 至 rc.5，以及 `0.2.2-alpha.2`、`0.2.2-alpha.2-ce7073d-dirty`、`0.2.2-alpha.3`、`0.2.2-rc.1`。** 4.3.0–4.3.2 缺少新版宿主的兼容声明，会被兼容检查跳过。其中 `0.2.2-alpha.3` 与 `0.2.2-rc.1` 已在本机桌面版实机验证；`0.2.2-alpha.2` 及其报告的本地构建只是兼容声明放行，未取得对应桌面构建做实机验收。其它 0.2.2 版本（`alpha.4`、`beta`、`preview`、`rc.2` 与正式版）不在声明内，宿主仍会拒绝，发布后需要重新核验。4.3.4 目前只通过 GitHub Release 的完整 `.tgz` 提供；npm 通道仍为 4.3.3，按包名安装不会得到本次修复。
 
-在桌面版「插件」页添加包名 `dsh-damage-pulse`，或下载 Release 中完整的 `.tgz` 后添加其文件路径。也可用 CLI 安装 npm 当前发布版：
+本次 4.3.4 **不发布 npm**。请下载 v4.3.4 Release 中完整的 `dsh-damage-pulse-4.3.4.tgz`，在桌面版「插件」页添加该文件路径，或用 CLI 安装该 Release 地址：
 
 ```powershell
-dsh plugin --profile desktop add dsh-damage-pulse
+dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.3.4/dsh-damage-pulse-4.3.4.tgz
 ```
 
 将 `desktop` 换成实际使用的 profile 名。安装后**完整退出桌面程序（含托盘）再启动**，在悬浮卡右键的「卸载与更新」核对版本。
@@ -142,7 +142,7 @@ dsh plugin --profile desktop add dsh-damage-pulse
 
 - **没有余额？** 先检查对应供应商凭据与连接；缺少余额凭据不影响用量统计。支持 IPv4 TUN/Fake-IP（`198.18.0.0/15`），暂不支持 IPv6 或 IPv4-mapped Fake-IP；查询失败时不显示金额或错误码。
 - **安装后不出现或仍是旧界面？** 完整退出并重启目标 profile，核对插件自身版本；旧源码集成用户检查是否重复挂载。若宿主因启动失败禁用了插件，修复安装后需重新启用。
-- **缺少 `runtime/manifest.json`？** 换用 npm 包或 Release 的完整 `.tgz`，不要直接安装源码。包名安装版本偏旧时，核对 registry 和包管理器新版本等待策略，或使用目标 Release 的 tgz。
+- **缺少 `runtime/manifest.json`？** 换用 Release 的完整 `.tgz`，不要直接安装源码。4.3.4 未发布 npm，按包名安装会得到 4.3.3；需要本次修复时使用目标 Release 的 tgz。
 - **旧会话没有金额？** 重启后等待历史投影补齐；标准包已有会话金额能力，无需手工改宿主源码。异常时附宿主版本、插件版本和错误内容到 [Issues](https://github.com/wssfk12138/dsh-damage-pulse/issues)。
 
 接口、ClawBot 配置、旧版恢复及源码开发见[高级参考](docs/REFERENCE.zh-CN.md)。历史修复见 [Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases)。

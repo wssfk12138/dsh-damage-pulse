@@ -6,6 +6,7 @@
  */
 import { useEffect, useState } from 'react'
 import type { SessionId } from './host-contracts.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 /** Host 会话金额兜底行的展示结构（与 Host 的 SessionSummary 同形）。 */
 export interface LedgerSessionSummary {
@@ -23,7 +24,7 @@ export interface LedgerSessionSummary {
   lastActivity: number
 }
 
-export const SESSION_LEDGER_ROUTE = '/api/token-monitor/session-costs'
+export const SESSION_LEDGER_ROUTE = tokenMonitorUrl('/api/token-monitor/session-costs')
 /** 兜底金额的提示：明确说明来源是持久账本而不是会话日志折叠。 */
 export const LEDGER_COST_TITLE = '会话消费金额（按持久账本累计：该会话日志缺少用量事件）'
 const REFRESH_MS = 60_000

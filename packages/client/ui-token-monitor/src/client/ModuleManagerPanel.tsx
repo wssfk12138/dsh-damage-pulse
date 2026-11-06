@@ -5,9 +5,10 @@ import { Modal } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { DetailKey, DetailTranslate } from './detail-locales.ts'
 import { moduleApi } from './moduleApi.ts'
 import { ManagerCommunityIcon } from './ModuleManagerIcons.tsx'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 import css from './ModuleManagerPanel.module.css'
 
-const asset = (name: string) => `${TOKEN_MONITOR_CUTE_ASSET_BASE}/${name}.png`
+const asset = (name: string) => tokenMonitorUrl(`${TOKEN_MONITOR_CUTE_ASSET_BASE}/${name}.png`)
 const labels: Record<string, [DetailKey, DetailKey, string]> = {
   pet: ['modulesPet', 'modulesPetDescription', 'warning'],
   overview: ['modulesOverview', 'modulesOverviewDescription', 'warning'],
@@ -121,8 +122,7 @@ export function ModuleManagerPanel({ snapshot, refresh, onClose, onConfigErased,
               <a className={css.community} href="https://github.com/wssfk12138/dsh-damage-pulse" target="_blank" rel="noreferrer noopener" aria-label={t('modulesGithub')} title={t('modulesGithub')}><ManagerCommunityIcon kind="github" /></a>
               <button type="button" className={css.check} disabled={busy || !snapshot || snapshot.restartRequired} onClick={() => { void run(async () => { const result = await api.check(); if (active.current) setUpdate(result) }) }}>{t('modulesCheck')}</button>
               <button type="button" className={css.install} aria-describedby={`${id}-module-update-status`} title={!update ? t('modulesUnchecked') : !update.hasUpdate ? t('modulesLatest', { version: update.latestVersion }) : !update.compatible ? t('modulesNoPackage') : undefined} disabled={busy || !snapshot || snapshot.restartRequired || !update?.hasUpdate || !update.compatible} onClick={installUpdate}>{t('modulesInstall')}</button>
-              <a className={css.community} href="https://github.com/wssfk12138/dsh-damage-pulse" target="_blank" rel="noreferrer noopener" aria-label={t('modulesStar')} title={t('modulesStar')}><ManagerCommunityIcon kind="star" /></a>
-              <a className={css.community} href="mqqapi://card/show_pslcard?uin=1012639381&card_type=group" aria-label={t('modulesQQ')} title={t('modulesQQ')}><ManagerCommunityIcon kind="qq" /></a>
+              <a className={`${css.community} ${css.qq}`} href="mqqapi://card/show_pslcard?uin=1012639381&card_type=group" aria-label={t('modulesQQ')} title={t('modulesQQ')}><span className={css.qqLabel}>{t('modulesQQLabel')}</span><ManagerCommunityIcon kind="qq" /></a>
             </div>
           </div>
           <p className={css.note}>{t('modulesNote')}</p>

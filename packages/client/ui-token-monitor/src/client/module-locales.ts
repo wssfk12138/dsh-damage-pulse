@@ -19,7 +19,7 @@ export const moduleZh = {
   modulesRestoreExact: '从 GitHub 下载与当前插件完全一致的版本 v{version}。',
   modulesError: '操作未完成', modulesErrorCode: '错误日志：{code}',
   modulesRestart: '安装完成，请重启 DSH 以加载新版本。', modulesNoPackage: '该版本没有兼容的模块安装包',
-  modulesGithub: '打开 GitHub 项目主页', modulesStar: '打开 GitHub 项目并点击 Star', modulesQQ: '加入 QQ 群',
+  modulesGithub: '打开 GitHub 项目主页', modulesQQ: '加入 QQ 群', modulesQQLabel: '用户群',
   modulesLoading: '正在读取模块状态…', notificationSettings: '通知设置', modulesAnchor: '插件管理',
 }
 export const moduleEn: Record<keyof typeof moduleZh, string> = {
@@ -41,6 +41,6 @@ export const moduleEn: Record<keyof typeof moduleZh, string> = {
   modulesCurrentMissing: 'GitHub has no compatible module for the current version. Upgrade to version {version} to restore?',
   modulesRestoreExact: 'Download the exact matching version {version} from GitHub.',
   modulesError: 'Operation incomplete', modulesErrorCode: 'Error log: {code}', modulesRestart: 'Installed. Restart DSH to load the new version.',
-  modulesNoPackage: 'This release has no compatible module package', modulesGithub: 'Open GitHub project', modulesStar: 'Open GitHub project to star it', modulesQQ: 'Join QQ group',
+  modulesNoPackage: 'This release has no compatible module package', modulesGithub: 'Open GitHub project', modulesQQ: 'Join QQ group', modulesQQLabel: 'User group',
   modulesLoading: 'Loading module status…', notificationSettings: 'Notification settings', modulesAnchor: 'Plugin management',
 }

@@ -1,5 +1,6 @@
 import type { SessionId } from './host-contracts.ts'
 import type { ModelDirectoryResolverLike } from './routeEligibility.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 /** One foreground card identity. Execution takes precedence over the next-request selector. */
 export interface DisplayScope { sessionId?: SessionId; provider: string; model: string }
@@ -21,7 +22,7 @@ export function createDisplayScopeLoader(
   return async (sessionId, signal) => {
     if (signal.aborted) return undefined
     if (sessionId !== undefined) {
-      const response = await fetcher(`/api/token-monitor/modules/display-scope?${new URLSearchParams({ sessionId })}`, { signal, cache: 'no-store' })
+      const response = await fetcher(tokenMonitorUrl(`/api/token-monitor/modules/display-scope?${new URLSearchParams({ sessionId })}`), { signal, cache: 'no-store' })
       if (response.status === 204) return undefined
       if (!response.ok) throw new Error('Execution route unavailable')
       const active = await response.json() as unknown

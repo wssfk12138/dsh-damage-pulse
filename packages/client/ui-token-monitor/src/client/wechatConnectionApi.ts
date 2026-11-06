@@ -1,3 +1,5 @@
+import { tokenMonitorUrl } from './monitorUrl.ts'
+
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
 /** Whether the Host supports managed WeChat notifications. */
@@ -252,7 +254,7 @@ function signalInit(signal: AbortSignal | undefined): Pick<RequestInit, 'signal'
  */
 export function createWechatConnectionApi(
   fetcher: FetchLike = fetch,
-  basePath = '/api/token-monitor/wechat',
+  basePath = tokenMonitorUrl('/api/token-monitor/wechat'),
 ): WechatConnectionApi {
   return {
     async status(signal) {

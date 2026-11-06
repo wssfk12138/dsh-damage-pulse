@@ -17,12 +17,12 @@ A usage, cost, and balance monitor for DeepSeek Harness. Inspect individual requ
 
 ## Installation
 
-**Source version: 4.3.3, supporting DeepSeek Harness 0.2.1-rc.1 through rc.5, plus `0.2.2-alpha.2`, `0.2.2-alpha.2-ce7073d-dirty`, `0.2.2-alpha.3`, and `0.2.2-rc.1`.** 4.3.0 through 4.3.2 omit the new host's compatibility declaration and are skipped by its check. `0.2.2-alpha.3` and `0.2.2-rc.1` were verified on the desktop app; `0.2.2-alpha.2` and the reported local build are admitted by the declaration only and were not installed from a matching desktop build. Other 0.2.2 builds (`alpha.4`, `beta`, `preview`, `rc.2`, and the final release) are not claimed and are still rejected by the host; each needs a new check once published. A just-published 4.3.3 is subject to the package manager's roughly 24-hour release-age window; pin the version or install the complete `.tgz` from Releases when you need it immediately.
+**Source version: 4.3.4, supporting DeepSeek Harness 0.2.1-rc.1 through rc.5, plus `0.2.2-alpha.2`, `0.2.2-alpha.2-ce7073d-dirty`, `0.2.2-alpha.3`, and `0.2.2-rc.1`.** 4.3.0 through 4.3.2 omit the new host's compatibility declaration and are skipped by its check. `0.2.2-alpha.3` and `0.2.2-rc.1` were verified on the desktop app; `0.2.2-alpha.2` and the reported local build are admitted by the declaration only and were not installed from a matching desktop build. Other 0.2.2 builds (`alpha.4`, `beta`, `preview`, `rc.2`, and the final release) are not claimed and are still rejected by the host; each needs a new check once published. 4.3.4 is distributed only as the complete `.tgz` from the GitHub Release; the npm channel remains 4.3.3, so installing by package name will not include this fix.
 
-In the desktop Plugins page, add `dsh-damage-pulse` or the file path to a complete prebuilt `.tgz` downloaded from Releases. To install the currently published npm version with the CLI:
+4.3.4 is **not published to npm**. Download the complete `dsh-damage-pulse-4.3.4.tgz` from the v4.3.4 Release and add that file path in the desktop Plugins page, or install the Release URL with the CLI:
 
 ```powershell
-dsh plugin --profile desktop add dsh-damage-pulse
+dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.3.4/dsh-damage-pulse-4.3.4.tgz
 ```
 
 Replace `desktop` with your actual profile name. **Fully quit the desktop application, including its tray process, and reopen it.** Check the version in the balance card’s Uninstall / Update menu.
@@ -138,7 +138,7 @@ Uninstall / Update checks GitHub Releases and verifies the version, download sou
 
 - **No balance?** Check the provider’s credentials and connection. Usage accounting does not need balance credentials. IPv4 TUN/Fake-IP (`198.18.0.0/15`) is supported; IPv6 and IPv4-mapped Fake-IP are not. A failed query hides the amount without an error code.
 - **No plugin or an old interface after installation?** Fully restart the target profile and check the plugin’s own version. Remove duplicate mounts from old source integrations. If the host disabled the plugin after a startup failure, re-enable it after repairing the installation.
-- **Missing `runtime/manifest.json`?** Reinstall the npm package or complete release `.tgz`, not raw source. If a package-name install selects an old version, check registry availability and the package manager’s release-age policy, or use the target release tarball.
+- **Missing `runtime/manifest.json`?** Reinstall from the complete release `.tgz`, not raw source. 4.3.4 is not published to npm; a package-name install selects 4.3.3. Use the target release tarball when you need this fix.
 - **Old conversations have no amount?** Wait for history projection after restarting. The standard package includes session amounts without host source edits. Report persistent issues with host/plugin versions and error text in [Issues](https://github.com/wssfk12138/dsh-damage-pulse/issues).
 
 See the [advanced reference](docs/REFERENCE.en.md) for APIs, ClawBot setup, recovery, and development; see [Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases) for historical fixes.

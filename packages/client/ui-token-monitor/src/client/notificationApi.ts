@@ -1,4 +1,5 @@
 import { PRODUCT_NAME } from './branding.ts'
+import { tokenMonitorUrl } from './monitorUrl.ts'
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
 
@@ -382,7 +383,7 @@ export interface NotificationEventsApi {
  */
 export function createNotificationEventsApi(
   fetcher: FetchLike = fetch,
-  endpoint = '/api/token-monitor/modules/notification-events',
+  endpoint = tokenMonitorUrl('/api/token-monitor/modules/notification-events'),
 ): NotificationEventsApi {
   const request = async (since: number, signal?: AbortSignal): Promise<TokenMonitorNotificationBatch> => {
     assertSince(since)
