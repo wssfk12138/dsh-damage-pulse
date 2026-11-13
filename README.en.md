@@ -19,10 +19,10 @@ A usage, cost, and balance monitor for DeepSeek Harness. Inspect individual requ
 
 **Current version: 4.3.5, adding exact support for DeepSeek Harness `0.2.2-rc.3` and its new sidebar session-amount slot.** Existing peer ranges are retained. Earlier desktop checks cover `0.2.2-alpha.3` and `0.2.2-rc.1`; `alpha.2` and its known dirty build are declaration-only. Unverified `rc.2`, `rc.4`, other prerelease builds and the final release remain outside the added declaration.
 
-4.3.5 is distributed as the complete `.tgz` from the [GitHub Release](https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.3.5); this release does not update the npm channel. Download `dsh-damage-pulse-4.3.5.tgz` and add its file path in the desktop Plugins page, or install the Release URL with the CLI:
+4.3.5 is available on [npm](https://www.npmjs.com/package/dsh-damage-pulse/v/4.3.5) and the [GitHub Release](https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.3.5), with identical complete `.tgz` content. Add `dsh-damage-pulse` in the desktop Plugins page, or install the exact version with the CLI:
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.3.5/dsh-damage-pulse-4.3.5.tgz
+dsh plugin --profile desktop add dsh-damage-pulse@4.3.5
 ```
 
 Replace `desktop` with your actual profile name. **Fully quit the desktop application, including its tray process, and reopen it.** Check the version in the balance card’s Uninstall / Update menu.
@@ -138,7 +138,7 @@ Uninstall / Update checks GitHub Releases and verifies the version, download sou
 
 - **No balance?** Check the provider’s credentials and connection. Usage accounting does not need balance credentials. IPv4 TUN/Fake-IP (`198.18.0.0/15`) is supported; IPv6 and IPv4-mapped Fake-IP are not. A failed query hides the amount without an error code.
 - **No plugin or an old interface after installation?** Fully restart the target profile and check the plugin’s own version. Remove duplicate mounts from old source integrations. If the host disabled the plugin after a startup failure, re-enable it after repairing the installation.
-- **Missing `runtime/manifest.json`?** Reinstall from the complete release `.tgz`, not raw source. This release does not update npm; use the complete v4.3.5 Release tarball for the new host compatibility fix.
+- **Missing `runtime/manifest.json`?** Reinstall `dsh-damage-pulse@4.3.5` from npm or the complete v4.3.5 Release `.tgz`, not raw source.
 - **Old conversations have no amount?** Wait for history projection after restarting. The standard package includes session amounts without host source edits. Report persistent issues with host/plugin versions and error text in [Issues](https://github.com/wssfk12138/dsh-damage-pulse/issues).
 
 See the [advanced reference](docs/REFERENCE.en.md) for APIs, ClawBot setup, recovery, and development; see [Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases) for historical fixes.
