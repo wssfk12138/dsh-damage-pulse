@@ -287,6 +287,17 @@ describe('client apply wiring (unknown-seat old hosts)', () => {
     expect(SessionCostBadge).toBe(SessionCostBadge)
   })
 
+  it('registers the rc.3 root-scoped row decoration without binding sessions', async () => {
+    const { ctx, injected, registered } = createFakeClientContext()
+    await apply(ctx)
+    const key = 'sidebar.session.row.trailing'
+    await waitFor(() => expect(injected.some(entry => entry.key === key)).toBe(true))
+    injected.find(entry => entry.key === key)?.callback()
+    const entry = registered.find(item => item.options.name === key)
+    expect(entry?.component).toBe(SessionCostBadge)
+    expect(entry?.options.sessionId).toBeUndefined()
+  })
+
   it('loads the global catalog through the Host remote service and propagates failures', async () => {
     const { ctx, injected, registered, modelCatalog } = createFakeClientContext()
     await apply(ctx)
@@ -373,6 +384,16 @@ describe('LegacySessionCostBridge (old-host fallback)', () => {
     </div>`)
     await flushMutations()
 
+    expect(injectedNodes()).toHaveLength(0)
+    expect(document.getElementById(styleId)).toBeNull()
+  })
+
+  it('deactivates when rc.3 renders its row decoration seat', async () => {
+    appendRow(legacyRowHtml('One'))
+    render(<LegacySessionCostBridge {...kitFor(listState([summary('s1', 'One', 0.008)]))} />)
+    expect(injectedNodes()).toHaveLength(1)
+    appendRow('<span data-slot="sidebar.session.row.trailing"></span>')
+    await flushMutations()
     expect(injectedNodes()).toHaveLength(0)
     expect(document.getElementById(styleId)).toBeNull()
   })

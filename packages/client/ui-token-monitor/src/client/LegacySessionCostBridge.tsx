@@ -230,7 +230,8 @@ export function LegacySessionCostBridge({ useSessions, t }: LegacyBridgeProps) {
     if (stoppedRef.current) return
     const doc = document
     // 新宿主能力：正式席位 marker 或带 data-session-id 的行出现即整体停用。
-    if (doc.querySelector('[data-session-row-trailing-slot]') !== null
+    if (doc.querySelector('[data-slot="sidebar.session.row.trailing"]') !== null
+      || doc.querySelector('[data-session-row-trailing-slot]') !== null
       || doc.querySelector('[role="treeitem"][data-session-id]') !== null) {
       deactivate()
       return

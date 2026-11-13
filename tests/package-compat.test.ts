@@ -56,7 +56,7 @@ test("legacy client runtime stays development-only", () => {
 })
 
 test("dsh-tools is declared as a peer and pinned for development builds", () => {
-  assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-tools"], "^0.1.0-rc.5 || ^0.1.1-rc.2 || ^0.1.2-alpha.1 || ^0.1.3-alpha.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.3 || 0.2.1-rc.4 || 0.2.1-rc.5 || 0.2.2-alpha.2 || 0.2.2-alpha.2-ce7073d-dirty || 0.2.2-alpha.3 || 0.2.2-rc.1")
+  assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-tools"], "^0.1.0-rc.5 || ^0.1.1-rc.2 || ^0.1.2-alpha.1 || ^0.1.3-alpha.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.3 || 0.2.1-rc.4 || 0.2.1-rc.5 || 0.2.2-alpha.2 || 0.2.2-alpha.2-ce7073d-dirty || 0.2.2-alpha.3 || 0.2.2-rc.1 || 0.2.2-rc.3")
   assert.ok(manifest.devDependencies?.["@deepseek-ai/dsh-tools"], "dsh-tools devDependency must be pinned")
 })
 
@@ -74,6 +74,7 @@ test("current desktop peers admit only the verified 0.2 prereleases", () => {
     assert.ok(range.split(" || ").includes("0.2.2-alpha.3"), name)
     assert.ok(range.split(" || ").includes("0.2.2-rc.1"), name)
 
+    assert.ok(range.split(" || ").includes("0.2.2-rc.3"), name)
     assert.ok(!range.includes("^0.2"), name)
   }
 })
@@ -82,8 +83,8 @@ test("0.2.2 peers list exactly the known hosts and reject every other 0.2.2 buil
   const { satisfies } = createRequire(import.meta.url)("semver") as {
     satisfies: (version: string, range: string, options?: { includePrerelease?: boolean }) => boolean
   }
-  const accepted = ["0.2.2-alpha.2", "0.2.2-alpha.2-ce7073d-dirty", "0.2.2-alpha.3", "0.2.2-rc.1", "0.2.1-rc.5"]
-  const rejected = ["0.2.2-alpha.4", "0.2.2-alpha.999", "0.2.2-beta.1", "0.2.2-preview.1", "0.2.2-alpha.2-ce7073d", "0.2.2-alpha.2-x", "0.2.2-rc.2", "0.2.2", "0.2.3-alpha.1", "0.3.0", "0.2.0-alpha.1", "0.2.1-rc.6"]
+  const accepted = ["0.2.2-alpha.2", "0.2.2-alpha.2-ce7073d-dirty", "0.2.2-alpha.3", "0.2.2-rc.1", "0.2.2-rc.3", "0.2.1-rc.5"]
+  const rejected = ["0.2.2-alpha.4", "0.2.2-alpha.999", "0.2.2-beta.1", "0.2.2-preview.1", "0.2.2-alpha.2-ce7073d", "0.2.2-alpha.2-x", "0.2.2-rc.2", "0.2.2-rc.4", "0.2.2-rc.3-local", "0.2.2", "0.2.3-alpha.1", "0.3.0", "0.2.0-alpha.1", "0.2.1-rc.6"]
   for (const [name, range] of Object.entries(manifest.peerDependencies)) {
     if (!name.startsWith("@deepseek-ai/dsh-")) continue
     for (const version of accepted) {

@@ -21,6 +21,9 @@ export const SESSION_HEADER_ACTIONS_SLOT = 'conversation.session.header.actions'
 /** 宿主正式席位键：ui-workspace 声明的 sidebar.workspaces.sessionRow.trailing。 */
 export const SESSION_ROW_TRAILING_SLOT = 'sidebar.workspaces.sessionRow.trailing'
 
+/** Root-scoped row decoration supplied by the 0.2.2-rc.3 workspace UI. */
+export const SESSION_ROW_DECORATION_SLOT = 'sidebar.session.row.trailing'
+
 /** 会话行金额节点的统一 data 标记。 */
 export const SESSION_COST_MARKER = 'data-dsh-token-monitor-session-cost'
 
