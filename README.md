@@ -21,16 +21,17 @@
 
 ## 安装
 
-**当前版本：4.3.6，新增精确支持 DeepSeek Harness `0.2.2-rc.5`。** 保留原有 0.1.x、0.2.0、0.2.1 及已声明的 0.2.2 版本范围，也保留 `0.2.2-rc.3` 的会话行金额适配。`0.2.2-alpha.3`、`0.2.2-rc.1`、`0.2.2-rc.3` 有历史桌面验证，4.3.6 已在 `0.2.2-rc.5` 桌面版验证；`0.2.2-alpha.2` 及其已知 dirty 构建仅声明放行。未核验的 `rc.2`、`rc.4`、其它预发行构建与正式版仍不在新增声明内。
+**公开安装版本：4.3.5，支持 DeepSeek Harness `0.2.2-rc.3` 及已声明的旧宿主；不支持 `0.2.2-rc.5`。** 源码版本 4.3.6 已增加 `0.2.2-rc.5` 的精确兼容，并在 rc.5 桌面版完成验证，但公开安装包尚未发布。原有 0.1.x、0.2.0、0.2.1 及已声明的 0.2.2 版本范围继续保留，也保留 `0.2.2-rc.3` 的会话行金额适配。`0.2.2-alpha.2` 及其已知 dirty 构建仅声明放行；未核验的 `rc.2`、`rc.4`、其它预发行构建与正式版仍不在声明内。
 
-4.3.6 通过 [GitHub Release](https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.3.6) 的完整 `.tgz` 提供，本次不更新 npm 通道。在桌面版「插件」页添加 `dsh-damage-pulse-4.3.6.tgz` 的文件路径，或用 CLI 安装该 Release 地址：
+4.3.5 已提供到 [npm](https://www.npmjs.com/package/dsh-damage-pulse/v/4.3.5) 和 [GitHub Release](https://github.com/wssfk12138/dsh-damage-pulse/releases/tag/v4.3.5)，两个通道的完整 `.tgz` 内容一致。在桌面版「插件」页添加 `dsh-damage-pulse`，或用 CLI 安装指定版本：
 
 ```powershell
-dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/releases/download/v4.3.6/dsh-damage-pulse-4.3.6.tgz
+dsh plugin --profile desktop add dsh-damage-pulse@4.3.5
 ```
 
 将 `desktop` 换成实际使用的 profile 名。安装后**完整退出桌面程序（含托盘）再启动**，在悬浮卡右键的「卸载与更新」核对版本。
 
+- 4.3.5 不适用于 `0.2.2-rc.5`；该宿主需要 4.3.6。4.3.6 目前只有已验证源码，公开安装包（tgz、Release 或 npm）待发布，请不要使用尚不存在的 Release 地址。
 - 需要指定版本时，使用对应 Release 的预编译 `.tgz`；不要直接安装仓库 URL、`github:` 地址、`Source code` 压缩包或未打包的源码目录，它们缺少运行载荷。
 - 页面提示已安装时，先移除再添加完整包；保留配置和历史数据，不用清空账本解决启动问题。
 - 官方 API 余额通过 DSH 凭据机制配置 `DEEPSEEK_API_KEY`；没有余额凭据也可记录用量和费用。
@@ -38,7 +39,7 @@ dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/
 <details>
 <summary>旧版宿主兼容说明</summary>
 
-保留 `0.1.0-rc.5`、`0.1.1-rc.2`、Desktop 2.0.4（`0.1.2-alpha.1`）、`0.1.5-alpha.2` 等旧版兼容段，实际范围见 [package.json](package.json)。声明兼容不等于每个版本都逐一实机验收；4.3.6 已在 `0.2.2-rc.5` 桌面版验证，未在每个旧版重复验收。
+保留 `0.1.0-rc.5`、`0.1.1-rc.2`、Desktop 2.0.4（`0.1.2-alpha.1`）、`0.1.5-alpha.2` 等旧版兼容段，实际范围见 [package.json](package.json)。声明兼容不等于每个版本都逐一实机验收；公开安装的 4.3.5 已在 `0.2.2-rc.3` 桌面版验证，源码 4.3.6 已在 `0.2.2-rc.5` 桌面版验证，未在每个旧版重复验收。
 
 标准包自带会话金额：使用 `conversation.session.header.actions`，并按宿主能力挂接 `sidebar.workspaces.sessionRow.trailing` 或新版 `sidebar.session.row.trailing`。旧客户端使用严格 fail-closed 的兼容桥，只有唯一匹配原生会话行时才显示，检测到已有金额或正式席位即停用，避免重复。
 
@@ -142,7 +143,8 @@ dsh plugin --profile desktop add https://github.com/wssfk12138/dsh-damage-pulse/
 
 - **没有余额？** 先检查对应供应商凭据与连接；缺少余额凭据不影响用量统计。支持 IPv4 TUN/Fake-IP（`198.18.0.0/15`），暂不支持 IPv6 或 IPv4-mapped Fake-IP；查询失败时不显示金额或错误码。
 - **安装后不出现或仍是旧界面？** 完整退出并重启目标 profile，核对插件自身版本；旧源码集成用户检查是否重复挂载。若宿主因启动失败禁用了插件，修复安装后需重新启用。
-- **缺少 `runtime/manifest.json`？** 重新安装 v4.3.6 Release 的完整 `.tgz`，不要直接安装源码。4.3.6 本次不更新 npm；按包名安装不会得到本次兼容修复。
+- **缺少 `runtime/manifest.json`？** 重新安装 npm 或 v4.3.5 Release 的完整 `.tgz`，不要直接安装源码。4.3.6 尚未发布安装包；rc.5 用户需等待公开发布，不要从源码归档安装。
+- **rc.5 上提示插件不兼容？** 公开安装的 4.3.5 不支持 `0.2.2-rc.5`；源码 4.3.6 已适配，待安装包发布后升级。不要绕过宿主兼容检查。
 - **旧会话没有金额？** 重启后等待历史投影补齐；标准包已有会话金额能力，无需手工改宿主源码。异常时附宿主版本、插件版本和错误内容到 [Issues](https://github.com/wssfk12138/dsh-damage-pulse/issues)。
 
 接口、ClawBot 配置、旧版恢复及源码开发见[高级参考](docs/REFERENCE.zh-CN.md)。历史修复见 [Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases)。
