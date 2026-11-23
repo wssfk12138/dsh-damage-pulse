@@ -9,7 +9,7 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 import type { SessionSummary } from './types.ts'
 import type { DetailSession } from '@deepseek-ai/dsh-token-monitor-contract'
 
@@ -136,12 +136,10 @@ export function registerSessionCostsRoute(
   summaries: () => readonly SessionSummary[],
   sessions: ReadonlyMap<string, DetailSession> = new Map(),
 ): void {
-  const guard = createRouteGuard(ctx)
-  ctx.effect(() => ctx.webServer.register({
+  ctx.effect(() => registerProtectedRoute(ctx, {
     kind: 'exact',
     path: '/api/token-monitor/session-costs',
     handler: (req, res) => {
-      if (!guard(req, res)) return
       if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify({ updatedAt: Date.now(), sessions: summarizeLedgerSessions(summaries(), sessions) }))

@@ -56,11 +56,11 @@ test("legacy client runtime stays development-only", () => {
 })
 
 test("dsh-tools is declared as a peer and pinned for development builds", () => {
-  assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-tools"], "^0.1.0-rc.5 || ^0.1.1-rc.2 || ^0.1.2-alpha.1 || ^0.1.3-alpha.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.3 || 0.2.1-rc.4 || 0.2.1-rc.5 || 0.2.2-alpha.2 || 0.2.2-alpha.2-ce7073d-dirty || 0.2.2-alpha.3 || 0.2.2-rc.1 || 0.2.2-rc.3 || 0.2.2-rc.5")
+  assert.equal(manifest.peerDependencies["@deepseek-ai/dsh-tools"], "^0.1.0-rc.5 || ^0.1.1-rc.2 || ^0.1.2-alpha.1 || ^0.1.3-alpha.1 || ^0.1.5-alpha.1 || ^0.1.6-alpha.1 || ^0.1.7-rc.2 || 0.2.0-rc.2 || 0.2.1-rc.1 || 0.2.1-rc.2 || 0.2.1-rc.3 || 0.2.1-rc.4 || 0.2.1-rc.5 || 0.2.2-alpha.2 || 0.2.2-alpha.2-ce7073d-dirty || 0.2.2-alpha.3 || 0.2.2-rc.1 || 0.2.2-rc.2 || 0.2.2-rc.3 || 0.2.2-rc.4 || 0.2.2-rc.5 || 0.2.3-alpha.1 || 0.2.3-alpha.2")
   assert.ok(manifest.devDependencies?.["@deepseek-ai/dsh-tools"], "dsh-tools devDependency must be pinned")
 })
 
-test("current desktop peers admit only the verified 0.2 prereleases", () => {
+test("current peers preserve the established 0.2 releases", () => {
   for (const [name, range] of Object.entries(manifest.peerDependencies)) {
     if (!name.startsWith("@deepseek-ai/dsh-")) continue
     assert.ok(range.split(" || ").includes("0.2.0-rc.2"), name)
@@ -72,20 +72,16 @@ test("current desktop peers admit only the verified 0.2 prereleases", () => {
     assert.ok(range.split(" || ").includes("0.2.2-alpha.2"), name)
     assert.ok(range.split(" || ").includes("0.2.2-alpha.2-ce7073d-dirty"), name)
     assert.ok(range.split(" || ").includes("0.2.2-alpha.3"), name)
-    assert.ok(range.split(" || ").includes("0.2.2-rc.1"), name)
-
-    assert.ok(range.split(" || ").includes("0.2.2-rc.3"), name)
-    assert.ok(range.split(" || ").includes("0.2.2-rc.5"), name)
     assert.ok(!range.includes("^0.2"), name)
   }
 })
 
-test("0.2.2 peers list exactly the known hosts and reject every other 0.2.2 build", () => {
+test("recent host versions are pinned exactly", () => {
   const { satisfies } = createRequire(import.meta.url)("semver") as {
     satisfies: (version: string, range: string, options?: { includePrerelease?: boolean }) => boolean
   }
-  const accepted = ["0.2.2-alpha.2", "0.2.2-alpha.2-ce7073d-dirty", "0.2.2-alpha.3", "0.2.2-rc.1", "0.2.2-rc.3", "0.2.2-rc.5", "0.2.1-rc.5"]
-  const rejected = ["0.2.2-alpha.4", "0.2.2-alpha.999", "0.2.2-beta.1", "0.2.2-preview.1", "0.2.2-alpha.2-ce7073d", "0.2.2-alpha.2-x", "0.2.2-rc.2", "0.2.2-rc.4", "0.2.2-rc.5-local", "0.2.2-rc.6", "0.2.2", "0.2.3-alpha.1", "0.3.0", "0.2.0-alpha.1", "0.2.1-rc.6"]
+  const accepted = ["0.2.2-alpha.2", "0.2.2-alpha.2-ce7073d-dirty", "0.2.2-alpha.3", "0.2.2-rc.1", "0.2.2-rc.2", "0.2.2-rc.3", "0.2.2-rc.4", "0.2.2-rc.5", "0.2.3-alpha.1", "0.2.3-alpha.2", "0.2.1-rc.5"]
+  const rejected = ["0.2.2-alpha.4", "0.2.2-alpha.999", "0.2.2-beta.1", "0.2.2-preview.1", "0.2.2-alpha.2-ce7073d", "0.2.2-alpha.2-x", "0.2.2-rc.5-local", "0.2.2-rc.6", "0.2.2", "0.2.3-alpha.2-local", "0.2.3-alpha.3", "0.2.3", "0.3.0", "0.2.0-alpha.1", "0.2.1-rc.6"]
   for (const [name, range] of Object.entries(manifest.peerDependencies)) {
     if (!name.startsWith("@deepseek-ai/dsh-")) continue
     for (const version of accepted) {
@@ -106,4 +102,14 @@ test("the reported local build is pinned exactly instead of widening the alpha r
   assert.equal(satisfies(dirty, "0.2.2-alpha.2-ce7073d-dirty", { includePrerelease: true }), true)
   assert.equal(satisfies("0.2.2-alpha.4", "0.2.2-alpha.2-ce7073d-dirty", { includePrerelease: true }), false)
   assert.equal(satisfies("0.2.2-rc.1", "0.2.2-rc.1", { includePrerelease: true }), true)
+})
+
+test("allows the Cordis prerelease pinned by 0.2.3-alpha.2", () => {
+  const { satisfies } = createRequire(import.meta.url)("semver") as {
+    satisfies: (version: string, range: string) => boolean
+  }
+  const range = manifest.peerDependencies["@deepseek-ai/cordis"]
+  assert.equal(satisfies("4.1.0", range), true)
+  assert.equal(satisfies("4.2.0-alpha.1", range), true)
+  assert.equal(satisfies("4.2.0-alpha.2", range), false)
 })

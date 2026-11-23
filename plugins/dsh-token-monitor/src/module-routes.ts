@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage } from 'node:http'
 import type { ModuleRestoreRequest, ModuleUninstallRequest } from '@deepseek-ai/dsh-token-monitor-contract'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 import { ModuleManager, ModuleOperationError } from './module-manager.ts'
 import { ModuleReleases, artifactKey } from './module-releases.ts'
 import { compareReleaseVersions, validModuleId } from './module-files.ts'
@@ -26,10 +26,9 @@ async function readBody(req: IncomingMessage): Promise<Record<string, unknown>> 
 }
 
 export function registerModuleRoutes(ctx: Context, manager: ModuleManager, stateFile: string, releases = new ModuleReleases(), liveRoutes: () => Pick<ModuleServices, 'notificationEvents' | 'overview' | 'displayScope'> = () => ({})): void {
-  const guard = createRouteGuard(ctx), work = new ModuleWork()
-  for (const [path, key] of [['notification-events', 'notificationEvents'], ['overview', 'overview'], ['display-scope', 'displayScope']] as const) ctx.effect(() => ctx.webServer.register({
+  const work = new ModuleWork()
+  for (const [path, key] of [['notification-events', 'notificationEvents'], ['overview', 'overview'], ['display-scope', 'displayScope']] as const) ctx.effect(() => registerProtectedRoute(ctx, {
     kind: 'exact', path: '/api/token-monitor/modules/' + path, handler: (req, res) => {
-      if (!guard(req, res)) return
       if (req.method !== 'GET' && !(key === 'notificationEvents' && req.method === 'HEAD')) {
         res.writeHead(405, { Allow: key === 'notificationEvents' ? 'GET, HEAD' : 'GET', 'Cache-Control': 'no-store' }); res.end(); return
       }
@@ -59,8 +58,7 @@ export function registerModuleRoutes(ctx: Context, manager: ModuleManager, state
       }, commit, obsolete))
   }
   for (const action of ['', '/uninstall', '/check', '/update', '/restore-plan', '/restore']) {
-    ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: `/api/token-monitor/modules${action}`, handler: async (req, res) => {
-      if (!guard(req, res)) return
+    ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: `/api/token-monitor/modules${action}`, handler: async (req, res) => {
       const json = (status: number, value: unknown) => {
         res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value))
       }

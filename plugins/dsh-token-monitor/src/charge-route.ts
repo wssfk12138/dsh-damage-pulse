@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { chargeBatchSince, type ChargeBatch } from './charge.ts'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 
 export const TOKEN_MONITOR_CHARGE_EVENTS_PATH = '/api/token-monitor/charge-events'
 
@@ -38,10 +38,8 @@ export function createChargeEventsRouteHandler(batch: (since: number) => ChargeB
 }
 
 export function registerChargeEventsRoute(ctx: Context, batch: (since: number) => ChargeBatch = chargeBatchSince): void {
-  const guard = createRouteGuard(ctx)
   const handler = createChargeEventsRouteHandler(batch)
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: TOKEN_MONITOR_CHARGE_EVENTS_PATH, handler: (request, response) => {
-    if (!guard(request, response)) return
+  ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: TOKEN_MONITOR_CHARGE_EVENTS_PATH, handler: (request, response) => {
     handler(request, response)
   } }), 'token-monitor: charge events route')
 }

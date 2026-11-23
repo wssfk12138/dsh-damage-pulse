@@ -23,7 +23,7 @@ import {
   type TokenMonitorSettingsSnapshot,
 } from '@deepseek-ai/dsh-token-monitor-contract'
 import { defaultBillingRules } from './billing.ts'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 import { PluginStoreConflictError, type TokenMonitorStore } from './plugin-store.ts'
 import { createSettingsHandle, type TokenMonitorSettingsHandle } from './settings-handle.ts'
 import type { TokenMonitorUserConfig } from './config-base.ts'
@@ -197,7 +197,6 @@ export function registerTokenMonitorSettingsRoute(
   handle: TokenMonitorSettingsHandle,
   operations?: { allowed(key: string): boolean; run<T>(action: () => Promise<T>): Promise<T> },
 ): void {
-  const guard = createRouteGuard(ctx)
   const scopedController = (provider?: string): TokenMonitorSettingsController => {
     const controller = createTokenMonitorSettingsController(ctx, handle, provider)
     return { read: controller.read, patch: request => {
@@ -213,11 +212,10 @@ export function registerTokenMonitorSettingsRoute(
     ctx.logger.warn('dsh-token-monitor settings route failed')
     ctx.logger.warn(error instanceof Error ? error : new Error(String(error)))
   })
-  ctx.effect(() => ctx.webServer.register({
+  ctx.effect(() => registerProtectedRoute(ctx, {
     kind: 'exact',
     path: '/api/token-monitor/settings',
     handler: (request, response) => {
-      if (!guard(request, response)) return
       const provider = new URL(request.url ?? '/', 'http://localhost').searchParams.get('provider')
       if (provider === null) return handler(request, response)
       if (!validProviderId(provider)) { sendError(response, 400, 'VALIDATION_ERROR', '供应商标识无效'); return }
@@ -232,7 +230,6 @@ export function registerTokenMonitorSettingsRoute(
  * @param handle 活用户配置视图。
  */
 export function registerBillingSettingsRoutes(ctx: Context, store: TokenMonitorStore, handle: TokenMonitorSettingsHandle): void {
-  const guard = createRouteGuard(ctx)
   ctx.effect(() => {
     const clients = new Set<ServerResponse>()
     const snapshot = () => readBillingSnapshot(store, handle)
@@ -247,10 +244,9 @@ export function registerBillingSettingsRoutes(ctx: Context, store: TokenMonitorS
     const unwatch = store.subscribe(publish)
     const unwatchConfig = ctx.events.on('loader/volatile-update', publish)
     const unwatchNamespace = ctx.events.on('settings/updated', publish)
-    const unregister = ctx.webServer.register({
+    const unregister = registerProtectedRoute(ctx, {
       kind: 'exact', path: '/api/token-monitor/billing/events',
       handler: (request, response) => {
-        if (!guard(request, response)) return
         if (request.method !== 'GET') { sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
         response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' })
         clients.add(response)
@@ -260,10 +256,9 @@ export function registerBillingSettingsRoutes(ctx: Context, store: TokenMonitorS
     })
     return () => { unwatch(); unwatchConfig(); unwatchNamespace(); unregister(); for (const client of clients) client.end(); clients.clear() }
   }, 'dsh-token-monitor: live billing snapshots')
-  ctx.effect(() => ctx.webServer.register({
+  ctx.effect(() => registerProtectedRoute(ctx, {
     kind: 'exact', path: '/api/token-monitor/billing',
     handler: async (request, response) => {
-      if (!guard(request, response)) return
       if (request.method === 'GET') { sendJson(response, 200, readBillingSnapshot(store, handle)); return }
       if (request.method !== 'PUT') { sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
       if (request.headers['content-type']?.split(';')[0]?.trim() !== 'application/json') { sendJson(response, 415, { error: { code: 'UNSUPPORTED_MEDIA_TYPE' } }); return }
@@ -292,10 +287,9 @@ export function registerBillingSettingsRoutes(ctx: Context, store: TokenMonitorS
       }
     },
   }), 'dsh-token-monitor: billing rules')
-  ctx.effect(() => ctx.webServer.register({
+  ctx.effect(() => registerProtectedRoute(ctx, {
     kind: 'exact', path: '/api/token-monitor/billing/templates',
     handler: (request, response) => {
-      if (!guard(request, response)) return
       if (request.method !== 'GET') { sendJson(response, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
       sendJson(response, 200, defaultBillingRules(handle.priceTable()))
     },

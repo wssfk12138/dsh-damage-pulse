@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { describe, expect, it, vi } from 'vitest'
-import { createRouteGuard } from '../src/http-trust.ts'
+import { registerProtectedRoute } from '../src/http-trust.ts'
 
 function response(): ServerResponse & { status: number; body: string } {
   return {
@@ -12,29 +12,56 @@ function response(): ServerResponse & { status: number; body: string } {
   } as unknown as ServerResponse & { status: number; body: string }
 }
 
-const request = (headers: Record<string, string> = {}): IncomingMessage => ({ headers }) as unknown as IncomingMessage
+const request = { headers: { host: '127.0.0.1:3080' } } as IncomingMessage
 
-describe('route trust guard', () => {
-  it('serves a caller the connection service accepts', () => {
-    const ctx = { connection: { requestRejection: vi.fn(() => undefined) } } as unknown as Context
+type RegisteredRoute = {
+  auth: string
+  handler: (request: IncomingMessage, response: ServerResponse, peer?: { signal: AbortSignal }) => void
+}
+
+function mount(connection?: object) {
+  const handler = vi.fn()
+  const register = vi.fn((_route: RegisteredRoute) => vi.fn())
+  const ctx = { connection, webServer: { register } } as unknown as Context
+  registerProtectedRoute(ctx, { kind: 'exact', path: '/api/token-monitor/settings', handler })
+  return { route: register.mock.calls[0]![0], handler }
+}
+
+describe('protected route registration', () => {
+  it('serves a caller the legacy connection accepts', () => {
+    const requestRejection = vi.fn(() => undefined)
+    const { route, handler } = mount({ requestRejection })
     const res = response()
-    expect(createRouteGuard(ctx)(request({ host: '127.0.0.1:3080' }), res)).toBe(true)
+    route.handler(request, res)
+    expect(requestRejection).toHaveBeenCalledWith(request)
+    expect(handler).toHaveBeenCalledWith(request, res)
     expect(res.status).toBe(0)
   })
 
-  it('answers 401 and 403 from the connection service without running the route', () => {
-    for (const rejection of [401, 403] as const) {
-      const ctx = { connection: { requestRejection: vi.fn(() => rejection) } } as unknown as Context
-      const res = response()
-      expect(createRouteGuard(ctx)(request({ host: 'evil.example' }), res)).toBe(false)
-      expect(res.status).toBe(rejection)
-      expect(res.body).toBe(rejection === 401 ? 'unauthorized' : 'forbidden')
-    }
+  it.each([401, 403] as const)('preserves legacy rejection %s', (rejection) => {
+    const { route, handler } = mount({ requestRejection: () => rejection })
+    const res = response()
+    route.handler(request, res)
+    expect(handler).not.toHaveBeenCalled()
+    expect(res.status).toBe(rejection)
+    expect(res.body).toBe(rejection === 401 ? 'unauthorized' : 'forbidden')
   })
 
-  it('fails closed when the composition exposes no connection service', () => {
+  it('requires Host authentication and accepts a live peer from the newer WebServer', () => {
+    const { route, handler } = mount({})
     const res = response()
-    expect(createRouteGuard({} as Context)(request({ host: '127.0.0.1:3080' }), res)).toBe(false)
-    expect(res.status).toBe(403)
+    expect(route.auth).toBe('required')
+    route.handler(request, res, { signal: new AbortController().signal })
+    expect(handler).toHaveBeenCalledWith(request, res)
+  })
+
+  it('rejects missing and aborted peers without running the route', () => {
+    const { route, handler } = mount()
+    for (const peer of [undefined, { signal: AbortSignal.abort() }]) {
+      const res = response()
+      route.handler(request, res, peer)
+      expect(res.status).toBe(403)
+    }
+    expect(handler).not.toHaveBeenCalled()
   })
 })

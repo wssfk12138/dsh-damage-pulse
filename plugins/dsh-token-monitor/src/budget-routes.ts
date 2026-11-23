@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import { dailyBudgetInfo } from './budget.ts'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 import { OFFICIAL_PROVIDER_ID, type PricingTable } from './pricing.ts'
 import type { UsageStorage } from './storage.ts'
 
@@ -27,22 +27,19 @@ export function registerBudgetRoutes(
   getBudget: () => number,
   table: PricingTable,
 ): void {
-  const guard = createRouteGuard(ctx)
-  ctx.effect(() => ctx.webServer.register({
+  ctx.effect(() => registerProtectedRoute(ctx, {
     kind: 'exact',
     path: '/api/token-monitor/daily-budget',
     handler: (req, res) => {
-      if (!guard(req, res)) return
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify(dailyBudgetInfo(storage.todaySpend(), getBudget())))
     },
   }), 'token-monitor: daily budget route')
 
-  ctx.effect(() => ctx.webServer.register({
+  ctx.effect(() => registerProtectedRoute(ctx, {
     kind: 'exact',
     path: '/api/token-monitor/pricing-eligibility',
     handler: (req, res) => {
-      if (!guard(req, res)) return
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify(pricingEligibilityInfo(table)))
     },

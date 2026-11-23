@@ -1,50 +1,41 @@
-/**
- * One Host/Origin fence for every Token Monitor route that carries personal data.
- *
- * The composition's connection service owns the policy: its Host/Origin fence
- * defeats DNS rebinding and cross-site calls, and its browser authentication
- * (the login-token cookie) gates every caller. A route that skips this gate can
- * be read — and in the write case changed — by any page whose authority the
- * browser accepts, so every data route asks for a rejection first.
- * @module dsh-token-monitor/http-trust
- */
-
+/** Require the Host's request admission for every route carrying plugin data. */
 import type { Context } from '@deepseek-ai/cordis'
 import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { WebRoute } from '@deepseek-ai/dsh-host-webserver'
 import type {} from '@deepseek-ai/dsh-client-connection'
 
-/** Trust surface consumed here; the browser-side connection package owns the type. */
-interface TrustConnection {
-  requestRejection(request: { readonly headers: IncomingMessage['headers'] }): 401 | 403 | undefined
+interface LegacyConnection {
+  requestRejection?(request: IncomingMessage): 401 | 403 | undefined
 }
 
-function connectionOf(ctx: Context): TrustConnection | undefined {
-  // Cordis refuses an undeclared service read, so a composition that never
-  // injected this service must look like "unavailable", not like a crash.
+interface AuthenticatedPeer {
+  readonly signal: AbortSignal
+}
+
+function legacyConnection(ctx: Context): LegacyConnection | undefined {
+  // Cordis may reject reads of services not injected into this context.
   try {
-    return Reflect.get(ctx, 'connection') as TrustConnection | undefined
+    return Reflect.get(ctx, 'connection') as LegacyConnection | undefined
   } catch {
     return undefined
   }
 }
 
-/** Answer an untrusted or unauthenticated request; true when it was rejected. */
-export type RouteGuard = (request: IncomingMessage, response: ServerResponse) => boolean
-
-/**
- * Build the guard for routes registered by one context.
- * @param ctx Context owning the routes; must expose the composition's connection.
- * @returns Guard returning true when the caller may proceed.
- */
-export function createRouteGuard(ctx: Context): RouteGuard {
-  return (request, response) => {
-    const connection = connectionOf(ctx)
-    // A composition without the connection service cannot prove who is calling,
-    // so it fails closed instead of serving data to an unverified caller.
-    const rejection = connection === undefined ? 403 : connection.requestRejection(request)
-    if (rejection === undefined) return true
-    response.writeHead(rejection, { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' })
-    response.end(rejection === 401 ? 'unauthorized' : 'forbidden')
-    return false
+export function registerProtectedRoute(ctx: Context, route: WebRoute): () => void {
+  const protectedRoute: WebRoute & { auth: 'required' } = {
+    ...route,
+    auth: 'required',
+    handler: (request: IncomingMessage, response: ServerResponse, peer?: AuthenticatedPeer) => {
+      // Older hosts leave admission to the handler. New hosts supply a live peer
+      // only after their WebServer has checked the source and credentials.
+      const connection = legacyConnection(ctx)
+      const rejection = typeof connection?.requestRejection === 'function'
+        ? connection.requestRejection(request)
+        : peer?.signal.aborted === false ? undefined : 403
+      if (rejection === undefined) return route.handler(request, response)
+      response.writeHead(rejection, { 'Cache-Control': 'no-store', 'Content-Type': 'text/plain; charset=utf-8' })
+      response.end(rejection === 401 ? 'unauthorized' : 'forbidden')
+    },
   }
+  return ctx.webServer.register(protectedRoute)
 }

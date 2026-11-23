@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { ModuleServices } from '../module-services.ts'
 import { createMetadataLoader, DetailQueries, registerDetailsRoute, registerOverviewRoute } from '../details.ts'
-import { createRouteGuard } from '../http-trust.ts'
+import { registerProtectedRoute } from '../http-trust.ts'
 import { summarizeUsage, type UsageSummaryRange, type UsageSummaryWindow } from '../usage-summary.ts'
 
 /** 自定义范围必须带有限且有序的毫秒边界，与使用记录列表保持同一窗口。 */
@@ -17,21 +17,18 @@ export function apply(ctx: Context, services: ModuleServices): void {
   const queries = new DetailQueries(storage, details, services.priceTable())
   const metadata = createMetadataLoader(ctx, details, () => [...storage.history().map(row => row.sessionId), ...[...details.attempts.values()].map(row => row.sessionId)])
   ctx.inject(['webServer', 'connection'], web => {
-    const guard = createRouteGuard(web)
     registerDetailsRoute(web, queries, metadata)
     const handler = registerOverviewRoute(web, details, metadata)
     web.effect(() => {
       services.overview = handler
       return () => { if (services.overview === handler) delete services.overview }
     }, 'token-monitor: overview lifecycle')
-    web.effect(() => web.webServer.register({ kind: 'exact', path: '/api/token-monitor/usage', handler: (req, res) => {
-      if (!guard(req, res)) return
+    web.effect(() => registerProtectedRoute(web, { kind: 'exact', path: '/api/token-monitor/usage', handler: (req, res) => {
       const url = new URL(req.url ?? '/', 'http://localhost')
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify(storage.history(url.searchParams.get('sessionId') ?? undefined)))
     } }), 'token-monitor: usage route')
-    web.effect(() => web.webServer.register({ kind: 'exact', path: '/api/token-monitor/usage-summary', handler: (req, res) => {
-      if (!guard(req, res)) return
+    web.effect(() => registerProtectedRoute(web, { kind: 'exact', path: '/api/token-monitor/usage-summary', handler: (req, res) => {
       const url = new URL(req.url ?? '/', 'http://localhost')
       const range = url.searchParams.get('range') ?? 'today'
       const window = readWindow(url.searchParams)

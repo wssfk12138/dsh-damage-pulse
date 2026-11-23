@@ -12,7 +12,7 @@ import { PlanQuotaRegistry, registerPlanQuotaApi } from '../plan-quota.ts'
 import { registerBillingTools } from '../billing-tools.ts'
 import { registerBudgetRoutes } from '../budget-routes.ts'
 import { registerChargeEventsRoute } from '../charge-route.ts'
-import { createRouteGuard } from '../http-trust.ts'
+import { registerProtectedRoute } from '../http-trust.ts'
 import { registerBillingSettingsRoutes, readBillingSnapshot } from '../settings.ts'
 import { billUsage } from '../billing.ts'
 import { priceUsage } from '../pricing.ts'
@@ -71,9 +71,7 @@ export function apply(ctx: Context, services: ModuleServices): void {
     })
   })
   ctx.inject(['webServer', 'connection'], web => {
-    const guard = createRouteGuard(web)
-    web.effect(() => web.webServer.register({ kind: 'exact', path: '/api/token-monitor/today-spend', handler: (req, res) => {
-      if (!guard(req, res)) return
+    web.effect(() => registerProtectedRoute(web, { kind: 'exact', path: '/api/token-monitor/today-spend', handler: (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify(services.storage.todaySpend()))
     } }), 'token-monitor: today spend route')

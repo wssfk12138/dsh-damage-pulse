@@ -15,7 +15,7 @@ import type { DetailRow, DetailSession } from '@deepseek-ai/dsh-token-monitor-co
 import type { PricingTable } from './pricing.ts'
 import { sameProviderFamily } from './pricing.ts'
 import { DetailQueries } from './detail-query.ts'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 
 export { DetailQueries } from './detail-query.ts'
 /** Load titles on demand once per persisted revision, only for recorded sessions. */
@@ -142,9 +142,7 @@ export function attachDetails(ctx: Context, store: DetailStore, _table: PricingT
 }
 /** Register the details endpoint for the lifetime of the web plugin. */
 export function registerDetailsRoute(ctx: Context, queries: DetailQueries, prepare: () => Promise<void> = async () => {}) {
-  const guard = createRouteGuard(ctx)
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/details', handler: async (req,res) => {
-   if (!guard(req, res)) return
+  ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: '/api/token-monitor/details', handler: async (req,res) => {
    if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
   try { const params = new URL(req.url ?? '/', 'http://localhost').searchParams; if (!params.get('snapshot')) await prepare(); const result=queries.query(params); res.writeHead(200, {'Content-Type':'application/json','Cache-Control':'no-store'}); res.end(JSON.stringify(result)) }
   catch (error) { const code=error instanceof Error && ['INVALID_QUERY','INVALID_TIME','SNAPSHOT_EXPIRED'].includes(error.message) ? error.message : 'DETAILS_UNAVAILABLE'; res.writeHead(code === 'SNAPSHOT_EXPIRED' ? 409 : 400, {'Content-Type':'application/json','Cache-Control':'no-store'}); res.end(JSON.stringify({error:code})) }
@@ -153,9 +151,7 @@ export function registerDetailsRoute(ctx: Context, queries: DetailQueries, prepa
 
 /** Register the lightweight latest-request snapshot used by the balance widget. */
 export function registerOverviewRoute(ctx: Context, store: DetailStore, prepare: () => Promise<void> = async () => {}) {
-  const guard = createRouteGuard(ctx)
   const handler = async (req: IncomingMessage, res: ServerResponse) => {
-   if (!guard(req, res)) return
    if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
   await prepare()
   const params = new URL(req.url ?? '/', 'http://localhost').searchParams
@@ -171,6 +167,6 @@ export function registerOverviewRoute(ctx: Context, store: DetailStore, prepare:
   res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
   res.end(JSON.stringify(row === undefined ? null : { timestamp: row.timestamp, sessionId: row.sessionId, provider: row.provider, inputTokens: row.inputTokens ?? null, outputTokens: row.outputTokens ?? null, cacheReadTokens: row.cacheReadTokens ?? null, firstMs: row.firstMs ?? null, totalMs: row.totalMs ?? null, model: row.model }))
  }
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/overview', handler }), 'dsh-token-monitor: overview')
+  ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: '/api/token-monitor/overview', handler }), 'dsh-token-monitor: overview')
   return handler
 }

@@ -6,7 +6,7 @@ import path from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 import packageJson from '../../../package.json' with { type: 'json' }
 
 export const UPDATE_STATUS_PATH = '/api/token-monitor/update'
@@ -332,9 +332,7 @@ async function bodyWithinLimit(request: IncomingMessage): Promise<boolean> {
 }
 
 export function registerUpdateRoutes(ctx: Context, options: RegisterUpdateOptions = {}): void {
-  const guard = createRouteGuard(ctx)
-  ctx.webServer.register({ kind: 'exact', path: UPDATE_STATUS_PATH, handler: async (request, response) => {
-    if (!guard(request, response)) return
+  registerProtectedRoute(ctx, { kind: 'exact', path: UPDATE_STATUS_PATH, handler: async (request, response) => {
     if (request.method !== 'GET' && request.method !== 'HEAD') { response.writeHead(405, { Allow: 'GET, HEAD' }); response.end(); return }
     try {
       const payload = await statusPayload()
@@ -344,8 +342,7 @@ export function registerUpdateRoutes(ctx: Context, options: RegisterUpdateOption
       json(response, 502, { error: { code: 'UPDATE_CHECK_FAILED', message: cause instanceof Error ? cause.message : '检查更新失败' } })
     }
   } })
-  ctx.webServer.register({ kind: 'exact', path: UPDATE_INSTALL_PATH, handler: async (request, response) => {
-    if (!guard(request, response)) return
+  registerProtectedRoute(ctx, { kind: 'exact', path: UPDATE_INSTALL_PATH, handler: async (request, response) => {
     if (request.method !== 'POST') { response.writeHead(405, { Allow: 'POST' }); response.end(); return }
     if (!requestOriginAllowed(request)) {
       json(response, 403, { error: { code: 'UPDATE_INSTALL_FORBIDDEN', message: '更新请求来源不受信任' } })

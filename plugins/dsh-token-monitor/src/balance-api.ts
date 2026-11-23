@@ -7,7 +7,7 @@ import type {} from '@deepseek-ai/dsh-client-connection'
 import { BalanceEndpointMismatchError, SensitiveBalanceScriptError, type BalanceScriptConfig } from './balance-config.ts'
 import type { BalanceRegistry } from './balance-registry.ts'
 import { BalanceScriptConflictError, validateBalanceEndpoint } from './balance-storage.ts'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 
 function send(res: ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
@@ -22,16 +22,13 @@ function assertProvider(ctx: Context, provider: string): void {
  * @param registry Shared query cache.
  */
 export function registerBalanceApi(ctx: Context, scripts: BalanceScriptConfig, registry: BalanceRegistry): void {
-  const guard = createRouteGuard(ctx)
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/balance', handler: async (req, res) => {
-    if (!guard(req, res)) return
+  ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: '/api/token-monitor/balance', handler: async (req, res) => {
     if (req.method !== 'GET') { send(res, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
     const provider = new URL(req.url ?? '/', 'http://localhost').searchParams.get('provider') ?? 'deepseek-official'
     try { assertProvider(ctx, provider); send(res, 200, await registry.get(provider) ?? null) }
     catch { send(res, 200, null) }
   } }), 'dsh-token-monitor: provider balance route')
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/balance-script', handler: async (req, res) => {
-    if (!guard(req, res)) return
+  ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: '/api/token-monitor/balance-script', handler: async (req, res) => {
     const provider = new URL(req.url ?? '/', 'http://localhost').searchParams.get('provider') ?? ''
     try { assertProvider(ctx, provider) } catch { send(res, 400, { error: { code: 'UNKNOWN_PROVIDER' } }); return }
     if (req.method === 'GET') {
@@ -86,8 +83,7 @@ export function registerBalanceApi(ctx: Context, scripts: BalanceScriptConfig, r
         { error: { code: conflict ? 'CONFLICT' : sensitive ? 'SENSITIVE_SCRIPT' : invalid ? 'INVALID_REQUEST' : 'WRITE_FAILED' } })
     }
   } }), 'dsh-token-monitor: provider script route')
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/balance-endpoint', handler: async (req, res) => {
-    if (!guard(req, res)) return
+  ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: '/api/token-monitor/balance-endpoint', handler: async (req, res) => {
     if (req.method !== 'PUT') { send(res, 405, { error: { code: 'METHOD_NOT_ALLOWED' } }); return }
     if (req.headers['content-type']?.split(';')[0]?.trim() !== 'application/json') { send(res, 415, { error: { code: 'UNSUPPORTED_MEDIA_TYPE' } }); return }
     const provider = new URL(req.url ?? '/', 'http://localhost').searchParams.get('provider') ?? ''

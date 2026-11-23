@@ -22,7 +22,7 @@ import type { PlanQuotaProvider, PlanQuotaSnapshot, PlanQuotaWindow, PlanQuotaWi
 import type { BalanceRequest } from './balance-script.ts'
 import type { BalanceIdentity } from './balance-registry.ts'
 import { BalanceHttpError } from './balance-network.ts'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 
 /** Aggregated plan quota endpoint. */
 export const TOKEN_MONITOR_PLAN_QUOTAS_PATH = '/api/token-monitor/plan-quotas'
@@ -595,10 +595,8 @@ export function createPlanQuotaHandler(registry: PlanQuotaRegistry): (request: I
  * @param registry Shared plan quota cache.
  */
 export function registerPlanQuotaApi(ctx: Context, registry: PlanQuotaRegistry): void {
-  const guard = createRouteGuard(ctx)
   const handler = createPlanQuotaHandler(registry)
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: TOKEN_MONITOR_PLAN_QUOTAS_PATH, handler: (request, response) => {
-    if (!guard(request, response)) return
+  ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: TOKEN_MONITOR_PLAN_QUOTAS_PATH, handler: (request, response) => {
     return handler(request, response)
   } }), 'dsh-token-monitor: plan quota route')
 }

@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-agent'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { createRouteGuard } from './http-trust.ts'
+import { registerProtectedRoute } from './http-trust.ts'
 
 /** A route captured from the request header before streaming begins. */
 export interface ExecutionRoute { provider: string; model: string }
@@ -25,14 +25,12 @@ export function attachDisplayScope(ctx: Context): Map<string, ExecutionRoute> {
 
 /** Expose only the requested session's active route; selectors remain Client-owned. */
 export function registerDisplayScopeRoute(ctx: Context, routes: ReadonlyMap<string, ExecutionRoute>) {
-  const guard = createRouteGuard(ctx)
   const handler = (req: IncomingMessage, res: ServerResponse) => {
-      if (!guard(req, res)) return
       if (req.method !== 'GET') { res.writeHead(405); res.end(); return }
       const sessionId = new URL(req.url ?? '/', 'http://localhost').searchParams.get('sessionId')
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
       res.end(JSON.stringify(sessionId === null ? null : routes.get(sessionId) ?? null))
   }
-  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: '/api/token-monitor/display-scope', handler }), 'token-monitor: display scope route')
+  ctx.effect(() => registerProtectedRoute(ctx, { kind: 'exact', path: '/api/token-monitor/display-scope', handler }), 'token-monitor: display scope route')
   return handler
 }
