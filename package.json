@@ -43,6 +43,7 @@
     "README.en.md",
     "docs/REFERENCE.zh-CN.md",
     "docs/REFERENCE.en.md",
+    "docs/releases/v4.3.7.md",
     "LICENSE"
   ],
   "scripts": {
