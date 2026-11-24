@@ -11,12 +11,6 @@ importers:
 
   .:
     dependencies:
-      '@deepseek-ai/dsh-atomic-write':
-        specifier: 0.1.7-alpha.2
-        version: 0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)
-      '@deepseek-ai/dsh-home-paths':
-        specifier: 0.1.7-alpha.2
-        version: 0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)
       ipaddr.js:
         specifier: 2.2.0
         version: 2.2.0
@@ -57,6 +51,9 @@ importers:
       '@deepseek-ai/dsh-app-boot':
         specifier: 0.1.7-alpha.2
         version: 0.1.7-alpha.2(@deepseek-ai/cordis-plugin-group@1.0.4(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-home-paths@0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-launch-environment@0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-system-prompt@0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-llm@0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-scope@0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1))))
+      '@deepseek-ai/dsh-atomic-write':
+        specifier: 0.1.7-alpha.2
+        version: 0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-attachment':
         specifier: 0.1.7-alpha.2
         version: 0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1))
@@ -111,6 +108,9 @@ importers:
       '@deepseek-ai/dsh-hmr':
         specifier: 0.1.7-alpha.2
         version: 0.1.7-alpha.2(cd541b020157c06d4a44dac824ca782e)
+      '@deepseek-ai/dsh-home-paths':
+        specifier: 0.1.7-alpha.2
+        version: 0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)
       '@deepseek-ai/dsh-host-webserver':
         specifier: 0.1.7-alpha.2
         version: 0.1.7-alpha.2(@deepseek-ai/cordis@4.0.1)

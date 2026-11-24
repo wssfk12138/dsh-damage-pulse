@@ -21,7 +21,7 @@
 
 ## 安装
 
-**本仓库版本 4.3.7 增加 DeepSeek Harness `0.2.2-rc.2`、`0.2.2-rc.4`、`0.2.3-alpha.1` 和 `0.2.3-alpha.2` 的精确兼容。** 已声明的旧宿主范围继续保留。具体版本见 [package.json](package.json)，变更与验证范围见 [4.3.7 版本说明](docs/releases/v4.3.7.md)。
+**本仓库版本 4.3.8 修复插件市场对宿主工具包依赖的兼容性拦截。** 文件锁与数据路径工具改为使用兼容宿主提供的共享包，安装时不再要求额外的 `0.1.7-alpha.2` 副本。4.3.7 已声明的宿主范围继续保留；具体版本见 [package.json](package.json)，变更与验证范围见 [4.3.8 版本说明](docs/releases/v4.3.8.md)。
 
 桌面版「插件」页可添加 `dsh-damage-pulse`。也可以从 [npm](https://www.npmjs.com/package/dsh-damage-pulse) 安装，或从 [GitHub Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases) 下载对应版本的完整 `.tgz`。
 
@@ -31,7 +31,7 @@ dsh plugin --profile desktop add dsh-damage-pulse
 
 将 `desktop` 换成实际使用的 profile 名。安装后**完整退出桌面程序（含托盘）再启动**，在悬浮卡右键的「卸载与更新」核对版本。
 
-- `0.2.2-rc.3` 和 `rc.5` 可用 4.3.6 或 4.3.7。新增的四个宿主版本需要 4.3.7，安装前请核对所选渠道提供的版本。
+- 使用带依赖兼容检查的插件市场时，请选择完整 4.3.8 或更高版本；4.3.7 及更早版本可能被旧工具包依赖声明拦截。安装前请核对所选渠道提供的版本。
 - 需要指定版本时，使用对应 Release 的预编译 `.tgz`；不要直接安装仓库 URL、`github:` 地址、`Source code` 压缩包或未打包的源码目录，它们缺少运行载荷。
 - 页面提示已安装时，先移除再添加完整包；保留配置和历史数据，不用清空账本解决启动问题。
 - 官方 API 余额通过 DSH 凭据机制配置 `DEEPSEEK_API_KEY`；没有余额凭据也可记录用量和费用。

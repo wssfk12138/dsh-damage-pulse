@@ -17,7 +17,7 @@ A usage, cost, and balance monitor for DeepSeek Harness. Inspect individual requ
 
 ## Installation
 
-**Version 4.3.7 adds exact compatibility with DeepSeek Harness `0.2.2-rc.2`, `0.2.2-rc.4`, `0.2.3-alpha.1`, and `0.2.3-alpha.2`.** Existing host ranges remain supported as declared. See [package.json](package.json) for exact versions and the [4.3.7 release notes](docs/releases/v4.3.7.md) for changes and verification coverage.
+**Version 4.3.8 fixes marketplace compatibility rejection caused by host utility dependencies.** File locking and data paths now use shared packages provided by a compatible host, without requesting additional `0.1.7-alpha.2` copies. The host ranges declared in 4.3.7 are preserved. See [package.json](package.json) for exact versions and the [4.3.8 release notes](docs/releases/v4.3.8.md) for changes and verification coverage.
 
 Add `dsh-damage-pulse` in the desktop Plugins page, install from [npm](https://www.npmjs.com/package/dsh-damage-pulse), or download the complete `.tgz` for your version from [GitHub Releases](https://github.com/wssfk12138/dsh-damage-pulse/releases).
 
@@ -27,7 +27,7 @@ dsh plugin --profile desktop add dsh-damage-pulse
 
 Replace `desktop` with your actual profile name. **Fully quit the desktop application, including its tray process, and reopen it.** Check the version in the balance card’s Uninstall / Update menu.
 
-- `0.2.2-rc.3` and `rc.5` work with 4.3.6 or 4.3.7. The four newly supported host versions require 4.3.7. Check which version your chosen channel provides before installing.
+- For marketplaces that check host dependencies, choose the full 4.3.8 package or newer. Version 4.3.7 and earlier can be rejected because of their old utility dependency declarations. Check which version your chosen channel provides before installing.
 - For a specific version, use its prebuilt release `.tgz`. Repository URLs, `github:` specifications, Source code archives, and unbuilt source folders lack the runtime payload.
 - If the Plugins page reports an existing installation, remove it before adding the complete package again. Keep settings and history; do not clear the ledger to fix startup errors.
 - Configure `DEEPSEEK_API_KEY` through DSH credentials for official API balance queries. Usage collection and billing also work without balance credentials.

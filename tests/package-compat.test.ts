@@ -5,6 +5,7 @@ import { createRequire } from "node:module"
 
 interface Manifest {
   peerDependencies: Record<string, string>
+  dependencies?: Record<string, string>
   devDependencies?: Record<string, string>
   dsh?: { client?: { inject?: string[] } }
 }
@@ -27,6 +28,25 @@ const DUAL_RANGE_PEERS = [
   "@deepseek-ai/dsh-client-ui-slots",
   "@deepseek-ai/dsh-tools",
 ] as const
+
+test("host filesystem utilities share the host instead of installing pinned runtime copies", () => {
+  const { satisfies } = createRequire(import.meta.url)("semver") as {
+    satisfies: (version: string, range: string, options: { includePrerelease: boolean }) => boolean
+  }
+  for (const name of ["@deepseek-ai/dsh-atomic-write", "@deepseek-ai/dsh-home-paths"]) {
+    assert.equal(manifest.dependencies?.[name], undefined, `${name} must not install a separate host copy`)
+    assert.ok(manifest.peerDependencies[name].length <= 256, "market discovery must read the host requirement")
+    for (const minor of [0, 1, 2, 3, 4, 5, 6, 7, 8, 99]) {
+      for (const suffix of ["", "-alpha.1", "-rc.1", "-rc.5", "-rc.8"]) {
+        const version = "0.1." + minor + suffix
+        assert.equal(satisfies(version, manifest.peerDependencies[name], { includePrerelease: true }),
+          satisfies(version, manifest.peerDependencies["@deepseek-ai/dsh-llm"], { includePrerelease: true }),
+          name + " must preserve legacy compatibility for " + version)
+      }
+    }
+    assert.equal(manifest.devDependencies?.[name], "0.1.7-alpha.2", `${name} remains available for development`)
+  }
+})
 
 test("wire-contract peers support DSH 0.1.1-rc.2 and never falsely claim 0.1.0-rc.8", () => {
   for (const name of WIRE_CONTRACT_PEERS) {
@@ -63,15 +83,15 @@ test("dsh-tools is declared as a peer and pinned for development builds", () => 
 test("current peers preserve the established 0.2 releases", () => {
   for (const [name, range] of Object.entries(manifest.peerDependencies)) {
     if (!name.startsWith("@deepseek-ai/dsh-")) continue
-    assert.ok(range.split(" || ").includes("0.2.0-rc.2"), name)
-    assert.ok(range.split(" || ").includes("0.2.1-rc.1"), name)
-    assert.ok(range.split(" || ").includes("0.2.1-rc.2"), name)
-    assert.ok(range.split(" || ").includes("0.2.1-rc.3"), name)
-    assert.ok(range.split(" || ").includes("0.2.1-rc.4"), name)
-    assert.ok(range.split(" || ").includes("0.2.1-rc.5"), name)
-    assert.ok(range.split(" || ").includes("0.2.2-alpha.2"), name)
-    assert.ok(range.split(" || ").includes("0.2.2-alpha.2-ce7073d-dirty"), name)
-    assert.ok(range.split(" || ").includes("0.2.2-alpha.3"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.0-rc.2"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.1-rc.1"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.1-rc.2"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.1-rc.3"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.1-rc.4"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.1-rc.5"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.2-alpha.2"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.2-alpha.2-ce7073d-dirty"), name)
+    assert.ok(range.split(/\s*\|\|\s*/).includes("0.2.2-alpha.3"), name)
     assert.ok(!range.includes("^0.2"), name)
   }
 })
